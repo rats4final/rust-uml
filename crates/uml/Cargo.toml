@@ -1,0 +1,13 @@
+[package]
+name = "uml"
+description = "L1: UML element factories, cascading delete and display text"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+mdj.workspace = true
