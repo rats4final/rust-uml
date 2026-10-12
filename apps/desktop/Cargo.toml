@@ -1,0 +1,22 @@
+[package]
+name = "desktop"
+description = "Desktop app (Linux, Windows, macOS)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+publish = false
+
+[[bin]]
+name = "rust-uml"
+path = "src/main.rs"
+
+[lints]
+workspace = true
+
+[dependencies]
+anyhow.workspace = true
+render.workspace = true
+eframe = { workspace = true, features = ["default_fonts", "glow", "wayland", "x11"] }
+rfd.workspace = true
+ui.workspace = true
