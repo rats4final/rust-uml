@@ -1,0 +1,7 @@
+/target
+/dist
+# REA exports contain analysis of StarUML's proprietary code: keep them local.
+/evidence/*.json
+# Never commit StarUML's own files (templates, profiles, app.asar extracts).
+*.asar
+/apps/web/dist
