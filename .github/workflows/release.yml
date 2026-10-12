@@ -72,7 +72,10 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.name }}
-          path: dist/rust-uml-*.*
+          # Archives only: the staging folders also contain dots (v0.1.0).
+          path: |
+            dist/*.tar.gz
+            dist/*.zip
 
   web:
     name: web-wasm
@@ -116,9 +119,11 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          ls -la artifacts
+          shopt -s nullglob
+          files=(artifacts/*.tar.gz artifacts/*.zip)
+          ls -la "${files[@]}"
           if gh release view "$TAG" > /dev/null 2>&1; then
-            gh release upload "$TAG" artifacts/* --clobber
+            gh release upload "$TAG" "${files[@]}" --clobber
           else
-            gh release create "$TAG" artifacts/* --title "rust-uml $TAG" --notes-file .github/release-notes.md --prerelease
+            gh release create "$TAG" "${files[@]}" --title "rust-uml $TAG" --notes-file .github/release-notes.md --prerelease
           fi
