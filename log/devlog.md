@@ -2,6 +2,13 @@
 
 Newest first. Terse: what landed, numbers, what's still open.
 
+## 2026-10-12 — StarUML opens our files
+
+- Owner opened `examples/shapes.mdj` in StarUML 7.1.1: loads cleanly, all elements drawn.
+- Fixed: association end labels were mirrored vs StarUML (alpha sign). Regression test added.
+- Open: StarUML centred the rows of our class boxes; check whether that's its default.
+- Next: edit + save in StarUML, reopen in rust-uml.
+
 ## 2026-10-12 — handoff
 
 - `docs/roadmap.md`: setup, milestones M1.5–M9 in order, known gaps, verification recipes, decisions.

@@ -13,8 +13,9 @@ Order of reading for a new agent/session: `AGENTS.md` → this file → `docs/pa
   non-class diagrams draw in a simplified generic way and cannot be edited with tools yet.
 - **Verified:** 33 tests (incl. mouse-driven UI tests and a real-file round trip of all 14 model files
   shipped with StarUML); CI green on Linux, Windows, macOS; Windows exe launched natively; web build
-  screenshotted in Chromium. **Not verified:** macOS app actually launching (no Mac); a file saved by
-  rust-uml opened in real StarUML.
+  screenshotted in Chromium; rust-uml's example file opens correctly in StarUML 7.1.1.
+  **Not verified:** macOS app actually launching (no Mac); a
+  StarUML-edited file reopened in rust-uml (rust-uml → StarUML was verified 2026-10-12).
 
 ## 2. Setting up a machine to continue
 
@@ -50,11 +51,18 @@ release when it's user-visible.
 
 ### M1.5 — Prove StarUML interoperability (small, do first)
 
-1. Open `examples/shapes.mdj` (made only by rust-uml) in real StarUML 7.1.1. Expected risk: StarUML
+**Step 1 done 2026-10-12:** the owner opened `examples/shapes.mdj` in StarUML 7.1.1 — no errors,
+everything drawn. It exposed one bug, fixed: association end labels were on the wrong side
+(StarUML measures label `alpha` opposite to screen angles; test `head_labels_match_staruml_sides`).
+Open question from the same comparison: StarUML showed attribute/literal rows **centred**; we
+left-align. Find out whether that is StarUML's normal style or caused by missing sub-view geometry
+(make a fresh class in StarUML and compare).
+
+1. ~~Open `examples/shapes.mdj` (made only by rust-uml) in real StarUML 7.1.1. Expected risk: StarUML
    may need sub-view geometry (`left/top/width/height` of compartments and labels) or fields we omit.
    If it fails or looks wrong, compare with a file StarUML saves for the same diagram:
-   `rust-uml-cli run x.mdj model.get '{"id":"…"}'` vs the StarUML file, field by field.
-2. The reverse: build a class diagram in StarUML, save, open in rust-uml, edit, save, reopen in StarUML.
+   `rust-uml-cli run x.mdj model.get '{"id":"…"}'` vs the StarUML file, field by field.~~ Done, see above.
+2. **Next:** the reverse: build a class diagram in StarUML, save, open in rust-uml, edit, save, reopen in StarUML.
 3. Turn both into a test fixture **we** author (never commit StarUML-made files: they contain
    StarUML's generated content; describe differences in tests instead).
 

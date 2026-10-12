@@ -14,7 +14,8 @@ Legend: ✅ done · 🟡 partial · ⬜ not started
 | Open `.mdj` | ✅ | Schema-free loader; unknown element types survive untouched |
 | Save `.mdj` | ✅ | Same content and key order as StarUML's own files (14/14 shipped files) |
 | Open/save `.mfj` profile fragments | ✅ | Root `_parent` outside the file is preserved |
-| Files saved here open in StarUML | 🟡 | Structure mirrors StarUML's view trees; **not yet tried in StarUML** |
+| Files saved here open in StarUML | ✅ | `examples/shapes.mdj` opened in StarUML 7.1.1 (2026-10-12): all boxes, rows, keywords, arrows and labels correct |
+| StarUML-edited files reopen here | ⬜ | Next check: edit + save in StarUML, reopen in rust-uml |
 | StarUML v1 (`.uml`) import | ⬜ | `extensions/default/staruml-v1` |
 | Mermaid import | ⬜ | `extensions/default/mermaid`; also behind the local API |
 

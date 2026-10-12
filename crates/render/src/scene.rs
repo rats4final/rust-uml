@@ -420,7 +420,9 @@ fn label_point(pts: &[Point], position: i64, alpha: f64, distance: f64) -> Point
         }
         _ => return pts.first().copied().unwrap_or_default(),
     };
-    let theta = (toward.y - anchor.y).atan2(toward.x - anchor.x) + alpha;
+    // StarUML measures `alpha` the other way round from screen angles
+    // (checked against StarUML 7.1.1 drawing the same file), so subtract it.
+    let theta = (toward.y - anchor.y).atan2(toward.x - anchor.x) - alpha;
     Point::new(
         anchor.x + distance * theta.cos(),
         anchor.y + distance * theta.sin(),
@@ -475,7 +477,19 @@ mod tests {
         let head = label_point(&pts, edge_position::HEAD, 0.0, 10.0);
         assert!((head.x - 90.0).abs() < 1e-9 && head.y.abs() < 1e-9);
         let mid = label_point(&pts, edge_position::MIDDLE, PI / 2.0, 15.0);
-        assert!((mid.x - 50.0).abs() < 1e-9 && (mid.y - 15.0).abs() < 1e-9);
+        assert!((mid.x - 50.0).abs() < 1e-9 && (mid.y + 15.0).abs() < 1e-9);
+    }
+
+    /// StarUML 7.1.1 draws an association's head role name below and the
+    /// head multiplicity above a left-pointing line (observed on shapes.mdj).
+    #[test]
+    fn head_labels_match_staruml_sides() {
+        // Line from tail (Canvas, right) to head (Shape, left).
+        let pts = [Point::new(300.0, 100.0), Point::new(100.0, 100.0)];
+        let role = label_point(&pts, edge_position::HEAD, -PI / 6.0, 30.0);
+        let mult = label_point(&pts, edge_position::HEAD, PI / 6.0, 25.0);
+        assert!(role.y > 100.0, "role name below: {role:?}");
+        assert!(mult.y < 100.0, "multiplicity above: {mult:?}");
     }
 
     #[test]
