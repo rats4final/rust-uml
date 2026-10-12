@@ -9,6 +9,7 @@ codebase. Read this file first, then `docs/`.
 
 | Read | Why |
 |---|---|
+| `docs/roadmap.md` | **Start here when resuming:** state, setup, what's next in order, known gaps |
 | `docs/evidence.md` | What StarUML is and how its files look, with the evidence for each claim |
 | `docs/parity.md` | Every StarUML feature and where we stand: the work list |
 | `docs/architecture.md` | Crate map, layers, how a click becomes a saved file |

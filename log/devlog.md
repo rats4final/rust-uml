@@ -2,6 +2,11 @@
 
 Newest first. Terse: what landed, numbers, what's still open.
 
+## 2026-10-12 — handoff
+
+- `docs/roadmap.md`: setup, milestones M1.5–M9 in order, known gaps, verification recipes, decisions.
+- Original machine now has Ghidra 12.1.4 (`~/opt`, own JDK 21) for any native-code evidence work.
+
 ## 2026-10-12 — rust-uml 0.1.0: public release
 
 Landed
