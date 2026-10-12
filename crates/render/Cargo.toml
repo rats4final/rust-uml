@@ -1,0 +1,16 @@
+[package]
+name = "render"
+description = "L2: diagram layout, display list, SVG export"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+ab_glyph.workspace = true
+mdj.workspace = true
+resvg.workspace = true
+uml.workspace = true

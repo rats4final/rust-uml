@@ -1,0 +1,133 @@
+use std::fmt::Write;
+
+use crate::geom::{Color, Point};
+use crate::scene::{Prim, Scene};
+
+const MARGIN: f64 = 10.0;
+
+/// Standalone SVG for a scene. Text names Liberation Sans first (the font
+/// used for layout) with Arial-compatible fallbacks, so widths match closely.
+pub fn to_svg(scene: &Scene) -> String {
+    let b = scene.bounds.expand(MARGIN);
+    let mut s = String::new();
+    // Writing to a String cannot fail, so the results are ignored.
+    let _ = writeln!(
+        s,
+        r#"<svg xmlns="http://www.w3.org/2000/svg" width="{w}" height="{h}" viewBox="{x} {y} {w} {h}" font-family="'Liberation Sans', Arial, Helvetica, sans-serif">"#,
+        x = fmt(b.x),
+        y = fmt(b.y),
+        w = fmt(b.w),
+        h = fmt(b.h)
+    );
+    let _ = writeln!(
+        s,
+        r#"<rect x="{}" y="{}" width="{}" height="{}" fill="white"/>"#,
+        fmt(b.x),
+        fmt(b.y),
+        fmt(b.w),
+        fmt(b.h)
+    );
+    for prim in &scene.prims {
+        match prim {
+            Prim::Rect { rect, fill, stroke } => {
+                let _ = writeln!(
+                    s,
+                    r#"<rect x="{}" y="{}" width="{}" height="{}" fill="{}" stroke="{}"/>"#,
+                    fmt(rect.x),
+                    fmt(rect.y),
+                    fmt(rect.w),
+                    fmt(rect.h),
+                    paint(*fill),
+                    stroke.to_hex()
+                );
+            }
+            Prim::Line {
+                points,
+                stroke,
+                dashed,
+            } => {
+                let dash = if *dashed {
+                    r#" stroke-dasharray="6 4""#
+                } else {
+                    ""
+                };
+                let _ = writeln!(
+                    s,
+                    r#"<polyline points="{}" fill="none" stroke="{}"{dash}/>"#,
+                    points_attr(points),
+                    stroke.to_hex()
+                );
+            }
+            Prim::Polygon {
+                points,
+                fill,
+                stroke,
+            } => {
+                let _ = writeln!(
+                    s,
+                    r#"<polygon points="{}" fill="{}" stroke="{}"/>"#,
+                    points_attr(points),
+                    paint(*fill),
+                    stroke.to_hex()
+                );
+            }
+            Prim::Text {
+                rect,
+                baseline,
+                text,
+                style,
+            } => {
+                let mut attrs = format!(r#" font-size="{}""#, fmt(style.size));
+                if style.bold {
+                    attrs += r#" font-weight="bold""#;
+                }
+                if style.italic {
+                    attrs += r#" font-style="italic""#;
+                }
+                if style.underline {
+                    attrs += r#" text-decoration="underline""#;
+                }
+                if style.color != Color::BLACK {
+                    attrs += &format!(r#" fill="{}""#, style.color.to_hex());
+                }
+                let _ = writeln!(
+                    s,
+                    r#"<text x="{}" y="{}"{attrs}>{}</text>"#,
+                    fmt(rect.x),
+                    fmt(rect.y + baseline),
+                    escape(text)
+                );
+            }
+        }
+    }
+    s.push_str("</svg>\n");
+    s
+}
+
+fn fmt(v: f64) -> String {
+    let r = (v * 100.0).round() / 100.0;
+    if r == r.trunc() {
+        format!("{}", r as i64)
+    } else {
+        format!("{r}")
+    }
+}
+
+fn paint(c: Option<Color>) -> String {
+    c.map_or_else(|| "none".to_owned(), Color::to_hex)
+}
+
+fn points_attr(points: &[Point]) -> String {
+    points
+        .iter()
+        .map(|p| format!("{},{}", fmt(p.x), fmt(p.y)))
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+fn escape(text: &str) -> String {
+    text.replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+        .replace('"', "&quot;")
+}
