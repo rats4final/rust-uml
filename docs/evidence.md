@@ -162,6 +162,28 @@ and `src/core/core.js`, described in our words:
 - **Toolbox groups per diagram type** come from `toolbox/uml.json` (`diagram-types` lists).
   rust-uml mirrors them in `crates/uml/src/catalog.rs`.
 
+### Behavioural diagrams (observed for M3a, 2026-10-12)
+
+From the same files (`uml-factory.js` diagram functions, `metamodel.json`, `toolbox/uml.json`):
+
+- **Some diagrams come wrapped.** A statechart diagram lives inside a `UMLStateMachine` (created
+  with one `UMLRegion` in `regions`); an activity diagram inside a `UMLActivity`; a profile diagram
+  inside a `UMLProfile`. StarUML creates the wrapper unless the diagram is added to one already.
+- **State machines:** states, final states and pseudostates go in a region's `vertices`;
+  transitions in the region's `transitions`. A composite state has its own `regions` (orthogonal:
+  several). Pseudostates are one type with a `kind` (initial, choice, fork, join, junction,
+  shallow/deep history, entry/exit point, terminate). A state view's `decompositionCompartment`
+  holds one `UMLRegionView` per region.
+- **Activities:** actions and control nodes go in the activity's `nodes`, flows in its `edges`,
+  swimlanes (`UMLActivityPartition`) in its `groups`. All control nodes share one view type
+  (`UMLControlNodeView`) and are drawn by model type. Swimlane views have `isVertical` (default
+  true) and a `nameLabel`.
+- **Actors are always stick figures** (`UMLActorView` draws its iconic form even for the "label"
+  display); use cases are ovals with an extension-point compartment.
+- **Toolbox ids that aren't model types** carry their model in the tool's arguments: e.g.
+  `UMLInitialState` = `UMLPseudostate` kind `initial`; `UMLSelfTransition` = a `UMLTransition` from a
+  state to itself; `UMLSwimlaneHorz` = a partition whose view has `isVertical: false`.
+
 ## 4. Free vs. paid — exactly what is locked
 
 The only place the license is checked for features is **`src/engine/diagram-export.js`**, in the

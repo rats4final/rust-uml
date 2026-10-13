@@ -1,6 +1,6 @@
 # Parity with StarUML 7.1.1
 
-Status line: **M2 — UML structural diagrams.** Updated 2026-10-12.
+Status line: **M3a — use case, state machine and activity diagrams.** Updated 2026-10-12.
 
 Each row comes from the evidence in [`evidence.md`](evidence.md). "Paid" marks features StarUML
 locks behind a licence (see evidence §4: only exports are locked, by watermark).
@@ -36,7 +36,8 @@ Legend: ✅ done · 🟡 partial · ⬜ not started
 |---|---|---|---|
 | UML class | Class | | ✅ Class, Interface, Enumeration, DataType, Package; 7 relationship kinds |
 | UML structure | Package, Object, Component, Deployment, Composite Structure, Profile | | ✅ all six: StarUML's toolbox groups, nesting, ports, parts, objects/slots, 3-D nodes, icons, containment ⊕, «deploy». Not yet: n-ary associations, association classes, template bindings, frames, role bindings, ball-and-socket |
-| UML behaviour | Use Case, Activity, Statechart, Sequence, Communication, Timing, Interaction Overview, Information Flow | | ⬜ (generic drawing only) |
+| UML behaviour (M3a) | Use Case, Statechart, Activity | | ✅ StarUML's tool sets: actors, use cases, subjects, include/extend; states, composite/orthogonal states, all pseudostate kinds, transitions with `trigger [guard] / effect`; actions, control nodes, swimlanes, object nodes, guarded flows. Not yet: pins, expansion regions, interruptible regions, signals/events as actions, internal activities (entry/do/exit), submachine states, frames |
+| UML behaviour (M3b) | Sequence, Communication, Timing, Interaction Overview, Information Flow | | ⬜ (generic drawing only) |
 | SysML | Requirement, Block Definition, Internal Block, Parametric | ✔ | ⬜ |
 | BPMN | BPMN | ✔ | ⬜ |
 | Wireframe | Wireframe | ✔ | ⬜ |

@@ -1,6 +1,6 @@
 # Roadmap and handoff
 
-**Read this to pick up the work.** Status as of 2026-10-12, after v0.2.0.
+**Read this to pick up the work.** Status as of 2026-10-12, after v0.3.0.
 Order of reading for a new agent/session: `AGENTS.md` → this file → `docs/parity.md` → `log/devlog.md`.
 
 ## 1. Where things stand
@@ -8,11 +8,12 @@ Order of reading for a new agent/session: `AGENTS.md` → this file → `docs/pa
 - **Released:** v0.1.1 (pre-release) — https://github.com/rats4final/rust-uml/releases
   Linux x64, Windows x64, macOS arm64 + x64, web zip. Web app live at
   https://rats4final.github.io/rust-uml/ (redeploys on every push to `main`).
-- **Works:** class diagrams and all six UML structural diagram types (package, object, component,
-  deployment, composite structure, profile) with StarUML's toolbox groups: 23 box tools and
-  17 line tools in `crates/uml/src/catalog.rs`; nesting, ports, parts, objects with slots, notes;
-  properties panel, undo/redo, lossless `.mdj` save, SVG/PNG export without watermarks. Behavioural
-  diagrams (use case, activity, state, sequence, …) open and draw generically but have no tools.
+- **Works:** class diagrams, all six UML structural diagram types and three behavioural ones
+  (use case, statechart, activity) with StarUML's toolbox groups: 52 box tools and 23 line tools
+  in `crates/uml/src/catalog.rs`; nesting, ports, parts, objects, notes, state machines with
+  regions, activities with swimlanes; properties panel, undo/redo, lossless `.mdj` save, SVG/PNG
+  export without watermarks. Sequence, communication, timing, interaction-overview and
+  information-flow diagrams open and draw generically but have no tools yet.
 - **Verified:** 33 tests (incl. mouse-driven UI tests and a real-file round trip of all 14 model files
   shipped with StarUML); CI green on Linux, Windows, macOS; Windows exe launched natively; web build
   screenshotted in Chromium; StarUML interop proven both ways for class diagrams (M1.5).
@@ -80,12 +81,26 @@ release when it's user-visible.
   diagram (as M1.5 did for class diagrams). Most likely differences: port label positions,
   icon/keyword choices, nested view geometry.
 
-### M3 — UML behavioural diagrams
+### M3a — Use case, statechart, activity ✅ done 2026-10-12 (v0.3.0)
 
-Use Case (actors, use cases, system boundary, include/extend), Activity (actions, decisions, forks,
-swimlanes, object flows), Statechart (states, regions, pseudostates, transitions), Sequence
-(lifelines, messages, activations, combined fragments — the hardest: layout is vertical-time based),
-Communication, Timing, Interaction Overview, Information Flow.
+- Catalog rows for StarUML's `uml.usecase`, `uml.statechart(-adv)`, `uml.activity(-adv)` groups.
+- New placement rules (`catalog::Slot`): region `vertices`, activity `nodes`/`groups`; edges owned by
+  the source's region (`transitions`) or activity (`edges`) (`catalog::EdgeOwner`).
+- `uml::create_diagram` adds the wrappers StarUML adds (state machine + region, activity, profile).
+  This also fixed M2's profile diagrams, which previously sat directly in the model.
+- Notation: stick-figure actors, use-case ovals, subjects, rounded states/actions, symbols by model
+  (`layout::Symbol`), composite-state region dividers, swimlanes, transition/flow labels.
+- Example: `examples/build-behaviour.sh` → `examples/behaviour.mdj`.
+- Left (see parity): pins, expansion/interruptible regions, internal activities, submachines,
+  triggers/effects editing in the properties panel (labels already show them), frames.
+- **Not yet checked in StarUML:** open `examples/behaviour.mdj` and `structures.mdj` in StarUML.
+
+### M3b — Sequence, communication, timing, interaction overview, information flow (next)
+
+The hard part is the sequence diagram: lifelines laid out horizontally, messages ordered by
+vertical position, activations, combined fragments. Gather evidence first: `sequenceDiagramFn`,
+`viewForSequenceDiagramFn` in `uml-factory.js` (diagrams live in a `UMLCollaboration` →
+`UMLInteraction`?), and `UMLLifeline`, `UMLMessage`, `UMLCombinedFragment` in `metamodel.json`.
 
 ### M4 — The families StarUML sells ("Pro")
 

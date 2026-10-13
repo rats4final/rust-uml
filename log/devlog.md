@@ -2,6 +2,18 @@
 
 Newest first. Terse: what landed, numbers, what's still open.
 
+## 2026-10-12 — v0.3.0: M3a use case, statechart, activity
+
+- Catalog now offers 52 box and 23 line tools across all toolbox groups (counted with `rust-uml-cli tools`).
+- Placement in regions/activities; transitions/flows owned by region/activity.
+- `uml::create_diagram` adds StarUML's wrappers (state machine + region, activity, profile) —
+  also fixes M2 profile diagrams. Engine `diagram.add` uses it.
+- Render: actors, use cases, subjects, round rects, `Symbol`s by model, region dividers, swimlanes,
+  `trigger [guard] / effect` and `[guard]` labels, «include»/«extend».
+- Process lesson: a text edit made after `cargo fmt` can match nothing; edit scripts now assert
+  their anchors (one silent miss was caught by a failing test).
+- 67 tests. Example `behaviour.mdj`. Open: check examples in StarUML; M3b (sequence et al.).
+
 ## 2026-10-12 — v0.2.0: M2 UML structural diagrams
 
 - `uml` rebuilt around a catalog (`catalog.rs`): 23 box + 17 line tools mirroring StarUML's toolbox

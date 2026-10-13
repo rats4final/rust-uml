@@ -2,15 +2,16 @@ Preview of **rust-uml**: an independent, open-source UML modeler written in Rust
 saves StarUML `.mdj` files. Not affiliated with MKLabs/StarUML. What changed in each version:
 `log/devlog.md`.
 
-**New in v0.2.0:** all six UML structural diagram types — package, object, component,
-deployment, composite structure and profile — with StarUML's tool sets (Model ▸ Add Diagram).
-Boxes can sit inside boxes (classes in packages, artifacts in nodes, parts and ports in classes and
-components), ports snap to borders, objects show slots, and notes are available everywhere.
-Try `structures.mdj` (one diagram per type).
+**New in v0.3.0:** use case, statechart and activity diagrams with StarUML's tool sets —
+actors, use cases and system boundaries; states, composite and orthogonal states, history, choice,
+fork/join and final states, transitions labelled `trigger [guard] / effect`; actions, decisions,
+forks/joins, swimlanes and guarded flows. Statechart and activity diagrams get their state machine
+or activity automatically, as in StarUML. Try `behaviour.mdj`.
 
-**What works:** class and structural diagrams end to end — 23 element and 17 relationship tools,
+**What works:** class, structural, use case, statechart and activity diagrams end to end — 52
+element and 23 relationship tools,
 properties panel, undo/redo, lossless save (verified both ways with StarUML 7.1.1 for class diagrams),
-SVG/PNG export with no watermarks. Behavioural diagrams open and are drawn in a simplified way.
+SVG/PNG export with no watermarks. Sequence-family diagrams open and are drawn in a simplified way.
 Full checklist: `docs/parity.md`.
 
 ## Downloads
@@ -23,8 +24,9 @@ Full checklist: `docs/parity.md`.
 | Linux (x64) | `…-linux-x86_64.tar.gz` | `tar xzf …` then `./rust-uml`. |
 | Browser | `…-web.zip`, or the hosted copy on GitHub Pages | Serve the folder with any static web server. |
 
-Each archive also contains `rust-uml-cli` and two example models, `shapes.mdj` and
-`structures.mdj` (try `rust-uml structures.mdj`, then pick diagrams in the Model Explorer).
+Each archive also contains `rust-uml-cli` and three example models: `shapes.mdj`,
+`structures.mdj` and `behaviour.mdj` (try `rust-uml behaviour.mdj`, then pick diagrams in the
+Model Explorer).
 
 **macOS note:** the binaries are not signed or notarised. After unpacking, run
 `xattr -d com.apple.quarantine rust-uml rust-uml-cli` once, then `./rust-uml`.
