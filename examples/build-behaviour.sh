@@ -39,7 +39,10 @@ node() { # kind x y [name] [container-view] -> "model view"
   if [ $# -ge 5 ] && [ -n "$5" ]; then params+=",\"container\":\"$5\""; fi
   local r; r="$(run node.create "$params}")"
   local m v; m="$(echo "$r" | get model)"; v="$(echo "$r" | get view)"
-  if [ $# -ge 4 ] && [ -n "$4" ]; then set_field "$m" name "\"$4\""; fi
+  if [ $# -ge 4 ] && [ -n "$4" ]; then
+    # Shapes without a model (time ticks) show their view's text.
+    if [ "$m" != "None" ]; then set_field "$m" name "\"$4\""; else set_field "$v" text "\"$4\""; fi
+  fi
   echo "$m $v"
 }
 edge() { # kind tail-view head-view -> model
@@ -142,6 +145,23 @@ comm UMLForwardMessage "$cc_v" "$cs_v" checkout > /dev/null
 connector="$(run diagram.inspect '{}' | python3 -I -c 'import json,sys; print(next(l["view"] for l in json.load(sys.stdin)["lines"] if l["type"] == "UMLConnectorView"))')"
 set_field "$(comm UMLForwardMessage "$cs_v" "$cp_v" charge)" arguments '"total"'
 comm UMLReverseMessage "$cs_v" "$connector" confirmation > /dev/null
+
+# --- Timing diagram --------------------------------------------------------
+diagram UMLTimingDiagram "Door alarm"
+read -r _ door_v < <(node UMLLifeline 0 0 door)
+read -r _ open_v < <(node UMLTimingState 0 0 Open "$door_v")
+read -r _ closed_v < <(node UMLTimingState 0 0 Closed "$door_v")
+read -r _ d1_v < <(node UMLTimeSegment 0 0 "" "$closed_v")
+node UMLTimeSegment 0 0 "" "$open_v" > /dev/null
+node UMLTimeSegment 0 0 "" "$closed_v" > /dev/null
+read -r _ alarm_v < <(node UMLLifeline 0 0 alarm)
+read -r _ armed_v < <(node UMLTimingState 0 0 Armed "$alarm_v")
+read -r _ ringing_v < <(node UMLTimingState 0 0 Ringing "$alarm_v")
+node UMLTimeSegment 0 0 "" "$armed_v" > /dev/null
+read -r _ a2_v < <(node UMLTimeSegment 0 0 "" "$ringing_v")
+node UMLTimeSegment 0 0 "" "$armed_v" > /dev/null
+for t in 0 1 2 3; do node UMLTimeTick 0 0 "$t" > /dev/null; done
+set_field "$(edge UMLMessage "$d1_v" "$a2_v")" name '"opened"'
 
 # --- Interaction overview diagram ------------------------------------------
 diagram UMLInteractionOverviewDiagram "Shopping overview"
