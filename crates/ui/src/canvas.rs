@@ -293,7 +293,17 @@ impl Canvas {
                     ));
                 }
                 Drag::Edge { tail, from, to } => {
-                    if let (Tool::Edge(spec), Some((head, _))) = (tool, scene.node_at(dp(to))) {
+                    // A communication message may also be dropped on a connector line.
+                    let head = scene
+                        .node_at(dp(to))
+                        .map(|(h, _)| h)
+                        .or_else(|| match tool {
+                            Tool::Edge(spec) if spec.view_type == "UMLCommMessageView" => {
+                                scene.hit_test(dp(to), tolerance)
+                            }
+                            _ => None,
+                        });
+                    if let (Tool::Edge(spec), Some(head)) = (tool, head) {
                         // `y`: sequence messages are drawn at the height the drag started.
                         out.commands.push((
                             "edge.create",

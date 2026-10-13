@@ -508,7 +508,7 @@ impl UmlApp {
                     ui.separator();
                     ui.weak(group.label);
                     for id in group.tools {
-                        let tool = match uml::tool(id) {
+                        let tool = match uml::tool_on(id, &diagram_type) {
                             Some(uml::Tool::Node(spec)) => Tool::Node(spec),
                             Some(uml::Tool::Edge(spec)) => Tool::Edge(spec),
                             None => continue,
@@ -970,6 +970,50 @@ mod tests {
         assert_eq!(edges[0].ref_id("head"), Some(parent.as_str()));
         let points = mdj::values::parse_points(edges[0].str("points").unwrap_or(""));
         assert!(points.len() >= 2, "the new edge was routed: {points:?}");
+    }
+
+    #[test]
+    fn communication_diagram_by_mouse() {
+        let mut h = harness();
+        h.run();
+        h.state_mut()
+            .exec("diagram.add", json!({"type": "UMLCommunicationDiagram"}));
+        h.run();
+        let place = |h: &mut Harness<'static, UmlApp>, x: f64, y: f64| {
+            h.get_by_role_and_label(Role::Button, "Lifeline").click();
+            h.run();
+            let at = h.state().canvas.to_screen(render::Point::new(x, y));
+            click(h, at);
+            h.state().session.selection[0].clone()
+        };
+        let a = place(&mut h, 100.0, 200.0);
+        let b = place(&mut h, 450.0, 200.0);
+        assert_eq!(views_of_type(h.state(), "UMLCommLifelineView").len(), 2);
+
+        h.get_by_role_and_label(Role::Button, "Forward Message")
+            .click();
+        h.run();
+        let (from, to) = (center_of(&h, &a), center_of(&h, &b));
+        drag(&mut h, from, to);
+        assert_eq!(views_of_type(h.state(), "UMLCommMessageView").len(), 1);
+        assert_eq!(views_of_type(h.state(), "UMLConnectorView").len(), 1);
+
+        // Dropped on the connector line (away from the first arrow), a
+        // reverse message rides on the same connector.
+        h.get_by_role_and_label(Role::Button, "Reverse Message")
+            .click();
+        h.run();
+        let on_line = h.state().canvas.to_screen(render::Point::new(250.0, 215.0));
+        let from = center_of(&h, &b);
+        drag(&mut h, from, on_line);
+        let app = h.state();
+        assert_eq!(
+            views_of_type(app, "UMLCommMessageView").len(),
+            2,
+            "{}",
+            app.status
+        );
+        assert_eq!(views_of_type(app, "UMLConnectorView").len(), 1);
     }
 
     #[test]

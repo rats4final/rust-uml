@@ -197,7 +197,7 @@ fn specs() -> Vec<CommandSpec> {
             label: "Create Relationship",
             menu: None,
             shortcut: None,
-            params: r#"{"kind": toolbox id or label (UMLAssociation, "Composition", "Containment", "Note Link", …), "tail": view id, "head": view id, "y"?: height for sequence messages, "name"?: text} → {"model", "view"}"#,
+            params: r#"{"kind": toolbox id or label (UMLAssociation, "Composition", "Containment", "Note Link", …), "tail": view id, "head": view id (for a communication Forward/Reverse Message also a connector line to ride on), "y"?: height for sequence messages, "name"?: text} → {"model", "view"}"#,
             enabled: has_diagram,
             run: create_edge,
         },
@@ -287,7 +287,7 @@ fn specs() -> Vec<CommandSpec> {
             label: "Inspect Diagram",
             menu: None,
             shortcut: None,
-            params: r#"{"diagram"?: id} → {"id", "name", "type", "boxes": [{"view", "type", "model", "name", "x", "y", "width", "height", "container"}], "lines": [{"view", "type", "model", "name", "tail", "head"}]}"#,
+            params: r#"{"diagram"?: id} → {"id", "name", "type", "boxes": [{"view", "type", "model", "name", "x", "y", "width", "height", "container"}], "lines": [{"view", "type", "model", "name", "tail", "head"} or, for a communication message, {"view", "type", "model", "name", "on": connector view}]}"#,
             enabled: |s| s.active_diagram.is_some(),
             run: inspect_diagram,
         },
@@ -537,9 +537,16 @@ pub(crate) fn add_diagram(s: &mut Session, p: &Value) -> Result<Value, CommandEr
     Ok(json!({ "id": id }))
 }
 
+/// The open diagram's type (`UMLClassDiagram`, …), for picking tools.
+fn active_type(s: &Session) -> Result<String, CommandError> {
+    let d = active(s)?;
+    Ok(get(&s.doc, &d)?.type_name.clone())
+}
+
 pub(crate) fn create_node(s: &mut Session, p: &Value) -> Result<Value, CommandError> {
     let kind = params::str(p, "kind")?;
-    let spec = uml::node_spec(kind)
+    // The same tool can draw differently by diagram type (a lifeline).
+    let spec = uml::node_spec_on(kind, &active_type(s)?)
         .ok_or_else(|| CommandError::Param(format!("unknown kind `{kind}`")))?;
     let (x, y) = (params::coord(p, "x")?, params::coord(p, "y")?);
     let container = match params::opt_str(p, "container") {
@@ -569,10 +576,20 @@ pub(crate) fn create_node(s: &mut Session, p: &Value) -> Result<Value, CommandEr
 
 pub(crate) fn create_edge(s: &mut Session, p: &Value) -> Result<Value, CommandError> {
     let kind = params::str(p, "kind")?;
-    let spec = uml::edge_spec(kind)
+    let spec = uml::edge_spec_on(kind, &active_type(s)?)
         .ok_or_else(|| CommandError::Param(format!("unknown kind `{kind}`")))?;
     let tail = node_view(s, params::str(p, "tail")?)?.id.clone();
-    let head = node_view(s, params::str(p, "head")?)?.id.clone();
+    let head_id = params::str(p, "head")?;
+    // A communication message can ride on an existing connector.
+    let on_connector = spec.view_type == "UMLCommMessageView"
+        && get(&s.doc, head_id).is_ok_and(|v| {
+            v.type_name == "UMLConnectorView" && v.parent.as_deref() == s.active_diagram.as_deref()
+        });
+    let head = if on_connector {
+        head_id.to_owned()
+    } else {
+        node_view(s, head_id)?.id.clone()
+    };
     let diagram = active(s)?;
     // Sequence messages are drawn at the height the drag started.
     let at_y = match p.get("y") {
@@ -951,6 +968,17 @@ fn inspect_diagram(s: &mut Session, p: &Value) -> Result<Value, CommandError> {
                 "tail": tail,
                 "head": head,
             }));
+        } else if el.type_name == "UMLCommMessageView"
+            && let Some(host) = el.ref_id("hostEdge")
+        {
+            lines.push(json!({
+                "view": el.id,
+                "type": el.type_name,
+                "model": el.ref_id("model"),
+                "modelType": model_type(el),
+                "name": name_of(el),
+                "on": host,
+            }));
         } else if let Some(l) = render::node_layout(doc, el, s.fonts()) {
             let parent = el
                 .ref_id("containerView")
@@ -1317,6 +1345,75 @@ mod tests {
     }
 
     #[test]
+    fn communication_diagram_by_commands() {
+        let reg = Registry::default();
+        let mut s = Session::default();
+        run(
+            &reg,
+            &mut s,
+            "diagram.add",
+            json!({"type": "Communication Diagram", "name": "Talk"}),
+        );
+        let a = run(
+            &reg,
+            &mut s,
+            "node.create",
+            json!({"kind": "Lifeline", "x": 40, "y": 60, "name": "shop"}),
+        );
+        let b = run(
+            &reg,
+            &mut s,
+            "node.create",
+            json!({"kind": "UMLLifeline", "x": 360, "y": 60}),
+        );
+        let view_type =
+            |s: &Session, v: &Value| s.doc.get(v.as_str().unwrap()).unwrap().type_name.clone();
+        assert_eq!(view_type(&s, &a["view"]), "UMLCommLifelineView");
+        let before = s.doc.len();
+        let fwd = run(
+            &reg,
+            &mut s,
+            "edge.create",
+            json!({"kind": "Forward Message", "tail": a["view"], "head": b["view"], "name": "order"}),
+        );
+        let inspected = run(&reg, &mut s, "diagram.inspect", json!({}));
+        let lines = inspected["lines"].as_array().unwrap();
+        let connector = lines
+            .iter()
+            .find(|l| l["type"] == "UMLConnectorView")
+            .unwrap()["view"]
+            .clone();
+        let msg = lines.iter().find(|l| l["view"] == fwd["view"]).unwrap();
+        assert_eq!(
+            (msg["name"].as_str(), &msg["on"]),
+            (Some("order"), &connector)
+        );
+
+        run(
+            &reg,
+            &mut s,
+            "edge.create",
+            json!({"kind": "UMLReverseMessage", "tail": b["view"], "head": connector}),
+        );
+        // A message needs a lifeline or connector at its head.
+        let not_a_box = json!(s.active_diagram);
+        let refused = reg.run(
+            &mut s,
+            "edge.create",
+            &json!({"kind": "UMLForwardMessage", "tail": a["view"], "head": not_a_box}),
+        );
+        assert!(refused.is_err());
+
+        run(&reg, &mut s, "edit.undo", json!({}));
+        run(&reg, &mut s, "edit.undo", json!({}));
+        assert_eq!(
+            s.doc.len(),
+            before,
+            "each message (with its connector) is one step"
+        );
+    }
+
+    #[test]
     fn sequence_messages_follow_moving_lifelines() {
         let reg = Registry::default();
         let mut s = Session::default();
@@ -1567,6 +1664,10 @@ mod tests {
             json!({"id": real[1], "key": "kind", "value": "sideways"}),
             json!({"kind": "Message", "tail": real[0], "head": real[0], "y": "high"}),
             json!({"kind": "Lifeline", "x": 0, "y": 0}),
+            json!({"type": "UMLCommunicationDiagram"}),
+            json!({"kind": "UMLForwardMessage", "tail": real[0], "head": real[0]}),
+            json!({"kind": "UMLReverseMessage", "tail": real[0], "head": real[1]}),
+            json!({"kind": "UMLSelfConnector", "tail": real[0], "head": real[0]}),
             json!({"kind": "Class", "x": 0, "y": 0, "name": 7}),
             json!({"kind": "Note", "x": 0, "y": 0, "name": "n"}),
             json!({"id": real[1], "values": {"name": "a", "isAbstract": [1]}}),
