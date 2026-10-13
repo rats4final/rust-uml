@@ -130,5 +130,18 @@ set_field "$2" guard '"else"'
 msg UMLAsyncMessage "$sh_v" "$c_v" 305 confirmation > /dev/null
 msg UMLAsyncMessage "$sh_v" "$c_v" 372 backorderNotice > /dev/null
 
+# --- Communication diagram -------------------------------------------------
+diagram UMLCommunicationDiagram "Checkout (communication)"
+read -r _ cc_v < <(node UMLLifeline 60 120 customer)
+read -r _ cs_v < <(node UMLLifeline 340 120 shop)
+read -r _ cp_v < <(node UMLLifeline 340 300 payments)
+comm() { # kind tail head name -> model (a message between lifelines brings its connector)
+  run edge.create "{\"kind\":\"$1\",\"tail\":\"$2\",\"head\":\"$3\",\"name\":\"$4\"}" | get model
+}
+comm UMLForwardMessage "$cc_v" "$cs_v" checkout > /dev/null
+connector="$(run diagram.inspect '{}' | python3 -I -c 'import json,sys; print(next(l["view"] for l in json.load(sys.stdin)["lines"] if l["type"] == "UMLConnectorView"))')"
+set_field "$(comm UMLForwardMessage "$cs_v" "$cp_v" charge)" arguments '"total"'
+comm UMLReverseMessage "$cs_v" "$connector" confirmation > /dev/null
+
 mv "$file" "$out"
 echo "wrote $out"
