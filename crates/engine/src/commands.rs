@@ -274,6 +274,15 @@ fn specs() -> Vec<CommandSpec> {
             run: get_element,
         },
         CommandSpec {
+            id: "import.mermaid",
+            label: "Import Mermaid",
+            menu: None,
+            shortcut: None,
+            params: r#"{"text": Mermaid classDiagram, sequenceDiagram or stateDiagram text, "name"?: diagram name (default: its title), "parent"?: model or package id} → {"diagram", "warnings": [skipped lines]}; one undo step"#,
+            enabled: always,
+            run: crate::import::import_mermaid,
+        },
+        CommandSpec {
             id: "diagram.inspect",
             label: "Inspect Diagram",
             menu: None,
@@ -450,7 +459,7 @@ fn delete_elements(s: &mut Session, p: &Value) -> Result<Value, CommandError> {
     })
 }
 
-fn add_parameter(s: &mut Session, p: &Value) -> Result<Value, CommandError> {
+pub(crate) fn add_parameter(s: &mut Session, p: &Value) -> Result<Value, CommandError> {
     let op = params::str(p, "operation")?.to_owned();
     let direction = params::opt_str(p, "direction").unwrap_or("in").to_owned();
     if !["in", "inout", "out", "return"].contains(&direction.as_str()) {
@@ -486,7 +495,7 @@ fn open_diagram(s: &mut Session, p: &Value) -> Result<Value, CommandError> {
     Ok(Value::Null)
 }
 
-fn add_diagram(s: &mut Session, p: &Value) -> Result<Value, CommandError> {
+pub(crate) fn add_diagram(s: &mut Session, p: &Value) -> Result<Value, CommandError> {
     let ty = params::str(p, "type")?;
     let Some(&(diagram_type, _, _)) = uml::DIAGRAMS
         .iter()
@@ -528,7 +537,7 @@ fn add_diagram(s: &mut Session, p: &Value) -> Result<Value, CommandError> {
     Ok(json!({ "id": id }))
 }
 
-fn create_node(s: &mut Session, p: &Value) -> Result<Value, CommandError> {
+pub(crate) fn create_node(s: &mut Session, p: &Value) -> Result<Value, CommandError> {
     let kind = params::str(p, "kind")?;
     let spec = uml::node_spec(kind)
         .ok_or_else(|| CommandError::Param(format!("unknown kind `{kind}`")))?;
@@ -558,7 +567,7 @@ fn create_node(s: &mut Session, p: &Value) -> Result<Value, CommandError> {
     Ok(json!({ "model": model, "view": view }))
 }
 
-fn create_edge(s: &mut Session, p: &Value) -> Result<Value, CommandError> {
+pub(crate) fn create_edge(s: &mut Session, p: &Value) -> Result<Value, CommandError> {
     let kind = params::str(p, "kind")?;
     let spec = uml::edge_spec(kind)
         .ok_or_else(|| CommandError::Param(format!("unknown kind `{kind}`")))?;
@@ -589,7 +598,7 @@ fn create_edge(s: &mut Session, p: &Value) -> Result<Value, CommandError> {
     Ok(json!({ "model": model, "view": view }))
 }
 
-fn move_views(s: &mut Session, p: &Value) -> Result<Value, CommandError> {
+pub(crate) fn move_views(s: &mut Session, p: &Value) -> Result<Value, CommandError> {
     let ids = params::ids(p, "views")?;
     let (dx, dy) = (params::coord(p, "dx")?, params::coord(p, "dy")?);
     for id in &ids {
@@ -654,7 +663,7 @@ fn move_views(s: &mut Session, p: &Value) -> Result<Value, CommandError> {
     })
 }
 
-fn resize_view(s: &mut Session, p: &Value) -> Result<Value, CommandError> {
+pub(crate) fn resize_view(s: &mut Session, p: &Value) -> Result<Value, CommandError> {
     let id = node_view(s, params::str(p, "view")?)?.id.clone();
     let (w, h) = (params::size(p, "width")?, params::size(p, "height")?);
     s.edit(|e, c| {
@@ -761,7 +770,7 @@ const ENUMS: &[(&str, &str, &[&str])] = &[
     ),
 ];
 
-fn set_property(s: &mut Session, p: &Value) -> Result<Value, CommandError> {
+pub(crate) fn set_property(s: &mut Session, p: &Value) -> Result<Value, CommandError> {
     let id = params::str(p, "id")?.to_owned();
     let pairs: Vec<(String, Value)> = match p.get("values") {
         Some(Value::Object(map)) if p.get("key").is_none() => {
@@ -839,7 +848,7 @@ fn check_property(doc: &Document, id: &str, key: &str, value: &Value) -> Result<
     Ok(())
 }
 
-fn add_feature(s: &mut Session, p: &Value) -> Result<Value, CommandError> {
+pub(crate) fn add_feature(s: &mut Session, p: &Value) -> Result<Value, CommandError> {
     let classifier = params::str(p, "classifier")?.to_owned();
     let given = params::str(p, "kind")?;
     let kind = FeatureKind::parse(given)
@@ -1566,6 +1575,10 @@ mod tests {
             json!({"diagram": real[0]}),
             json!({"id": real[0], "depth": 0}),
             json!({"depth": 1e12}),
+            json!({"text": "classDiagram\nclass A {"}),
+            json!({"text": "sequenceDiagram\nA->>A: x\nend"}),
+            json!({"text": "stateDiagram\n[*] --> [*]", "parent": real[0]}),
+            json!({"text": "classDiagram\nA <|-- A\nA ..|> A\nnote for A \"x\"", "name": 3}),
         ];
         for spec in reg.specs() {
             if spec.id == "file.new" {

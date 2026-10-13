@@ -10,6 +10,7 @@
 //! mistyped or out-of-range input and never panics.
 
 mod commands;
+mod import;
 mod params;
 mod session;
 
