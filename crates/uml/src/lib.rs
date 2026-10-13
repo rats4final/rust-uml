@@ -13,13 +13,13 @@ pub use catalog::{
 };
 pub use delete::{delete_elements, delete_views};
 pub use factory::{
-    FeatureKind, add_edge_view, add_feature, add_node_view, add_parameter, compartment_items,
-    container_owner, create_edge, create_node, edge_spec_of, owner_for_new_elements,
-    return_parameter, views_of, with_contained,
+    FeatureKind, Target, add_edge_view, add_feature, add_node_view, add_parameter,
+    compartment_items, container_owner, create_diagram, create_edge, create_node, edge_spec_of,
+    owner_for_new_elements, return_parameter, target_for, views_of, with_contained,
 };
 pub use text::{
-    attribute_text, instance_text, operation_text, part_text, slot_text, stereotype_text,
-    typed_name, var_text, visibility_symbol,
+    attribute_text, flow_text, instance_text, operation_text, part_text, slot_text,
+    stereotype_text, transition_text, typed_name, var_text, visibility_symbol,
 };
 
 #[cfg(test)]
@@ -76,14 +76,27 @@ mod tests {
         assert_eq!(doc.get(&class).unwrap().name(), "Class1");
     }
 
+    /// A diagram of a type that offers `tool`, created the way the UI would.
+    fn diagram_offering(doc: &mut Document, tool: &str) -> Id {
+        let ty = TOOL_GROUPS
+            .iter()
+            .find(|g| g.tools.contains(&tool) && !g.diagrams.is_empty())
+            .map_or("UMLClassDiagram", |g| g.diagrams[0]);
+        let model = doc.get(doc.root()).unwrap().children("ownedElements")[0].clone();
+        doc.try_edit(|e| create_diagram(e, &model, ty)).unwrap()
+    }
+
     #[test]
     fn every_node_tool_builds_its_view_type() {
-        let (mut doc, dgm) = setup();
-        let (class, class_view) = node(&mut doc, &dgm, "UMLClass", 0.0, 0.0, None);
+        let mut doc = Document::new_project();
         for spec in NODES {
-            let container =
-                (spec.placement == catalog::Placement::OnClassifier).then_some(class_view.as_str());
-            let (_, v) = node(&mut doc, &dgm, spec.id, 300.0, 300.0, container);
+            let dgm = diagram_offering(&mut doc, spec.id);
+            let container = if spec.placement == catalog::Placement::OnClassifier {
+                Some(node(&mut doc, &dgm, "UMLClass", 0.0, 0.0, None).1)
+            } else {
+                None
+            };
+            let (_, v) = node(&mut doc, &dgm, spec.id, 300.0, 300.0, container.as_deref());
             let view = doc.get(&v).unwrap();
             assert_eq!(view.type_name, spec.view_type, "{}", spec.id);
             for (key, comp_type) in spec.compartments {
@@ -96,16 +109,133 @@ mod tests {
                 "{}",
                 spec.id
             );
+            for key in spec.labels {
+                assert!(view.ref_id(key).is_some(), "{}.{key}", spec.id);
+            }
         }
-        // Parts and ports became attributes of the class.
-        let attrs: Vec<&str> = doc
-            .get(&class)
-            .unwrap()
-            .children("attributes")
+    }
+
+    #[test]
+    fn behaviour_diagrams_get_their_owners_like_staruml() {
+        let mut doc = Document::new_project();
+        let model = doc.get(doc.root()).unwrap().children("ownedElements")[0].clone();
+        for (ty, wrapper) in [
+            ("UMLStatechartDiagram", "UMLStateMachine"),
+            ("UMLActivityDiagram", "UMLActivity"),
+            ("UMLProfileDiagram", "UMLProfile"),
+            ("UMLUseCaseDiagram", "UMLModel"),
+        ] {
+            let d = doc.try_edit(|e| create_diagram(e, &model, ty)).unwrap();
+            let owner = doc
+                .get(doc.get(&d).unwrap().parent.as_deref().unwrap())
+                .unwrap();
+            assert_eq!(owner.type_name, wrapper, "{ty}");
+        }
+        let machine = doc
             .iter()
-            .map(|a| doc.get(a).unwrap().type_name.as_str())
-            .collect();
-        assert_eq!(attrs, ["UMLAttribute", "UMLPort"]);
+            .find(|e| e.type_name == "UMLStateMachine")
+            .unwrap();
+        assert_eq!(
+            machine.children("regions").len(),
+            1,
+            "state machines start with a region"
+        );
+    }
+
+    #[test]
+    fn states_go_in_regions_and_transitions_with_them() {
+        let mut doc = Document::new_project();
+        let dgm = diagram_offering(&mut doc, "UMLState");
+        let (idle, idle_v) = node(&mut doc, &dgm, "UMLState", 0.0, 0.0, None);
+        let (busy, busy_v) = node(&mut doc, &dgm, "UMLCompositeState", 200.0, 0.0, None);
+        let region = doc.get(&idle).unwrap().parent.clone().unwrap();
+        assert_eq!(doc.get(&region).unwrap().type_name, "UMLRegion");
+        // A state dropped in a composite state goes in that state's region.
+        let busy_region = doc.get(&busy).unwrap().children("regions")[0].clone();
+        let (inner, inner_v) = node(&mut doc, &dgm, "UMLState", 220.0, 40.0, Some(&busy_v));
+        assert_eq!(
+            doc.get(&inner).unwrap().parent.as_deref(),
+            Some(busy_region.as_str())
+        );
+        assert_eq!(
+            doc.get(&inner_v).unwrap().ref_id("containerView"),
+            Some(busy_v.as_str())
+        );
+        // The composite state's view shows its region.
+        let decomposition = doc
+            .get(
+                doc.get(&busy_v)
+                    .unwrap()
+                    .ref_id("decompositionCompartment")
+                    .unwrap(),
+            )
+            .unwrap();
+        assert_eq!(
+            doc.get(&decomposition.children("subViews")[0])
+                .unwrap()
+                .type_name,
+            "UMLRegionView"
+        );
+
+        let (t, _) = edge(&mut doc, &dgm, "UMLTransition", &idle_v, &busy_v);
+        assert_eq!(
+            doc.get(&t.unwrap()).unwrap().parent.as_deref(),
+            Some(region.as_str())
+        );
+        assert!(doc.get(&region).unwrap().children("transitions").len() == 1);
+        // A self transition loops back whatever the head.
+        let (_, sv) = edge(&mut doc, &dgm, "UMLSelfTransition", &idle_v, &busy_v);
+        let sv = doc.get(&sv).unwrap();
+        assert_eq!(sv.ref_id("tail"), sv.ref_id("head"));
+    }
+
+    #[test]
+    fn activity_nodes_and_flows_live_in_the_activity() {
+        let mut doc = Document::new_project();
+        let dgm = diagram_offering(&mut doc, "UMLAction");
+        let activity = doc.get(&dgm).unwrap().parent.clone().unwrap();
+        let (lane, lane_v) = node(&mut doc, &dgm, "UMLSwimlaneHorz", 0.0, 0.0, None);
+        assert!(
+            doc.get(&activity)
+                .unwrap()
+                .children("groups")
+                .contains(&lane)
+        );
+        assert_eq!(
+            doc.get(&lane_v)
+                .unwrap()
+                .get("isVertical")
+                .and_then(Field::as_bool),
+            Some(false)
+        );
+        let (a, a_v) = node(&mut doc, &dgm, "UMLAction", 20.0, 40.0, Some(&lane_v));
+        assert_eq!(
+            doc.get(&a).unwrap().parent.as_deref(),
+            Some(activity.as_str()),
+            "model in the activity"
+        );
+        assert_eq!(
+            doc.get(&a_v).unwrap().ref_id("containerView"),
+            Some(lane_v.as_str()),
+            "view in the lane"
+        );
+        let (start, start_v) = node(&mut doc, &dgm, "UMLInitialNode", 0.0, 200.0, None);
+        assert_eq!(doc.get(&start).unwrap().type_name, "UMLInitialNode");
+        let (f, _) = edge(&mut doc, &dgm, "UMLControlFlow", &start_v, &a_v);
+        assert_eq!(
+            doc.get(&f.unwrap()).unwrap().parent.as_deref(),
+            Some(activity.as_str())
+        );
+    }
+
+    #[test]
+    fn behaviour_elements_refuse_the_wrong_diagram() {
+        let (mut doc, class_dgm) = setup();
+        for tool in ["UMLState", "UMLAction", "UMLSwimlaneVert"] {
+            let spec = node_spec(tool).unwrap();
+            let err = doc.try_edit(|e| create_node(e, &class_dgm, spec, 0.0, 0.0, None));
+            assert!(err.is_err(), "{tool} on a class diagram");
+        }
     }
 
     #[test]
@@ -235,10 +365,24 @@ mod tests {
 
     #[test]
     fn every_edge_tool_survives_round_trip() {
-        let (mut doc, dgm) = setup();
-        let (_, va) = node(&mut doc, &dgm, "UMLClass", 0.0, 0.0, None);
-        let (_, vb) = node(&mut doc, &dgm, "UMLClass", 300.0, 0.0, None);
+        let mut doc = Document::new_project();
         for spec in EDGES.iter().filter(|s| s.id != "UMLContainment") {
+            let dgm = diagram_offering(&mut doc, spec.id);
+            let end_tool = match spec.owner {
+                catalog::EdgeOwner::SourceRegion => "UMLState",
+                catalog::EdgeOwner::SourceActivity => "UMLAction",
+                catalog::EdgeOwner::Source => "UMLClass",
+            };
+            let end_tool = if node_spec(end_tool)
+                .is_some_and(|n| n.slot == catalog::Slot::OwnedElements)
+                && doc.get(&dgm).unwrap().type_name == "UMLUseCaseDiagram"
+            {
+                "UMLUseCase"
+            } else {
+                end_tool
+            };
+            let (_, va) = node(&mut doc, &dgm, end_tool, 0.0, 0.0, None);
+            let (_, vb) = node(&mut doc, &dgm, end_tool, 300.0, 0.0, None);
             let (_, ev) = edge(&mut doc, &dgm, spec.id, &va, &vb);
             let reloaded = Document::from_json_str(&doc.to_json_string().unwrap()).unwrap();
             let got = edge_spec_of(&reloaded, reloaded.get(&ev).unwrap()).map(|s| s.id);

@@ -7,7 +7,8 @@ use mdj::values::{DEFAULT_FONT, align, edge_position, format_points, line_style}
 use mdj::{Document, Editor, Element, Field, Id};
 
 use crate::catalog::{
-    EDGES, EdgeLabels, EdgeModel, EdgeSpec, Init, NodeSpec, Placement, Slot, edge_spec,
+    DIAGRAMS, EDGES, EdgeLabels, EdgeModel, EdgeOwner, EdgeSpec, Init, NodeSpec, Placement, Slot,
+    edge_spec,
 };
 
 /// Collects a subtree in insertion order (root first), wiring `_parent` and
@@ -162,6 +163,100 @@ pub fn container_owner(doc: &Document, container_view: &str, spec: &NodeSpec) ->
     }
 }
 
+/// Where a new element goes: the model that owns it, the list it goes in,
+/// and the box its view sits inside (if any).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Target {
+    pub owner: Id,
+    pub list: &'static str,
+    pub container: Option<Id>,
+}
+
+/// Decide where a `spec` element created on `diagram` (dropped on
+/// `container`, if given) belongs. Errors explain what's needed instead.
+pub fn target_for(
+    doc: &Document,
+    diagram: &str,
+    spec: &NodeSpec,
+    container: Option<&str>,
+) -> Result<Target, String> {
+    let diagram_owner = owner_for_new_elements(doc, diagram);
+    let container_view = container
+        .and_then(|c| doc.get(c))
+        .filter(|v| v.get("head").is_none());
+    let container_model = container_view
+        .and_then(|v| v.ref_id("model"))
+        .and_then(|m| doc.get(m));
+    match spec.slot {
+        Slot::OwnedElements | Slot::Attributes => {
+            let in_container = container.and_then(|c| container_owner(doc, c, spec));
+            if spec.placement == Placement::OnClassifier && in_container.is_none() {
+                return Err(format!(
+                    "Place a {} on a class, component or node.",
+                    spec.label
+                ));
+            }
+            Ok(Target {
+                container: in_container.as_ref().and(container).map(str::to_owned),
+                owner: in_container.unwrap_or(diagram_owner),
+                list: if spec.slot == Slot::Attributes {
+                    "attributes"
+                } else {
+                    "ownedElements"
+                },
+            })
+        }
+        Slot::Vertices => {
+            // Inside a composite state: its first region.
+            if let Some(region) = container_model
+                .filter(|m| m.type_name == "UMLState")
+                .and_then(|m| m.children("regions").first())
+            {
+                return Ok(Target {
+                    owner: region.clone(),
+                    list: "vertices",
+                    container: container.map(str::to_owned),
+                });
+            }
+            let machine = doc
+                .get(&diagram_owner)
+                .filter(|o| o.type_name == "UMLStateMachine")
+                .ok_or("States belong to a state machine: add a Statechart Diagram (Model ▸ Add Diagram).")?;
+            let region = machine
+                .children("regions")
+                .first()
+                .ok_or("This state machine has no region to put states in.")?;
+            Ok(Target {
+                owner: region.clone(),
+                list: "vertices",
+                container: None,
+            })
+        }
+        Slot::ActivityNodes | Slot::ActivityGroups => {
+            let activity = doc
+                .get(&diagram_owner)
+                .filter(|o| o.type_name == "UMLActivity")
+                .ok_or(
+                    "Actions belong to an activity: add an Activity Diagram (Model ▸ Add Diagram).",
+                )?;
+            // Nodes dropped in a swimlane sit inside it on screen; the model
+            // stays in the activity.
+            let lane = container_view
+                .filter(|v| v.type_name == "UMLSwimlaneView" && spec.slot == Slot::ActivityNodes)
+                .map(|v| v.id.clone());
+            Ok(Target {
+                owner: activity.id.clone(),
+                list: if spec.slot == Slot::ActivityNodes {
+                    "nodes"
+                } else {
+                    "groups"
+                },
+                container: lane,
+            })
+        }
+    }
+}
+
 /// Create a model element (if the spec has one) and its view on `diagram`
 /// at `(x, y)`, inside `container` if given and allowed. Returns
 /// `(model_id, view_id)`.
@@ -173,32 +268,27 @@ pub fn create_node(
     y: f64,
     container: Option<&str>,
 ) -> Result<(Option<Id>, Id), String> {
-    let owner_in_container = container.and_then(|c| container_owner(e.doc(), c, spec));
-    if spec.placement == Placement::OnClassifier && owner_in_container.is_none() {
-        return Err(format!(
-            "Place a {} on a class, component or node.",
-            spec.label
-        ));
-    }
-    let container = owner_in_container.as_ref().and(container);
+    let target = target_for(e.doc(), diagram, spec, container)?;
     let model_id = match spec.model_type {
         Some(model_type) => {
-            let owner = owner_in_container
-                .clone()
-                .unwrap_or_else(|| owner_for_new_elements(e.doc(), diagram));
-            let list = match spec.slot {
-                Slot::OwnedElements => "ownedElements",
-                Slot::Attributes => "attributes",
-            };
-            let name = unique_name(e.doc(), &owner, spec.base_name);
-            let mut model = Element::new(e.new_id(), model_type).with("name", Field::str(name));
+            let mut model = Element::new(e.new_id(), model_type);
+            if !spec.base_name.is_empty() {
+                let name = unique_name(e.doc(), &target.owner, spec.base_name);
+                model = model.with("name", Field::str(name));
+            }
             for (k, v) in spec.model_fields {
                 model = model.with(k, init(*v));
             }
-            Some(e.append(&owner, list, vec![model]))
+            let mut tree = Tree::new(model);
+            for (list, child_type) in spec.model_children {
+                let child = Element::new(e.new_id(), *child_type);
+                tree.child(0, list, child);
+            }
+            Some(e.append(&target.owner, target.list, tree.elements))
         }
         None => None,
     };
+    let container = target.container.as_deref();
     let (x, y) = match (spec.id, container.and_then(|c| e.doc().get(c))) {
         ("UMLPort", Some(c)) => snap_to_border(c, x, y, spec.size),
         _ => (x, y),
@@ -286,6 +376,17 @@ pub fn add_node_view(
         t.set(0, "nameCompartment", Field::Ref(nc_id));
     }
 
+    for key in spec.labels {
+        let name = model
+            .and_then(|m| e.doc().get(m))
+            .map(Element::name)
+            .unwrap_or("")
+            .to_owned();
+        let label = sub_view(e, "LabelView").with("text", Field::str(name));
+        let (_, lid) = t.child(0, "subViews", label);
+        t.set(0, key, Field::Ref(lid));
+    }
+
     if spec.floating_labels {
         // Placement as StarUML's floating node labels: distance and angle
         // from the node's centre. Neither has a metamodel default, so write them.
@@ -355,6 +456,7 @@ pub fn compartment_items(compartment_type: &str) -> Option<(&'static str, &'stat
         "UMLOperationCompartmentView" => Some(("operations", "UMLOperationView")),
         "UMLEnumerationLiteralCompartmentView" => Some(("literals", "UMLEnumerationLiteralView")),
         "UMLSlotCompartmentView" => Some(("slots", "UMLSlotView")),
+        "UMLDecompositionCompartmentView" => Some(("regions", "UMLRegionView")),
         _ => None,
     }
 }
@@ -369,6 +471,12 @@ pub fn create_edge(
     tail_view: &str,
     head_view: &str,
 ) -> Result<(Option<Id>, Id), String> {
+    // A self transition always loops back to the state it starts on.
+    let head_view = if spec.id == "UMLSelfTransition" {
+        tail_view
+    } else {
+        head_view
+    };
     let model_of = |v: &str| {
         e.doc()
             .get(v)
@@ -400,8 +508,8 @@ pub fn create_edge(
             let rel = Element::new(e.new_id(), model_type)
                 .with("source", Field::Ref(source.clone()))
                 .with("target", Field::Ref(target));
-            // Relationships live with their source, as in StarUML.
-            Some(e.append(&source, "ownedElements", vec![rel]))
+            let (owner, list) = edge_owner(e.doc(), spec, &source)?;
+            Some(e.append(&owner, list, vec![rel]))
         }
         (
             EdgeModel::Undirected {
@@ -434,6 +542,27 @@ pub fn create_edge(
     };
     let view = add_edge_view(e, diagram, spec, model_id.as_deref(), tail_view, head_view);
     Ok((model_id, view))
+}
+
+/// Where a new relationship from `source` goes, per the spec.
+fn edge_owner(doc: &Document, spec: &EdgeSpec, source: &str) -> Result<(Id, &'static str), String> {
+    let parent_of_type = |t: &str| {
+        doc.get(source)
+            .and_then(|s| s.parent.as_deref())
+            .and_then(|p| doc.get(p))
+            .filter(|p| p.type_name == t)
+            .map(|p| p.id.clone())
+    };
+    match spec.owner {
+        // Most relationships live with their source, as in StarUML.
+        EdgeOwner::Source => Ok((source.to_owned(), "ownedElements")),
+        EdgeOwner::SourceRegion => parent_of_type("UMLRegion")
+            .map(|r| (r, "transitions"))
+            .ok_or_else(|| "Transitions start from a state or pseudostate.".to_owned()),
+        EdgeOwner::SourceActivity => parent_of_type("UMLActivity")
+            .map(|a| (a, "edges"))
+            .ok_or_else(|| "Flows start from an action or activity node.".to_owned()),
+    }
 }
 
 pub fn add_edge_view(
@@ -537,6 +666,9 @@ pub fn edge_spec_of(doc: &Document, edge_view: &Element) -> Option<&'static Edge
         }
         "UMLLinkView" if nav("end1") == "navigable" || nav("end2") == "navigable" => {
             "UMLDirectedLink"
+        }
+        "UMLTransitionView" if edge_view.ref_id("tail") == edge_view.ref_id("head") => {
+            "UMLSelfTransition"
         }
         other => return EDGES.iter().find(|s| s.view_type == other),
     };
@@ -715,4 +847,44 @@ pub fn with_contained(doc: &Document, view: &str) -> Vec<Id> {
         out.push(v);
     }
     out
+}
+
+/// Create a diagram of `diagram_type` under `parent`, the way StarUML does:
+/// a statechart diagram lives in a state machine (created with one region),
+/// an activity diagram in an activity, a profile diagram in a profile —
+/// unless `parent` already is one. Returns the diagram's id.
+pub fn create_diagram(e: &mut Editor, parent: &str, diagram_type: &str) -> Result<Id, String> {
+    let &(_, _, base) = DIAGRAMS
+        .iter()
+        .find(|(t, _, _)| *t == diagram_type)
+        .ok_or_else(|| format!("unknown diagram type `{diagram_type}`"))?;
+    let parent_type = e
+        .doc()
+        .get(parent)
+        .map(|p| p.type_name.clone())
+        .ok_or("no such parent")?;
+    let wrapper = match diagram_type {
+        "UMLStatechartDiagram" if parent_type != "UMLStateMachine" => {
+            Some(("UMLStateMachine", "StateMachine"))
+        }
+        "UMLActivityDiagram" if parent_type != "UMLActivity" => Some(("UMLActivity", "Activity")),
+        "UMLProfileDiagram" if parent_type != "UMLProfile" => Some(("UMLProfile", "Profile")),
+        _ => None,
+    };
+    let owner = match wrapper {
+        Some((wrapper_type, wrapper_base)) => {
+            let name = unique_name(e.doc(), parent, wrapper_base);
+            let mut tree =
+                Tree::new(Element::new(e.new_id(), wrapper_type).with("name", Field::str(name)));
+            if wrapper_type == "UMLStateMachine" {
+                let region = Element::new(e.new_id(), "UMLRegion");
+                tree.child(0, "regions", region);
+            }
+            e.append(parent, "ownedElements", tree.elements)
+        }
+        None => parent.to_owned(),
+    };
+    let name = unique_name(e.doc(), &owner, base);
+    let diagram = Element::new(e.new_id(), diagram_type).with("name", Field::str(name));
+    Ok(e.append(&owner, "ownedElements", vec![diagram]))
 }

@@ -10,6 +10,13 @@ pub enum Slot {
     OwnedElements,
     /// `attributes` of the container's classifier (parts, ports).
     Attributes,
+    /// `vertices` of a region: of the state the box is dropped on, else of
+    /// the diagram's state machine.
+    Vertices,
+    /// `nodes` of the diagram's activity.
+    ActivityNodes,
+    /// `groups` of the diagram's activity (swimlanes).
+    ActivityGroups,
 }
 
 /// Whether a node can or must be dropped onto another box.
@@ -93,6 +100,11 @@ pub struct NodeSpec {
     pub size: (f64, f64),
     pub model_fields: &'static [(&'static str, Init)],
     pub view_fields: &'static [(&'static str, Init)],
+    /// Children created with the model: `(list field, element type)`, e.g.
+    /// the regions of a composite state.
+    pub model_children: &'static [(&'static str, &'static str)],
+    /// `LabelView` sub-views referenced by these view fields (swimlane name).
+    pub labels: &'static [&'static str],
 }
 
 const fn node(
@@ -117,6 +129,8 @@ const fn node(
         size,
         model_fields: &[],
         view_fields: &[],
+        model_children: &[],
+        labels: &[],
     }
 }
 
@@ -131,6 +145,92 @@ const fn classifier(
         ..node(id, label, id, view_type, base_name, (140.0, 60.0))
     }
 }
+
+const STATE_COMPARTMENTS: &[(&str, &str)] = &[
+    (
+        "internalActivityCompartment",
+        "UMLInternalActivityCompartmentView",
+    ),
+    (
+        "internalTransitionCompartment",
+        "UMLInternalTransitionCompartmentView",
+    ),
+    (
+        "decompositionCompartment",
+        "UMLDecompositionCompartmentView",
+    ),
+];
+const USECASE_COMPARTMENTS: &[(&str, &str)] = &[
+    ("attributeCompartment", "UMLAttributeCompartmentView"),
+    ("operationCompartment", "UMLOperationCompartmentView"),
+    ("receptionCompartment", "UMLReceptionCompartmentView"),
+    (
+        "templateParameterCompartment",
+        "UMLTemplateParameterCompartmentView",
+    ),
+    (
+        "extensionPointCompartment",
+        "UMLExtensionPointCompartmentView",
+    ),
+];
+
+/// A state-machine vertex: an element in a region's `vertices`.
+const fn vertex(
+    id: &'static str,
+    label: &'static str,
+    model_type: &'static str,
+    view_type: &'static str,
+    base_name: &'static str,
+    size: (f64, f64),
+) -> NodeSpec {
+    NodeSpec {
+        slot: Slot::Vertices,
+        ..node(id, label, model_type, view_type, base_name, size)
+    }
+}
+
+/// A pseudostate (initial, choice, fork, history, …): a small symbol with
+/// floating labels; `kind` says which.
+const fn pseudostate(
+    id: &'static str,
+    label: &'static str,
+    kind: &'static [(&'static str, Init)],
+    size: (f64, f64),
+) -> NodeSpec {
+    NodeSpec {
+        name_compartment: false,
+        floating_labels: true,
+        model_fields: kind,
+        ..vertex(id, label, "UMLPseudostate", "UMLPseudostateView", "", size)
+    }
+}
+
+/// An activity node (action, control node, object node) in the activity's `nodes`.
+const fn activity_node(
+    id: &'static str,
+    label: &'static str,
+    model_type: &'static str,
+    view_type: &'static str,
+    base_name: &'static str,
+    size: (f64, f64),
+) -> NodeSpec {
+    NodeSpec {
+        slot: Slot::ActivityNodes,
+        ..node(id, label, model_type, view_type, base_name, size)
+    }
+}
+
+/// A control node (initial, final, fork, join, merge, decision): one view
+/// type, drawn by its model's type.
+const fn control_node(id: &'static str, label: &'static str, size: (f64, f64)) -> NodeSpec {
+    NodeSpec {
+        name_compartment: false,
+        ..activity_node(id, label, id, "UMLControlNodeView", "", size)
+    }
+}
+
+const ONE_REGION: &[(&str, &str)] = &[("regions", "UMLRegion")];
+const TWO_REGIONS: &[(&str, &str)] = &[("regions", "UMLRegion"), ("regions", "UMLRegion")];
 
 pub const NODES: &[NodeSpec] = &[
     // Classes
@@ -300,6 +400,185 @@ pub const NODES: &[NodeSpec] = &[
         "MetaClass",
         (120.0, 40.0),
     ),
+    // Use cases
+    NodeSpec {
+        compartments: USECASE_COMPARTMENTS,
+        view_fields: SUPPRESSED,
+        size: (110.0, 45.0),
+        ..classifier("UMLUseCase", "Use Case", "UMLUseCaseView", "UseCase")
+    },
+    NodeSpec {
+        view_fields: SUPPRESSED,
+        size: (40.0, 80.0),
+        ..classifier("UMLActor", "Actor", "UMLActorView", "Actor")
+    },
+    node(
+        "UMLUseCaseSubject",
+        "Use Case Subject",
+        "UMLUseCaseSubject",
+        "UMLUseCaseSubjectView",
+        "Subject",
+        (240.0, 260.0),
+    ),
+    // State machines
+    NodeSpec {
+        compartments: STATE_COMPARTMENTS,
+        ..vertex(
+            "UMLState",
+            "State",
+            "UMLState",
+            "UMLStateView",
+            "State",
+            (100.0, 50.0),
+        )
+    },
+    NodeSpec {
+        compartments: STATE_COMPARTMENTS,
+        model_children: ONE_REGION,
+        ..vertex(
+            "UMLCompositeState",
+            "Composite State",
+            "UMLState",
+            "UMLStateView",
+            "State",
+            (220.0, 140.0),
+        )
+    },
+    NodeSpec {
+        compartments: STATE_COMPARTMENTS,
+        model_children: TWO_REGIONS,
+        ..vertex(
+            "UMLOrthogonalState",
+            "Orthogonal State",
+            "UMLState",
+            "UMLStateView",
+            "State",
+            (220.0, 180.0),
+        )
+    },
+    pseudostate(
+        "UMLInitialState",
+        "Initial State",
+        &[("kind", Init::Str("initial"))],
+        (20.0, 20.0),
+    ),
+    NodeSpec {
+        name_compartment: false,
+        ..vertex(
+            "UMLFinalState",
+            "Final State",
+            "UMLFinalState",
+            "UMLFinalStateView",
+            "",
+            (26.0, 26.0),
+        )
+    },
+    pseudostate(
+        "UMLChoice",
+        "Choice",
+        &[("kind", Init::Str("choice"))],
+        (30.0, 24.0),
+    ),
+    pseudostate(
+        "UMLJunction",
+        "Junction",
+        &[("kind", Init::Str("junction"))],
+        (16.0, 16.0),
+    ),
+    pseudostate(
+        "UMLFork",
+        "Fork",
+        &[("kind", Init::Str("fork"))],
+        (70.0, 6.0),
+    ),
+    pseudostate(
+        "UMLJoin",
+        "Join",
+        &[("kind", Init::Str("join"))],
+        (70.0, 6.0),
+    ),
+    pseudostate(
+        "UMLShallowHistory",
+        "Shallow History",
+        &[("kind", Init::Str("shallowHistory"))],
+        (26.0, 26.0),
+    ),
+    pseudostate(
+        "UMLDeepHistory",
+        "Deep History",
+        &[("kind", Init::Str("deepHistory"))],
+        (26.0, 26.0),
+    ),
+    pseudostate(
+        "UMLEntryPoint",
+        "Entry Point",
+        &[("kind", Init::Str("entryPoint"))],
+        (20.0, 20.0),
+    ),
+    pseudostate(
+        "UMLExitPoint",
+        "Exit Point",
+        &[("kind", Init::Str("exitPoint"))],
+        (20.0, 20.0),
+    ),
+    pseudostate(
+        "UMLTerminate",
+        "Terminate",
+        &[("kind", Init::Str("terminate"))],
+        (20.0, 20.0),
+    ),
+    // Activities
+    activity_node(
+        "UMLAction",
+        "Action",
+        "UMLAction",
+        "UMLActionView",
+        "Action",
+        (110.0, 45.0),
+    ),
+    control_node("UMLInitialNode", "Initial", (20.0, 20.0)),
+    control_node("UMLActivityFinalNode", "Final", (26.0, 26.0)),
+    control_node("UMLFlowFinalNode", "Flow Final", (26.0, 26.0)),
+    control_node("UMLForkNode", "Fork", (70.0, 6.0)),
+    control_node("UMLJoinNode", "Join", (70.0, 6.0)),
+    control_node("UMLMergeNode", "Merge", (30.0, 24.0)),
+    control_node("UMLDecisionNode", "Decision", (30.0, 24.0)),
+    activity_node(
+        "UMLObjectNode",
+        "Object Node",
+        "UMLObjectNode",
+        "UMLObjectNodeView",
+        "ObjectNode",
+        (100.0, 40.0),
+    ),
+    NodeSpec {
+        slot: Slot::ActivityGroups,
+        name_compartment: false,
+        labels: &["nameLabel"],
+        ..node(
+            "UMLSwimlaneVert",
+            "Swimlane (Vertical)",
+            "UMLActivityPartition",
+            "UMLSwimlaneView",
+            "Partition",
+            (200.0, 400.0),
+        )
+    },
+    NodeSpec {
+        slot: Slot::ActivityGroups,
+        name_compartment: false,
+        labels: &["nameLabel"],
+        // The metamodel default is vertical; a horizontal lane must say so.
+        view_fields: &[("isVertical", Init::Bool(false))],
+        ..node(
+            "UMLSwimlaneHorz",
+            "Swimlane (Horizontal)",
+            "UMLActivityPartition",
+            "UMLSwimlaneView",
+            "Partition",
+            (500.0, 150.0),
+        )
+    },
     // Annotations (no model element)
     NodeSpec {
         model_type: None,
@@ -342,6 +621,17 @@ pub enum EdgeLabels {
     EndsAndQualifiers,
 }
 
+/// Where a new relationship's model element goes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum EdgeOwner {
+    /// `ownedElements` of the source (tail) element, as for most relationships.
+    Source,
+    /// `transitions` of the region that holds the source vertex.
+    SourceRegion,
+    /// `edges` of the activity that holds the source node.
+    SourceActivity,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct EdgeSpec {
     pub id: &'static str,
@@ -350,6 +640,7 @@ pub struct EdgeSpec {
     pub view_type: &'static str,
     pub model: EdgeModel,
     pub labels: EdgeLabels,
+    pub owner: EdgeOwner,
 }
 
 const fn directed(
@@ -365,6 +656,7 @@ const fn directed(
         view_type: view,
         model: EdgeModel::Directed,
         labels: EdgeLabels::General,
+        owner: EdgeOwner::Source,
     }
 }
 
@@ -388,6 +680,7 @@ const fn undirected(
             head_navigable,
         },
         labels: EdgeLabels::Ends,
+        owner: EdgeOwner::Source,
     }
 }
 
@@ -502,6 +795,45 @@ pub const EDGES: &[EdgeSpec] = &[
         "UMLExtension",
         "UMLExtensionView",
     ),
+    directed("UMLInclude", "Include", "UMLInclude", "UMLIncludeView"),
+    directed("UMLExtend", "Extend", "UMLExtend", "UMLExtendView"),
+    EdgeSpec {
+        owner: EdgeOwner::SourceRegion,
+        ..directed(
+            "UMLTransition",
+            "Transition",
+            "UMLTransition",
+            "UMLTransitionView",
+        )
+    },
+    // Same model and view as a transition; the tool connects a state to itself.
+    EdgeSpec {
+        owner: EdgeOwner::SourceRegion,
+        ..directed(
+            "UMLSelfTransition",
+            "Self Transition",
+            "UMLTransition",
+            "UMLTransitionView",
+        )
+    },
+    EdgeSpec {
+        owner: EdgeOwner::SourceActivity,
+        ..directed(
+            "UMLControlFlow",
+            "Control Flow",
+            "UMLControlFlow",
+            "UMLControlFlowView",
+        )
+    },
+    EdgeSpec {
+        owner: EdgeOwner::SourceActivity,
+        ..directed(
+            "UMLObjectFlow",
+            "Object Flow",
+            "UMLObjectFlow",
+            "UMLObjectFlowView",
+        )
+    },
     EdgeSpec {
         id: "UMLContainment",
         label: "Containment",
@@ -509,6 +841,7 @@ pub const EDGES: &[EdgeSpec] = &[
         view_type: "UMLContainmentView",
         model: EdgeModel::ViewOnly,
         labels: EdgeLabels::None,
+        owner: EdgeOwner::Source,
     },
     EdgeSpec {
         id: "NoteLink",
@@ -517,6 +850,7 @@ pub const EDGES: &[EdgeSpec] = &[
         view_type: "UMLNoteLinkView",
         model: EdgeModel::ViewOnly,
         labels: EdgeLabels::None,
+        owner: EdgeOwner::Source,
     },
 ];
 
@@ -629,6 +963,75 @@ pub const TOOL_GROUPS: &[ToolGroup] = &[
         ],
     },
     ToolGroup {
+        label: "Use Cases",
+        diagrams: &["UMLUseCaseDiagram"],
+        tools: &[
+            "UMLPackage",
+            "UMLUseCaseSubject",
+            "UMLUseCase",
+            "UMLActor",
+            "UMLAssociation",
+            "UMLDirectedAssociation",
+            "UMLGeneralization",
+            "UMLDependency",
+            "UMLInclude",
+            "UMLExtend",
+        ],
+    },
+    ToolGroup {
+        label: "States",
+        diagrams: &["UMLStatechartDiagram"],
+        tools: &[
+            "UMLState",
+            "UMLInitialState",
+            "UMLChoice",
+            "UMLJoin",
+            "UMLFork",
+            "UMLFinalState",
+            "UMLTransition",
+            "UMLSelfTransition",
+        ],
+    },
+    ToolGroup {
+        label: "States (Advanced)",
+        diagrams: &["UMLStatechartDiagram"],
+        tools: &[
+            "UMLCompositeState",
+            "UMLOrthogonalState",
+            "UMLJunction",
+            "UMLShallowHistory",
+            "UMLDeepHistory",
+            "UMLEntryPoint",
+            "UMLExitPoint",
+            "UMLTerminate",
+        ],
+    },
+    ToolGroup {
+        label: "Activities",
+        diagrams: &["UMLActivityDiagram"],
+        tools: &[
+            "UMLAction",
+            "UMLInitialNode",
+            "UMLActivityFinalNode",
+            "UMLForkNode",
+            "UMLJoinNode",
+            "UMLMergeNode",
+            "UMLDecisionNode",
+            "UMLControlFlow",
+        ],
+    },
+    ToolGroup {
+        label: "Activities (Advanced)",
+        diagrams: &["UMLActivityDiagram"],
+        tools: &[
+            "UMLSwimlaneVert",
+            "UMLSwimlaneHorz",
+            "UMLFlowFinalNode",
+            "UMLObjectNode",
+            "UMLObjectFlow",
+        ],
+    },
+    ToolGroup {
         label: "Annotations",
         diagrams: &[],
         tools: &["Note", "Text", "NoteLink"],
@@ -656,6 +1059,13 @@ pub const DIAGRAMS: &[(&str, &str, &str)] = &[
         "CompositeStructureDiagram",
     ),
     ("UMLProfileDiagram", "Profile Diagram", "ProfileDiagram"),
+    ("UMLUseCaseDiagram", "Use Case Diagram", "UseCaseDiagram"),
+    (
+        "UMLStatechartDiagram",
+        "Statechart Diagram",
+        "StatechartDiagram",
+    ),
+    ("UMLActivityDiagram", "Activity Diagram", "ActivityDiagram"),
 ];
 
 /// A tool, either kind.

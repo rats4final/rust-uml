@@ -123,9 +123,67 @@ pub fn slot_text(doc: &Document, slot: &Element) -> String {
     }
 }
 
+/// A transition's label: `triggers [guard] / effects`. Falls back to the
+/// transition's name when it has no triggers.
+pub fn transition_text(doc: &Document, t: &Element) -> String {
+    let names = |key: &str| -> Vec<&str> {
+        t.children(key)
+            .iter()
+            .filter_map(|id| doc.get(id))
+            .map(Element::name)
+            .filter(|n| !n.is_empty())
+            .collect()
+    };
+    let triggers = names("triggers");
+    let mut s = if triggers.is_empty() {
+        t.name().to_owned()
+    } else {
+        triggers.join(", ")
+    };
+    let guard = t.str("guard").unwrap_or("");
+    if !guard.is_empty() {
+        if !s.is_empty() {
+            s.push(' ');
+        }
+        s += &format!("[{guard}]");
+    }
+    let effects = names("effects");
+    if !effects.is_empty() {
+        s += &format!(" / {}", effects.join(", "));
+    }
+    s
+}
+
+/// An activity edge's label: `name [guard]`.
+pub fn flow_text(flow: &Element) -> String {
+    let guard = flow.str("guard").unwrap_or("");
+    match (flow.name().is_empty(), guard.is_empty()) {
+        (_, true) => flow.name().to_owned(),
+        (true, false) => format!("[{guard}]"),
+        (false, false) => format!("{} [{guard}]", flow.name()),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn transition_and_flow_labels() {
+        let doc = Document::from_json_str(
+            r#"{"_type":"Project","_id":"P","ownedElements":[
+              {"_type":"UMLTransition","_id":"T","guard":"ready",
+               "triggers":[{"_type":"UMLEvent","_id":"E","name":"start"}],
+               "effects":[{"_type":"UMLOpaqueBehavior","_id":"B","name":"log"}]},
+              {"_type":"UMLControlFlow","_id":"F","guard":"x > 0"}]}"#,
+        )
+        .unwrap();
+        assert_eq!(
+            transition_text(&doc, doc.get("T").unwrap()),
+            "start [ready] / log"
+        );
+        assert_eq!(flow_text(doc.get("F").unwrap()), "[x > 0]");
+    }
 
     #[test]
     fn typed_names() {
