@@ -177,6 +177,31 @@ pub fn message_text(msg: &Element) -> String {
     s
 }
 
+/// A communication message's label, as StarUML writes it:
+/// `number [guard] : target = name(arguments)`. `number` is the message's
+/// sequence number when the diagram shows one.
+pub fn numbered_message_text(msg: &Element, number: Option<&str>) -> String {
+    let field = |k: &str| msg.str(k).unwrap_or("");
+    let mut s = String::new();
+    if let Some(n) = number.filter(|n| !n.is_empty()) {
+        s += &format!("{n} ");
+    }
+    if !field("guard").is_empty() {
+        s += &format!("[{}] ", field("guard"));
+    }
+    if !s.is_empty() {
+        s += ": ";
+    }
+    if !field("assignmentTarget").is_empty() {
+        s += &format!("{} = ", field("assignmentTarget"));
+    }
+    s += msg.name();
+    if !field("arguments").is_empty() {
+        s += &format!("({})", field("arguments"));
+    }
+    s
+}
+
 /// An activity edge's label: `name [guard]`.
 pub fn flow_text(flow: &Element) -> String {
     let guard = flow.str("guard").unwrap_or("");
@@ -190,6 +215,24 @@ pub fn flow_text(flow: &Element) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn numbered_message_labels() {
+        let doc = Document::from_json_str(
+            r#"{"_type":"Project","_id":"P","ownedElements":[
+              {"_type":"UMLMessage","_id":"M","name":"pay","arguments":"total"},
+              {"_type":"UMLMessage","_id":"G","name":"ship","guard":"paid","assignmentTarget":"ok"}]}"#,
+        )
+        .unwrap();
+        let m = doc.get("M").unwrap();
+        assert_eq!(numbered_message_text(m, Some("1")), "1 : pay(total)");
+        assert_eq!(numbered_message_text(m, None), "pay(total)");
+        let g = doc.get("G").unwrap();
+        assert_eq!(
+            numbered_message_text(g, Some("2.1")),
+            "2.1 [paid] : ok = ship"
+        );
+    }
 
     #[test]
     fn transition_and_flow_labels() {

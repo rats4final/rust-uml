@@ -8,8 +8,8 @@ mod factory;
 mod text;
 
 pub use catalog::{
-    DIAGRAMS, EDGES, EdgeSpec, NODES, NodeSpec, TOOL_GROUPS, Tool, ToolGroup, edge_spec, node_spec,
-    node_spec_for_view, tool, tool_groups,
+    DIAGRAMS, EDGES, EdgeSpec, NODES, NodeSpec, TOOL_GROUPS, Tool, ToolGroup, edge_spec,
+    edge_spec_on, node_spec, node_spec_for_view, node_spec_on, tool, tool_groups, tool_on,
 };
 pub use delete::{delete_elements, delete_views};
 pub use factory::{
@@ -18,8 +18,9 @@ pub use factory::{
     edge_spec_of, owner_for_new_elements, return_parameter, target_for, views_of, with_contained,
 };
 pub use text::{
-    attribute_text, flow_text, instance_text, message_text, operation_text, part_text, slot_text,
-    stereotype_text, transition_text, typed_name, var_text, visibility_symbol,
+    attribute_text, flow_text, instance_text, message_text, numbered_message_text, operation_text,
+    part_text, slot_text, stereotype_text, transition_text, typed_name, var_text,
+    visibility_symbol,
 };
 
 #[cfg(test)]
@@ -44,7 +45,8 @@ mod tests {
         y: f64,
         container: Option<&str>,
     ) -> (Id, Id) {
-        let spec = node_spec(tool).unwrap();
+        let ty = doc.get(dgm).unwrap().type_name.clone();
+        let spec = node_spec_on(tool, &ty).unwrap();
         let (m, v) = doc
             .try_edit(|e| create_node(e, dgm, spec, x, y, container))
             .unwrap();
@@ -52,7 +54,8 @@ mod tests {
     }
 
     fn edge(doc: &mut Document, dgm: &str, tool: &str, tail: &str, head: &str) -> (Option<Id>, Id) {
-        let spec = edge_spec(tool).unwrap();
+        let ty = doc.get(dgm).unwrap().type_name.clone();
+        let spec = edge_spec_on(tool, &ty).unwrap();
         doc.try_edit(|e| create_edge(e, dgm, spec, tail, head))
             .unwrap()
     }
@@ -82,6 +85,10 @@ mod tests {
             .iter()
             .find(|g| g.tools.contains(&tool) && !g.diagrams.is_empty())
             .map_or("UMLClassDiagram", |g| g.diagrams[0]);
+        diagram_of_type(doc, ty)
+    }
+
+    fn diagram_of_type(doc: &mut Document, ty: &str) -> Id {
         let model = doc.get(doc.root()).unwrap().children("ownedElements")[0].clone();
         doc.try_edit(|e| create_diagram(e, &model, ty)).unwrap()
     }
@@ -90,7 +97,10 @@ mod tests {
     fn every_node_tool_builds_its_view_type() {
         let mut doc = Document::new_project();
         for spec in NODES {
-            let dgm = diagram_offering(&mut doc, spec.id);
+            let dgm = match spec.diagrams.first() {
+                Some(ty) => diagram_of_type(&mut doc, ty),
+                None => diagram_offering(&mut doc, spec.id),
+            };
             let container = if spec.placement == catalog::Placement::OnClassifier {
                 Some(node(&mut doc, &dgm, "UMLClass", 0.0, 0.0, None).1)
             } else {
@@ -225,6 +235,102 @@ mod tests {
         assert_eq!(
             doc.get(&f.unwrap()).unwrap().parent.as_deref(),
             Some(activity.as_str())
+        );
+    }
+
+    #[test]
+    fn communication_diagrams_like_staruml() {
+        let mut doc = Document::new_project();
+        let dgm = diagram_of_type(&mut doc, "UMLCommunicationDiagram");
+        let interaction = doc.get(&dgm).unwrap().parent.clone().unwrap();
+        assert_eq!(doc.get(&interaction).unwrap().type_name, "UMLInteraction");
+        let frame = doc
+            .get(&doc.get(&dgm).unwrap().children("ownedViews")[0])
+            .unwrap();
+        assert_eq!(frame.type_name, "UMLFrameView");
+
+        let (a, av) = node(&mut doc, &dgm, "UMLLifeline", 40.0, 40.0, None);
+        let (b, bv) = node(&mut doc, &dgm, "UMLLifeline", 300.0, 40.0, None);
+        let v = doc.get(&av).unwrap();
+        assert_eq!(v.type_name, "UMLCommLifelineView");
+        assert!(v.ref_id("linePart").is_none());
+        let role = |l: &str| doc.get(l).unwrap().ref_id("represent").unwrap().to_owned();
+        let (ra, rb) = (role(&a), role(&b));
+
+        // A message drawn between lifelines brings its connector, which joins
+        // their roles and belongs to the tail's role.
+        let (m, mv) = edge(&mut doc, &dgm, "UMLForwardMessage", &av, &bv);
+        let m = doc.get(&m.unwrap()).unwrap().clone();
+        assert_eq!(m.parent.as_deref(), Some(interaction.as_str()));
+        assert_eq!(m.name(), "Message1");
+        assert_eq!(
+            (m.ref_id("source"), m.ref_id("target")),
+            (Some(a.as_str()), Some(b.as_str()))
+        );
+        let connector = doc.get(m.ref_id("connector").unwrap()).unwrap();
+        assert_eq!(connector.type_name, "UMLConnector");
+        assert_eq!(connector.parent.as_deref(), Some(ra.as_str()));
+        let end = |k: &str| {
+            doc.get(&connector.children(k)[0])
+                .unwrap()
+                .ref_id("reference")
+                .unwrap()
+                .to_owned()
+        };
+        assert_eq!((end("end1"), end("end2")), (ra.clone(), rb.clone()));
+
+        let mv = doc.get(&mv).unwrap();
+        assert_eq!(mv.type_name, "UMLCommMessageView");
+        let cv = doc.get(mv.ref_id("hostEdge").unwrap()).unwrap();
+        assert_eq!(cv.type_name, "UMLConnectorView");
+        assert_eq!(cv.ref_id("model"), Some(connector.id.as_str()));
+        assert_eq!(
+            mv.num("edgePosition", -1.0),
+            mdj::values::edge_position::MIDDLE as f64,
+            "written: the metamodel default is the head"
+        );
+        assert!(mv.get("alpha").is_some() && mv.get("distance").is_some());
+        let label = doc.get(mv.ref_id("nameLabel").unwrap()).unwrap();
+        assert_eq!(label.type_name, "NodeLabelView");
+        assert_eq!(label.ref_id("hostNode"), Some(mv.id.as_str()));
+
+        // A reverse message dropped on the connector rides on it, backwards.
+        let cv_id = cv.id.clone();
+        let (r, rv) = edge(&mut doc, &dgm, "UMLReverseMessage", &bv, &cv_id);
+        let r = doc.get(&r.unwrap()).unwrap();
+        assert_eq!(
+            (r.ref_id("source"), r.ref_id("target")),
+            (Some(b.as_str()), Some(a.as_str()))
+        );
+        assert_eq!(r.name(), "Message2");
+        assert_eq!(
+            doc.get(&rv).unwrap().ref_id("hostEdge"),
+            Some(cv_id.as_str())
+        );
+        let connectors = doc
+            .get(&dgm)
+            .unwrap()
+            .children("ownedViews")
+            .iter()
+            .filter(|v| doc.get(v).unwrap().type_name == "UMLConnectorView")
+            .count();
+        assert_eq!(connectors, 1, "no second connector");
+
+        let (_, self_v) = edge(&mut doc, &dgm, "UMLSelfConnector", &av, &bv);
+        let self_v = doc.get(&self_v).unwrap();
+        assert_eq!(self_v.ref_id("head"), self_v.ref_id("tail"));
+
+        // Deleting the connector's view takes the messages riding on it.
+        doc.edit(|e| delete_views(e, std::slice::from_ref(&cv_id)));
+        assert!(doc.get(&rv).is_none());
+
+        // Messages need lifelines at both ends.
+        let class_dgm = diagram_of_type(&mut doc, "UMLClassDiagram");
+        let (_, cls) = node(&mut doc, &class_dgm, "UMLClass", 0.0, 0.0, None);
+        let spec = edge_spec_on("UMLForwardMessage", "UMLCommunicationDiagram").unwrap();
+        assert!(
+            doc.try_edit(|e| create_edge(e, &dgm, spec, &av, &cls))
+                .is_err()
         );
     }
 
@@ -442,11 +548,16 @@ mod tests {
     fn every_edge_tool_survives_round_trip() {
         let mut doc = Document::new_project();
         for spec in EDGES.iter().filter(|s| s.id != "UMLContainment") {
-            let dgm = diagram_offering(&mut doc, spec.id);
+            let dgm = match spec.diagrams.first() {
+                Some(ty) => diagram_of_type(&mut doc, ty),
+                None => diagram_offering(&mut doc, spec.id),
+            };
             let end_tool = match spec.owner {
                 catalog::EdgeOwner::SourceRegion => "UMLState",
                 catalog::EdgeOwner::SourceActivity => "UMLAction",
-                catalog::EdgeOwner::SourceInteraction => "UMLLifeline",
+                catalog::EdgeOwner::SourceInteraction | catalog::EdgeOwner::TailRole => {
+                    "UMLLifeline"
+                }
                 catalog::EdgeOwner::Source => "UMLClass",
             };
             let end_tool = if node_spec(end_tool)

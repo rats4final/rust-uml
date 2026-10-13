@@ -8,7 +8,7 @@ use mdj::{Document, Editor, Element, Field, Id};
 
 use crate::catalog::{
     DIAGRAMS, EDGES, EdgeLabels, EdgeModel, EdgeOwner, EdgeSpec, Init, NodeSpec, Placement, Slot,
-    edge_spec,
+    edge_spec, edge_spec_on,
 };
 
 /// Collects a subtree in insertion order (root first), wiring `_parent` and
@@ -236,7 +236,7 @@ pub fn target_for(
             let interaction = doc
                 .get(&diagram_owner)
                 .filter(|o| o.type_name == "UMLInteraction")
-                .ok_or("Lifelines belong to an interaction: add a Sequence Diagram (Model ▸ Add Diagram).")?;
+                .ok_or("Lifelines belong to an interaction: add a Sequence or Communication Diagram (Model ▸ Add Diagram).")?;
             Ok(Target {
                 owner: interaction.id.clone(),
                 list: if spec.slot == Slot::Participants {
@@ -562,13 +562,19 @@ pub fn create_edge_at(
     at_y: Option<f64>,
 ) -> Result<(Option<Id>, Id), String> {
     // Self transitions and self messages always loop back to where they start.
-    let head_view = if matches!(spec.id, "UMLSelfTransition" | "UMLSelfMessage") {
+    let head_view = if matches!(
+        spec.id,
+        "UMLSelfTransition" | "UMLSelfMessage" | "UMLSelfConnector"
+    ) {
         tail_view
     } else {
         head_view
     };
     if spec.view_type == "UMLSeqMessageView" {
         return create_message(e, diagram, spec, tail_view, head_view, at_y);
+    }
+    if spec.view_type == "UMLCommMessageView" {
+        return create_comm_message(e, diagram, spec, tail_view, head_view);
     }
     let model_of = |v: &str| {
         e.doc()
@@ -621,6 +627,14 @@ pub fn create_edge_at(
                     spec.label
                 ));
             };
+            let (tail, head) = if spec.owner == EdgeOwner::TailRole {
+                match (role_of(e.doc(), &tail), role_of(e.doc(), &head)) {
+                    (Some(t), Some(h)) => (t, h),
+                    _ => return Err(format!("A {} joins two lifelines.", spec.label)),
+                }
+            } else {
+                (tail, head)
+            };
             let mut rel = Tree::new(Element::new(e.new_id(), model_type));
             let mut end1 =
                 Element::new(e.new_id(), end_type).with("reference", Field::Ref(tail.clone()));
@@ -639,6 +653,135 @@ pub fn create_edge_at(
     let view = add_edge_view(e, diagram, spec, model_id.as_deref(), tail_view, head_view);
     Ok((model_id, view))
 }
+
+/// The role a lifeline represents (`represent`).
+fn role_of(doc: &Document, lifeline: &str) -> Option<Id> {
+    doc.get(lifeline)
+        .filter(|l| l.type_name == "UMLLifeline")
+        .and_then(|l| l.ref_id("represent"))
+        .map(str::to_owned)
+}
+
+/// A communication-diagram message: a short arrow riding on a connector.
+/// Drawn between two lifelines it creates that connector too, as StarUML
+/// does; dropped on a connector it rides on that one. A reverse message runs
+/// from the connector's head to its tail.
+fn create_comm_message(
+    e: &mut Editor,
+    diagram: &str,
+    spec: &EdgeSpec,
+    tail_view: &str,
+    head_view: &str,
+) -> Result<(Option<Id>, Id), String> {
+    let on_connector = e
+        .doc()
+        .get(head_view)
+        .filter(|v| v.type_name == "UMLConnectorView")
+        .and_then(|v| Some((v.ref_id("tail")?.to_owned(), v.ref_id("head")?.to_owned())));
+    let (connector_view, ends) = match on_connector {
+        Some(ends) => (head_view.to_owned(), ends),
+        None => {
+            let connector = edge_spec_on("UMLConnector", "UMLCommunicationDiagram")
+                .ok_or("no connector tool")?;
+            let (_, cv) = create_edge_at(e, diagram, connector, tail_view, head_view, None)?;
+            (cv, (tail_view.to_owned(), head_view.to_owned()))
+        }
+    };
+    let doc = e.doc();
+    let model_of = |v: &str| {
+        doc.get(v)
+            .and_then(|el| el.ref_id("model"))
+            .map(str::to_owned)
+    };
+    let (Some(a), Some(b)) = (model_of(&ends.0), model_of(&ends.1)) else {
+        return Err("Messages connect two lifelines, or ride on a connector between them.".into());
+    };
+    let (source, target) = if spec.id == "UMLReverseMessage" {
+        (b, a)
+    } else {
+        (a, b)
+    };
+    let (owner, list) = edge_owner(doc, spec, &source)?;
+    let name = unique_name(doc, &owner, "Message");
+    let connector = model_of(&connector_view);
+    // Where the arrow goes: 40 px long, parallel to the line between the
+    // lifelines' centres, `distance` to its left. StarUML (and our renderer)
+    // place it from the connector when drawing; this is a starting value.
+    let centre = |v: &str| {
+        doc.get(v).map_or((0.0, 0.0), |el| {
+            (
+                el.num("left", 0.0) + el.num("width", 0.0) / 2.0,
+                el.num("top", 0.0) + el.num("height", 0.0) / 2.0,
+            )
+        })
+    };
+    // Messages already on this connector: stack the new one further out so
+    // their arrows and labels don't overlap (StarUML would put all at 10 px).
+    let stacked = doc
+        .get(diagram)
+        .map(|d| d.children("ownedViews").to_vec())
+        .unwrap_or_default()
+        .iter()
+        .filter_map(|v| doc.get(v))
+        .filter(|v| {
+            v.type_name == "UMLCommMessageView"
+                && v.ref_id("hostEdge") == Some(connector_view.as_str())
+        })
+        .count();
+    let distance = COMM_MESSAGE_DISTANCE + COMM_MESSAGE_STACK * stacked as f64;
+    let ((x1, y1), (x2, y2)) = (centre(&ends.0), centre(&ends.1));
+    let len = (x2 - x1).hypot(y2 - y1).max(1.0);
+    let (ux, uy) = ((x2 - x1) / len, (y2 - y1) / len);
+    let (mx, my) = (
+        (x1 + x2) / 2.0 + uy * distance,
+        (y1 + y2) / 2.0 - ux * distance,
+    );
+    let (dx, dy) = ((ux * 20.0).abs(), (uy * 20.0).abs());
+    let mut msg = Element::new(e.new_id(), "UMLMessage")
+        .with("name", Field::str(name))
+        .with("source", Field::Ref(source))
+        .with("target", Field::Ref(target));
+    if let Some(c) = connector {
+        msg = msg.with("connector", Field::Ref(c));
+    }
+
+    let model = e.append(&owner, list, vec![msg]);
+    let root = view(e, spec.view_type)
+        .with("model", Field::Ref(model.clone()))
+        .with("left", Field::int((mx - dx).round() as i64))
+        .with("top", Field::int((my - dy).round() as i64))
+        .with("width", Field::int((2.0 * dx).round() as i64))
+        .with("height", Field::int((2.0 * dy).round() as i64))
+        // No metamodel defaults for alpha and distance; StarUML's middle
+        // position isn't the default (head) either: write all three.
+        .with("alpha", Field::Value((PI / 2.0).into()))
+        .with("distance", Field::Value(distance.into()))
+        .with("hostEdge", Field::Ref(connector_view))
+        .with("edgePosition", Field::int(edge_position::MIDDLE));
+    let root_id = root.id.clone();
+    let mut t = Tree::new(root);
+    for (key, distance) in [
+        ("nameLabel", 10.0),
+        ("stereotypeLabel", 25.0),
+        ("propertyLabel", 10.0),
+    ] {
+        let label = sub_view(e, "NodeLabelView")
+            .with("model", Field::Ref(model.clone()))
+            .with("hostNode", Field::Ref(root_id.clone()))
+            .with("alpha", Field::Value((PI / 2.0).into()))
+            .with("distance", Field::Value(distance.into()));
+        let (_, lid) = t.child(0, "subViews", label);
+        t.set(0, key, Field::Ref(lid));
+    }
+    let view = e.append(diagram, "ownedViews", t.elements);
+    Ok((Some(model), view))
+}
+
+/// How far a communication message's arrow sits from its connector
+/// (StarUML's default), and how much further each extra message on the same
+/// connector goes.
+const COMM_MESSAGE_DISTANCE: f64 = 10.0;
+const COMM_MESSAGE_STACK: f64 = 35.0;
 
 /// The line part of a lifeline view (messages attach to it), or `view` itself.
 fn line_part_of(doc: &Document, view: &str) -> Id {
@@ -747,8 +890,9 @@ fn edge_owner(doc: &Document, spec: &EdgeSpec, source: &str) -> Result<(Id, &'st
             .map(|p| p.id.clone())
     };
     match spec.owner {
-        // Most relationships live with their source, as in StarUML.
-        EdgeOwner::Source => Ok((source.to_owned(), "ownedElements")),
+        // Most relationships live with their source, as in StarUML; a
+        // communication connector's source is already the tail's role.
+        EdgeOwner::Source | EdgeOwner::TailRole => Ok((source.to_owned(), "ownedElements")),
         EdgeOwner::SourceRegion => parent_of_type("UMLRegion")
             .map(|r| (r, "transitions"))
             .ok_or_else(|| "Transitions start from a state or pseudostate.".to_owned()),
@@ -865,6 +1009,22 @@ pub fn edge_spec_of(doc: &Document, edge_view: &Element) -> Option<&'static Edge
         }
         "UMLTransitionView" if edge_view.ref_id("tail") == edge_view.ref_id("head") => {
             "UMLSelfTransition"
+        }
+        "UMLConnectorView" if edge_view.ref_id("tail") == edge_view.ref_id("head") => {
+            "UMLSelfConnector"
+        }
+        // Reverse when the message runs from the connector's head end.
+        "UMLCommMessageView" => {
+            let host_tail_model = edge_view
+                .ref_id("hostEdge")
+                .and_then(|h| doc.get(h))
+                .and_then(|h| h.ref_id("tail"))
+                .and_then(|t| doc.get(t))
+                .and_then(|t| t.ref_id("model"));
+            match (model.and_then(|m| m.ref_id("source")), host_tail_model) {
+                (Some(source), Some(tail)) if source != tail => "UMLReverseMessage",
+                _ => "UMLForwardMessage",
+            }
         }
         "UMLSeqMessageView" => match model
             .and_then(|m| m.str("messageSort"))
@@ -1095,13 +1255,13 @@ pub fn create_diagram(e: &mut Editor, parent: &str, diagram_type: &str) -> Resul
         }
         "UMLActivityDiagram" if parent_type != "UMLActivity" => Some(("UMLActivity", "Activity")),
         "UMLProfileDiagram" if parent_type != "UMLProfile" => Some(("UMLProfile", "Profile")),
-        "UMLSequenceDiagram" if parent_type != "UMLInteraction" => {
+        "UMLSequenceDiagram" | "UMLCommunicationDiagram" if parent_type != "UMLInteraction" => {
             Some(("UMLInteraction", "Interaction"))
         }
         _ => None,
     };
-    // A sequence diagram's interaction sits in a collaboration unless added
-    // to a classifier (StarUML's sequenceDiagramFn).
+    // A sequence or communication diagram's interaction sits in a
+    // collaboration unless added to a classifier (as StarUML does).
     let parent = if wrapper.is_some_and(|(w, _)| w == "UMLInteraction")
         && matches!(
             parent_type.as_str(),
@@ -1130,13 +1290,16 @@ pub fn create_diagram(e: &mut Editor, parent: &str, diagram_type: &str) -> Resul
     let name = unique_name(e.doc(), &owner, base);
     let diagram = Element::new(e.new_id(), diagram_type).with("name", Field::str(name));
     let id = e.append(&owner, "ownedElements", vec![diagram]);
-    if diagram_type == "UMLSequenceDiagram" {
+    if matches!(
+        diagram_type,
+        "UMLSequenceDiagram" | "UMLCommunicationDiagram"
+    ) {
         add_frame(e, &id);
     }
     Ok(id)
 }
 
-/// The frame StarUML puts on a new sequence diagram: model = the diagram,
+/// The frame StarUML puts on a new interaction diagram: model = the diagram,
 /// at (8, 8), 700 × 600, with name and frame-type labels.
 fn add_frame(e: &mut Editor, diagram: &str) {
     let frame = view(e, "UMLFrameView")

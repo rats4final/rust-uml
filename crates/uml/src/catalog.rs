@@ -109,6 +109,9 @@ pub struct NodeSpec {
     pub model_children: &'static [(&'static str, &'static str)],
     /// `LabelView` sub-views referenced by these view fields (swimlane name).
     pub labels: &'static [&'static str],
+    /// Diagram types this row is for, when the same tool id draws differently
+    /// on different diagrams (a lifeline). Empty: any diagram.
+    pub diagrams: &'static [&'static str],
 }
 
 const fn node(
@@ -135,6 +138,7 @@ const fn node(
         view_fields: &[],
         model_children: &[],
         labels: &[],
+        diagrams: &[],
     }
 }
 
@@ -596,6 +600,19 @@ pub const NODES: &[NodeSpec] = &[
             (100.0, 260.0),
         )
     },
+    // Communication diagrams: the same Lifeline tool draws a plain box.
+    NodeSpec {
+        slot: Slot::Participants,
+        diagrams: COMMUNICATION,
+        ..node(
+            "UMLLifeline",
+            "Lifeline",
+            "UMLLifeline",
+            "UMLCommLifelineView",
+            "Lifeline",
+            (100.0, 30.0),
+        )
+    },
     NodeSpec {
         slot: Slot::Fragments,
         name_compartment: false,
@@ -666,6 +683,9 @@ pub enum EdgeOwner {
     SourceActivity,
     /// `messages` of the interaction that holds the source lifeline.
     SourceInteraction,
+    /// Between lifelines on a communication diagram: the ends refer to the
+    /// roles the lifelines represent, and the tail's role owns it.
+    TailRole,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -679,6 +699,8 @@ pub struct EdgeSpec {
     pub owner: EdgeOwner,
     /// Values written into the new model element (e.g. a message's sort).
     pub model_fields: &'static [(&'static str, Init)],
+    /// Diagram types this row is for (see [`NodeSpec::diagrams`]). Empty: any.
+    pub diagrams: &'static [&'static str],
 }
 
 const fn directed(
@@ -696,6 +718,7 @@ const fn directed(
         labels: EdgeLabels::General,
         owner: EdgeOwner::Source,
         model_fields: &[],
+        diagrams: &[],
     }
 }
 
@@ -721,6 +744,7 @@ const fn undirected(
         labels: EdgeLabels::Ends,
         owner: EdgeOwner::Source,
         model_fields: &[],
+        diagrams: &[],
     }
 }
 
@@ -755,6 +779,36 @@ const fn message(
         owner: EdgeOwner::SourceInteraction,
         model_fields: sort,
         ..directed(id, label, "UMLMessage", "UMLSeqMessageView")
+    }
+}
+
+const COMMUNICATION: &[&str] = &["UMLCommunicationDiagram"];
+
+/// A connector between lifelines on a communication diagram.
+const fn role_connector(id: &'static str, label: &'static str) -> EdgeSpec {
+    EdgeSpec {
+        owner: EdgeOwner::TailRole,
+        diagrams: COMMUNICATION,
+        ..undirected(
+            id,
+            label,
+            "UMLConnector",
+            "UMLConnectorView",
+            "UMLConnectorEnd",
+            "none",
+            "unspecified",
+        )
+    }
+}
+
+/// A communication-diagram message: an arrow riding on a connector, which is
+/// created too when the message is drawn between two lifelines.
+const fn comm_message(id: &'static str, label: &'static str) -> EdgeSpec {
+    EdgeSpec {
+        owner: EdgeOwner::SourceInteraction,
+        labels: EdgeLabels::None,
+        diagrams: COMMUNICATION,
+        ..directed(id, label, "UMLMessage", "UMLCommMessageView")
     }
 }
 
@@ -916,6 +970,10 @@ pub const EDGES: &[EdgeSpec] = &[
         "Async Signal Message",
         &[("messageSort", Init::Str("asynchSignal"))],
     ),
+    role_connector("UMLConnector", "Connector"),
+    role_connector("UMLSelfConnector", "Self Connector"),
+    comm_message("UMLForwardMessage", "Forward Message"),
+    comm_message("UMLReverseMessage", "Reverse Message"),
     EdgeSpec {
         id: "UMLContainment",
         label: "Containment",
@@ -925,6 +983,7 @@ pub const EDGES: &[EdgeSpec] = &[
         labels: EdgeLabels::None,
         owner: EdgeOwner::Source,
         model_fields: &[],
+        diagrams: &[],
     },
     EdgeSpec {
         id: "NoteLink",
@@ -935,6 +994,7 @@ pub const EDGES: &[EdgeSpec] = &[
         labels: EdgeLabels::None,
         owner: EdgeOwner::Source,
         model_fields: &[],
+        diagrams: &[],
     },
 ];
 
@@ -1135,6 +1195,17 @@ pub const TOOL_GROUPS: &[ToolGroup] = &[
         tools: &["UMLCombinedFragment"],
     },
     ToolGroup {
+        label: "Communication",
+        diagrams: COMMUNICATION,
+        tools: &[
+            "UMLLifeline",
+            "UMLConnector",
+            "UMLSelfConnector",
+            "UMLForwardMessage",
+            "UMLReverseMessage",
+        ],
+    },
+    ToolGroup {
         label: "Annotations",
         diagrams: &[],
         tools: &["Note", "Text", "NoteLink"],
@@ -1170,6 +1241,11 @@ pub const DIAGRAMS: &[(&str, &str, &str)] = &[
     ),
     ("UMLActivityDiagram", "Activity Diagram", "ActivityDiagram"),
     ("UMLSequenceDiagram", "Sequence Diagram", "SequenceDiagram"),
+    (
+        "UMLCommunicationDiagram",
+        "Communication Diagram",
+        "CommunicationDiagram",
+    ),
 ];
 
 /// A tool, either kind.
@@ -1217,6 +1293,52 @@ pub fn tool(id: &str) -> Option<Tool> {
         .or_else(|| edge_spec(id).map(Tool::Edge))
 }
 
+/// Of the rows called `name`, the one meant for `diagram_type`: a row listing
+/// that type, else one for any diagram, else the first.
+fn pick<'a, T>(
+    rows: impl Iterator<Item = &'a T>,
+    diagrams: impl Fn(&T) -> &'static [&'static str],
+    diagram_type: &str,
+) -> Option<&'a T> {
+    let rows: Vec<&T> = rows.collect();
+    rows.iter()
+        .find(|r| diagrams(r).contains(&diagram_type))
+        .or_else(|| rows.iter().find(|r| diagrams(r).is_empty()))
+        .or(rows.first())
+        .copied()
+}
+
+/// [`node_spec`] for a tool used on a `diagram_type` diagram.
+pub fn node_spec_on(name: &str, diagram_type: &str) -> Option<&'static NodeSpec> {
+    let n = normalize(name);
+    pick(
+        NODES
+            .iter()
+            .filter(|s| normalize(s.id) == n || normalize(s.label) == n),
+        |s| s.diagrams,
+        diagram_type,
+    )
+}
+
+/// [`edge_spec`] for a tool used on a `diagram_type` diagram.
+pub fn edge_spec_on(name: &str, diagram_type: &str) -> Option<&'static EdgeSpec> {
+    let n = normalize(name);
+    pick(
+        EDGES
+            .iter()
+            .filter(|s| normalize(s.id) == n || normalize(s.label) == n),
+        |s| s.diagrams,
+        diagram_type,
+    )
+}
+
+/// [`tool`] for a toolbox on a `diagram_type` diagram.
+pub fn tool_on(id: &str, diagram_type: &str) -> Option<Tool> {
+    node_spec_on(id, diagram_type)
+        .map(Tool::Node)
+        .or_else(|| edge_spec_on(id, diagram_type).map(Tool::Edge))
+}
+
 /// Toolbox groups for a diagram type, in order.
 pub fn tool_groups(diagram_type: &str) -> impl Iterator<Item = &'static ToolGroup> {
     let t = diagram_type.to_owned();
@@ -1259,16 +1381,38 @@ mod tests {
     }
 
     #[test]
-    fn ids_are_unique() {
-        let mut ids: Vec<&str> = NODES
+    fn ids_are_unique_per_diagram() {
+        let mut ids: Vec<(&str, &[&str])> = NODES
             .iter()
-            .map(|s| s.id)
-            .chain(EDGES.iter().map(|s| s.id))
+            .map(|s| (s.id, s.diagrams))
+            .chain(EDGES.iter().map(|s| (s.id, s.diagrams)))
             .collect();
         let n = ids.len();
         ids.sort();
         ids.dedup();
         assert_eq!(ids.len(), n);
+    }
+
+    #[test]
+    fn the_same_tool_id_can_differ_by_diagram() {
+        let seq = node_spec_on("UMLLifeline", "UMLSequenceDiagram").unwrap();
+        let comm = node_spec_on("Lifeline", "UMLCommunicationDiagram").unwrap();
+        assert_eq!(seq.view_type, "UMLSeqLifelineView");
+        assert_eq!(comm.view_type, "UMLCommLifelineView");
+        assert_eq!(
+            node_spec_on("UMLLifeline", "UMLClassDiagram").map(|s| s.view_type),
+            Some("UMLSeqLifelineView"),
+            "rows for any diagram win elsewhere"
+        );
+        let structure = edge_spec_on("UMLConnector", "UMLCompositeStructureDiagram").unwrap();
+        assert_eq!(structure.owner, EdgeOwner::Source);
+        let roles = edge_spec_on("UMLConnector", "UMLCommunicationDiagram").unwrap();
+        assert_eq!(roles.owner, EdgeOwner::TailRole);
+        for g in tool_groups("UMLCommunicationDiagram") {
+            for t in g.tools {
+                assert!(tool_on(t, "UMLCommunicationDiagram").is_some(), "{t}");
+            }
+        }
     }
 
     #[test]
