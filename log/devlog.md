@@ -2,6 +2,19 @@
 
 Newest first. Terse: what landed, numbers, what's still open.
 
+## 2026-10-13 — M3b part 2: communication diagrams
+
+- Catalog rows may be limited to diagram types; the engine and toolbox pick by the open diagram
+  (`node_spec_on`, `edge_spec_on`, `tool_on`). Communication: lifeline box, connector (ends and
+  owner via the lifelines' roles), self connector, forward/reverse message.
+- A message drawn between lifelines brings its connector in the same undo step; dropped on a
+  connector (canvas or `edge.create` head) it rides on it. `diagram.inspect` lists such messages
+  under `lines` with `on`.
+- Renderer: `UMLCommMessageView` as a 40 px arrow beside the connector, label `1 : name` numbered
+  by message order (`uml::numbered_message_text`); extra messages on a connector stacked 35 px out.
+- Fixed a flaky CLI test on macOS CI (temp folders named by a microsecond clock collided).
+- 127 tests. Open: check in StarUML; timing, interaction overview, information flow.
+
 ## 2026-10-13 — agent milestone, part 4: live app control
 
 - `rust-uml --control <port> --control-token-file <path> [--control-root <dir>]`: loopback-only

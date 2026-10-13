@@ -1,6 +1,6 @@
 # Roadmap and handoff
 
-**Read this to pick up the work.** Status as of 2026-10-13: v0.5.0 (agent milestone parts 1–3) plus part 4, live app control (not yet released).
+**Read this to pick up the work.** Status as of 2026-10-13: v0.5.0 (agent milestone parts 1–3); since then (not yet released) live app control and communication diagrams.
 Order of reading for a new agent/session: `AGENTS.md` → this file → `docs/parity.md` → `log/devlog.md`.
 
 ## 1. Where things stand
@@ -9,9 +9,9 @@ Order of reading for a new agent/session: `AGENTS.md` → this file → `docs/pa
   Linux x64, Windows x64, macOS arm64 + x64, web zip. Web app live at
   https://rats4final.github.io/rust-uml/ (redeploys on every push to `main`).
 - **Works:** class diagrams, all six UML structural diagram types, and use case, statechart,
-  activity and sequence diagrams, with StarUML's toolbox groups: 54 box tools and 30 line tools
-  (`rust-uml-cli tools`) in `crates/uml/src/catalog.rs`. Properties panel, undo/redo, lossless
-  `.mdj` save, SVG/PNG export without watermarks. Communication, timing, interaction-overview and
+  activity, sequence and communication diagrams, with StarUML's toolbox groups (see
+  `rust-uml-cli tools`; rows in `crates/uml/src/catalog.rs`). Properties panel, undo/redo, lossless
+  `.mdj` save, SVG/PNG export without watermarks. Timing, interaction-overview and
   information-flow diagrams open and draw generically but have no tools yet.
 - **Verified:** 33 tests (incl. mouse-driven UI tests and a real-file round trip of all 14 model files
   shipped with StarUML); CI green on Linux, Windows, macOS; Windows exe launched natively; web build
@@ -142,7 +142,17 @@ keys inside rust-uml). Guide for users: `docs/agents.md`.
    Left: pointer/key driving (`ui.pointer`-style), StarUML's HTTP API on the same server (M8),
    **trying it from a real MCP client** (Claude Code) — the end-to-end run used a scripted client.
 
-### M3b part 2 — Communication, timing, interaction overview, information flow (after A)
+### M3b part 2 — Communication, timing, interaction overview, information flow (in progress)
+
+- ✅ **Communication** (2026-10-13): catalog rows can now be limited to diagram types
+  (`NodeSpec::diagrams`, `EdgeSpec::diagrams`; look-ups `node_spec_on`/`edge_spec_on`/`tool_on`),
+  because StarUML reuses tool ids (`UMLLifeline`) with different views. Connectors between lifelines
+  join their roles (`EdgeOwner::TailRole`); Forward/Reverse Message create the connector too, or
+  ride on one (`UMLCommMessageView`, drawn after edges in `render::scene`). Extra messages on one
+  connector are stacked further out. Example: "Checkout (communication)" in `behaviour.mdj`.
+  Evidence: `docs/evidence.md`, communication section. **Not yet checked in StarUML.**
+- ⬜ Timing, interaction overview, information flow: they reuse tool ids too (`UMLLifeline`,
+  `UMLMessage`, `UMLInitialNode`…), so add rows with `diagrams`.
 
 Evidence pointers: `communicationDiagramFn`, `timingDiagramFn`, `interactionOverviewDiagramFn` and
 their `viewFor…DiagramFn` in `uml-factory.js` (communication messages create a connector between

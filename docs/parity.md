@@ -1,6 +1,6 @@
 # Parity with StarUML 7.1.1
 
-Status line: **Agent milestone (A) done: scriptable CLI, MCP server, Mermaid import (v0.5.0), live app control.** Updated 2026-10-13.
+Status line: **M3b part 2 started: communication diagrams.** Agent milestone (A) done. Updated 2026-10-13.
 
 Each row comes from the evidence in [`evidence.md`](evidence.md). "Paid" marks features StarUML
 locks behind a licence (see evidence §4: only exports are locked, by watermark).
@@ -38,7 +38,8 @@ Legend: ✅ done · 🟡 partial · ⬜ not started
 | UML structure | Package, Object, Component, Deployment, Composite Structure, Profile | | ✅ all six: StarUML's toolbox groups, nesting, ports, parts, objects/slots, 3-D nodes, icons, containment ⊕, «deploy». Not yet: n-ary associations, association classes, template bindings, frames, role bindings, ball-and-socket |
 | UML behaviour (M3a) | Use Case, Statechart, Activity | | ✅ StarUML's tool sets: actors, use cases, subjects, include/extend; states, composite/orthogonal states, all pseudostate kinds, transitions with `trigger [guard] / effect`; actions, control nodes, swimlanes, object nodes, guarded flows. Not yet: pins, expansion regions, interruptible regions, signals/events as actions, internal activities (entry/do/exit), submachine states, frames |
 | UML sequence | Sequence | | ✅ frame, lifelines (with role attributes), all 7 message kinds, activations (hidden when the diagram's `showActivation` is off), combined fragments with operands/guards; messages keep their height when lifelines move. Not yet: automatic sequence numbers (`showSequenceNumber`), found/lost messages, gates, endpoints, state invariants, continuations, interaction uses, time/duration constraints |
-| UML behaviour (rest of M3b) | Communication, Timing, Interaction Overview, Information Flow | | ⬜ (generic drawing only) |
+| UML communication | Communication | | ✅ StarUML's tool set: lifelines, connectors (between the lifelines' roles), self connectors, forward/reverse messages (drawn between lifelines they bring the connector; dropped on a connector they ride on it), numbered `1 : name` labels. Not yet: frames, moving a message along its connector, sequence ↔ communication conversion |
+| UML behaviour (rest of M3b) | Timing, Interaction Overview, Information Flow | | ⬜ (generic drawing only) |
 | SysML | Requirement, Block Definition, Internal Block, Parametric | ✔ | ⬜ |
 | BPMN | BPMN | ✔ | ⬜ |
 | Wireframe | Wireframe | ✔ | ⬜ |

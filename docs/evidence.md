@@ -205,6 +205,34 @@ From `sequenceDiagramFn`, `lifelineFn`, `messageFn` (`uml-factory.js`) and `UMLS
 - **Combined fragments** (`UMLCombinedFragment`, `interactionOperator` alt/opt/loop/par/…) go in the
   interaction's `fragments`, with `operands` (`UMLInteractionOperand`, `guard`).
 
+### Communication diagrams (observed for M3b part 2, 2026-10-13)
+
+From `communicationDiagramFn`, `lifelineFn`, `messageFn` (`uml-factory.js`), `UMLCommMessageView`
+and `UMLMessage.getString` (`elements.js`), and the `uml.communication` toolbox group, described in
+our words:
+
+- **Wrapped like a sequence diagram:** collaboration → interaction → `UMLCommunicationDiagram`,
+  plus the same 700 × 600 frame. The diagram's `showSequenceNumber` defaults to true,
+  `sequenceNumbering` to `auto`.
+- **Lifelines** are the same `UMLLifeline` (same toolbox id, `participants`, role attribute) with a
+  `UMLCommLifelineView`: a plain named box, at least 100 × 30, no line part.
+- **Connectors** (`UMLConnector`, view `UMLConnectorView` between two lifeline views) are owned by
+  the *tail lifeline's role* (`represent`) in its `ownedElements`, and their ends (`end1`, `end2`,
+  `UMLConnectorEnd`) refer to the two roles, not the lifelines. "Self Connector" is a connector
+  from a lifeline to itself.
+- **Forward/Reverse Message** tools: drawn between two lifelines they create a connector *and* a
+  message in one step; drawn onto a connector they add a message to it. The `UMLMessage` goes in
+  the interaction's `messages` with `connector`; forward runs tail → head of the connector,
+  reverse head → tail. Its view is a `UMLCommMessageView` (an edge-parasitic view: `hostEdge` =
+  the connector view, `edgePosition` 1 = middle, `alpha` π/2, `distance` 10) with three
+  `NodeLabelView`s (`nameLabel` at 10, `stereotypeLabel` at 25, `propertyLabel` at 10, all π/2).
+  `edgePosition` differs from its metamodel default (0) and `alpha`/`distance` have none: write
+  them.
+- **Drawing:** a 40 px arrow parallel to the connector's middle segment, offset by
+  `alpha`/`distance`, its head toward the target. The label is `number [guard] : target =
+  name(arguments)`: `number` is the message's position in the interaction's `messages` (auto) or
+  its `sequenceNumber` (custom), omitted when `showSequenceNumber` is off.
+
 ## 4. Free vs. paid — exactly what is locked
 
 The only place the license is checked for features is **`src/engine/diagram-export.js`**, in the
