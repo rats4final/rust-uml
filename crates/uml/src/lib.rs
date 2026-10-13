@@ -3,7 +3,7 @@
 
 use std::collections::HashSet;
 
-use mdj::values::{DEFAULT_FONT, edge_position, format_points, line_style};
+use mdj::values::{DEFAULT_FONT, align, edge_position, format_points, line_style};
 use mdj::{Document, Editor, Element, Field, Id};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -180,6 +180,15 @@ fn sub_view(e: &mut Editor, type_name: &str) -> Element {
     view(e, type_name).with("parentStyle", Field::bool(true))
 }
 
+/// One row of a list compartment (an attribute, operation or literal).
+/// StarUML draws rows left-aligned but would load a missing alignment as
+/// centred (see `mdj::values::align`), so store it.
+fn row_view(e: &mut Editor, type_name: &str, model: &str) -> Element {
+    sub_view(e, type_name)
+        .with("model", Field::Ref(model.to_owned()))
+        .with("horizontalAlignment", Field::int(align::LEFT))
+}
+
 /// The diagram's owner is where new model elements created on it go.
 pub fn owner_for_new_elements(doc: &Document, diagram: &str) -> Id {
     doc.get(diagram)
@@ -254,6 +263,10 @@ pub fn add_node_view(
         "propertyLabel",
     ] {
         let mut label = sub_view(e, "LabelView");
+        if key == "propertyLabel" {
+            // StarUML right-aligns `{property}` text; centre is the stored default.
+            label = label.with("horizontalAlignment", Field::int(align::RIGHT));
+        }
         if key == "nameLabel" {
             label = label.with(
                 "text",
@@ -291,7 +304,7 @@ pub fn add_node_view(
                     .map(|m| m.children(list_key).to_vec())
                     .unwrap_or_default();
                 for item in items {
-                    let v = sub_view(e, item_view).with("model", Field::Ref(item));
+                    let v = row_view(e, item_view, &item);
                     t.child(ci, "subViews", v);
                 }
             }
@@ -516,7 +529,7 @@ pub fn add_feature(e: &mut Editor, classifier: &str, kind: FeatureKind) -> Id {
         })
         .collect();
     for comp in compartments {
-        let row = sub_view(e, kind.row_view()).with("model", Field::Ref(feature_id.clone()));
+        let row = row_view(e, kind.row_view(), &feature_id);
         e.append(&comp, "subViews", vec![row]);
     }
     feature_id
@@ -779,6 +792,9 @@ mod tests {
         assert_eq!(nc.parent.as_deref(), Some(view.as_str()));
         let ac = doc.get(v.ref_id("attributeCompartment").unwrap()).unwrap();
         assert_eq!(ac.children("subViews").len(), 1, "new attribute gets a row");
+        // StarUML would load a missing alignment as centred; rows must say left.
+        let row = doc.get(&ac.children("subViews")[0]).unwrap();
+        assert_eq!(row.num("horizontalAlignment", -1.0), align::LEFT as f64);
         assert_eq!(doc.get(&class).unwrap().name(), "Class1");
     }
 

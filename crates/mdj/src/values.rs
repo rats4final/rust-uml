@@ -16,6 +16,37 @@ pub mod edge_position {
     pub const TAIL: i64 = 2;
 }
 
+/// `LabelView.horizontalAlignment` / `verticalAlignment` codes.
+///
+/// StarUML fills a field missing from a file with the *metamodel* default
+/// (`horizontalAlignment` = `CENTER`), not with the value its own code would
+/// have used, and leaves fields equal to that default out when saving. So a
+/// label meant to be left-aligned must store `LEFT` explicitly.
+pub mod align {
+    pub const LEFT: i64 = 0;
+    pub const RIGHT: i64 = 1;
+    pub const CENTER: i64 = 2;
+    pub const TOP: i64 = 3;
+    pub const BOTTOM: i64 = 4;
+    pub const MIDDLE: i64 = 5;
+}
+
+/// What StarUML assumes when a field is missing from a file: the metamodel
+/// `default` (StarUML also omits fields equal to it when saving). Readers must
+/// fall back to these, never to "what a new element would get".
+pub mod absent {
+    /// `EdgeView.lineStyle`.
+    pub const LINE_STYLE: i64 = super::line_style::RECTILINEAR;
+    /// `EdgeParasiticView.edgePosition`.
+    pub const EDGE_POSITION: i64 = super::edge_position::HEAD;
+    /// `LabelView.horizontalAlignment`.
+    pub const H_ALIGN: i64 = super::align::CENTER;
+    /// `ParasiticView.alpha` / `distance` have no metamodel default; a freshly
+    /// constructed label starts at 0.
+    pub const ALPHA: f64 = 0.0;
+    pub const DISTANCE: f64 = 0.0;
+}
+
 pub const DEFAULT_FONT: &str = "Arial;13;0";
 
 /// Parse a `Points` value: `"x1:y1;x2:y2;…"`. Malformed pairs are skipped.

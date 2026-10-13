@@ -1,7 +1,9 @@
 //! Box geometry for node views: what text each compartment holds and the
 //! smallest size that fits it.
 
-use mdj::values::{DEFAULT_FONT, Font};
+use std::collections::HashMap;
+
+use mdj::values::{DEFAULT_FONT, Font, absent, align};
 use mdj::{Document, Element};
 
 use crate::geom::{Color, Rect};
@@ -12,6 +14,27 @@ const PAD_Y: f64 = 4.0;
 const EMPTY_COMPARTMENT: f64 = 10.0;
 const MIN_WIDTH: f64 = 40.0;
 pub(crate) const PACKAGE_TAB_H: f64 = 14.0;
+/// Gap between the outer and inner side borders of an active class.
+pub(crate) const ACTIVE_INSET: f64 = 4.0;
+
+/// Horizontal placement of a line inside its compartment.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum HAlign {
+    Left,
+    Center,
+    Right,
+}
+
+impl HAlign {
+    /// From a stored `horizontalAlignment` code (see `mdj::values::align`).
+    fn from_code(code: i64) -> Self {
+        match code {
+            align::LEFT => HAlign::Left,
+            align::RIGHT => HAlign::Right,
+            _ => HAlign::Center,
+        }
+    }
+}
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct TextLine {
@@ -19,7 +42,7 @@ pub struct TextLine {
     pub bold: bool,
     pub italic: bool,
     pub underline: bool,
-    pub centered: bool,
+    pub align: HAlign,
 }
 
 impl TextLine {
@@ -29,16 +52,38 @@ impl TextLine {
             bold: false,
             italic: false,
             underline: false,
-            centered: true,
+            align: HAlign::Center,
         }
     }
 
-    fn row(text: String) -> Self {
+    fn aligned(text: String, align: HAlign) -> Self {
         Self {
-            centered: false,
+            align,
             ..Self::centered(text)
         }
     }
+}
+
+/// Alignment of each row of a list compartment, keyed by the row's model id.
+/// A row view without the field is centred, as StarUML loads it (the
+/// metamodel default). A feature with no row view at all is left-aligned,
+/// as StarUML creates it.
+fn row_alignments<'a>(
+    doc: &'a Document,
+    view: &Element,
+    compartment_key: &str,
+) -> HashMap<&'a str, HAlign> {
+    let Some(comp) = view.ref_id(compartment_key).and_then(|c| doc.get(c)) else {
+        return HashMap::new();
+    };
+    comp.children("subViews")
+        .iter()
+        .filter_map(|id| doc.get(id))
+        .filter_map(|row| {
+            let code = row.num("horizontalAlignment", absent::H_ALIGN as f64) as i64;
+            Some((row.ref_id("model")?, HAlign::from_code(code)))
+        })
+        .collect()
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -68,6 +113,8 @@ pub struct NodeLayout {
     pub fill: Color,
     pub line: Color,
     pub text: Color,
+    /// An active class (`isActive`): drawn with double side borders.
+    pub active: bool,
 }
 
 /// Default «keyword» shown for a model type when it has no explicit stereotype.
@@ -136,40 +183,51 @@ pub fn node_layout(doc: &Document, view: &Element, fonts: &Fonts) -> Option<Node
     groups.push(name_lines);
 
     if let Some(m) = model.filter(|_| structured) {
-        let rows = |key: &str, text: &dyn Fn(&Element) -> TextLine| -> Vec<TextLine> {
-            m.children(key)
-                .iter()
-                .filter_map(|id| doc.get(id))
-                .map(text)
-                .collect()
-        };
+        // `key` lists the features; `compartment` is the view field holding their rows.
+        let rows =
+            |key: &str, compartment: &str, text: &dyn Fn(&Element) -> TextLine| -> Vec<TextLine> {
+                let aligns = row_alignments(doc, view, compartment);
+                m.children(key)
+                    .iter()
+                    .filter_map(|id| doc.get(id))
+                    .map(|f| TextLine {
+                        align: aligns.get(f.id.as_str()).copied().unwrap_or(HAlign::Left),
+                        ..text(f)
+                    })
+                    .collect()
+            };
         if view.ref_id("enumerationLiteralCompartment").is_some()
             && !view.bool("suppressLiterals", false)
         {
-            groups.push(rows("literals", &|l| TextLine::row(l.name().to_owned())));
+            groups.push(rows("literals", "enumerationLiteralCompartment", &|l| {
+                TextLine::aligned(l.name().to_owned(), HAlign::Left)
+            }));
         }
         if view.ref_id("attributeCompartment").is_some() && !view.bool("suppressAttributes", false)
         {
-            groups.push(rows("attributes", &|a| TextLine {
+            groups.push(rows("attributes", "attributeCompartment", &|a| TextLine {
                 underline: a.bool("isStatic", false),
-                ..TextLine::row(uml::attribute_text(doc, a))
+                ..TextLine::aligned(uml::attribute_text(doc, a), HAlign::Left)
             }));
         }
         if view.ref_id("operationCompartment").is_some() && !view.bool("suppressOperations", false)
         {
             let signature = view.bool("showOperationSignature", true);
-            groups.push(rows("operations", &|o| TextLine {
+            groups.push(rows("operations", "operationCompartment", &|o| TextLine {
                 underline: o.bool("isStatic", false),
                 italic: o.bool("isAbstract", false),
-                ..TextLine::row(if signature {
-                    uml::operation_text(doc, o)
-                } else {
-                    format!(
-                        "{}{}()",
-                        uml::visibility_symbol(o.str("visibility").unwrap_or("public")),
-                        o.name()
-                    )
-                })
+                ..TextLine::aligned(
+                    if signature {
+                        uml::operation_text(doc, o)
+                    } else {
+                        format!(
+                            "{}{}()",
+                            uml::visibility_symbol(o.str("visibility").unwrap_or("public")),
+                            o.name()
+                        )
+                    },
+                    HAlign::Left,
+                )
             }));
         }
     }
@@ -186,6 +244,10 @@ pub fn node_layout(doc: &Document, view: &Element, fonts: &Fonts) -> Option<Node
         } else {
             g.len() as f64 * line_h + 2.0 * PAD_Y
         });
+    }
+    let active = structured && model.is_some_and(|m| m.bool("isActive", false));
+    if active {
+        min_w += 2.0 * ACTIVE_INSET;
     }
     let is_package = view.type_name.ends_with("PackageView")
         || view.type_name == "UMLModelView"
@@ -234,8 +296,60 @@ pub fn node_layout(doc: &Document, view: &Element, fonts: &Fonts) -> Option<Node
         fill: colour("fillColor", Color::WHITE),
         line: colour("lineColor", Color::BLACK),
         text: colour("fontColor", Color::BLACK),
+        active,
     })
 }
 
 pub(crate) const TEXT_PAD_X: f64 = PAD_X;
 pub(crate) const TEXT_PAD_Y: f64 = PAD_Y;
+
+#[cfg(test)]
+mod tests {
+    use mdj::Field;
+
+    use super::*;
+
+    /// Rows follow their stored alignment the way StarUML loads it: written
+    /// LEFT → left, field missing → centred (metamodel default).
+    #[test]
+    fn rows_follow_stored_alignment_like_staruml() {
+        let mut doc = Document::new_project();
+        let model = doc.get(doc.root()).unwrap().children("ownedElements")[0].clone();
+        let dgm = doc.get(&model).unwrap().children("ownedElements")[0].clone();
+        let (class, view) = doc.edit(|e| uml::create_node(e, &dgm, uml::NodeKind::Class, 0.0, 0.0));
+        doc.edit(|e| uml::add_feature(e, &class, uml::FeatureKind::Attribute));
+        let fonts = Fonts::default();
+        let rows = |doc: &Document| {
+            let l = node_layout(doc, doc.get(&view).unwrap(), &fonts).unwrap();
+            l.compartments[1].lines[0].align
+        };
+        assert_eq!(rows(&doc), HAlign::Left, "rust-uml writes LEFT");
+
+        // A file written without the field (like rust-uml 0.1.0) shows centred, as in StarUML.
+        let comp = doc
+            .get(&view)
+            .unwrap()
+            .ref_id("attributeCompartment")
+            .unwrap()
+            .to_owned();
+        let row = doc.get(&comp).unwrap().children("subViews")[0].clone();
+        doc.edit(|e| e.unset(&row, "horizontalAlignment"));
+        assert_eq!(rows(&doc), HAlign::Center);
+        doc.edit(|e| e.set(&row, "horizontalAlignment", Field::int(align::RIGHT)));
+        assert_eq!(rows(&doc), HAlign::Right);
+    }
+
+    #[test]
+    fn active_class_is_wider_and_flagged() {
+        let mut doc = Document::new_project();
+        let model = doc.get(doc.root()).unwrap().children("ownedElements")[0].clone();
+        let dgm = doc.get(&model).unwrap().children("ownedElements")[0].clone();
+        let (class, view) = doc.edit(|e| uml::create_node(e, &dgm, uml::NodeKind::Class, 0.0, 0.0));
+        let fonts = Fonts::default();
+        let plain = node_layout(&doc, doc.get(&view).unwrap(), &fonts).unwrap();
+        doc.edit(|e| e.set(&class, "isActive", Field::bool(true)));
+        let active = node_layout(&doc, doc.get(&view).unwrap(), &fonts).unwrap();
+        assert!(!plain.active && active.active);
+        assert_eq!(active.min_w, plain.min_w + 2.0 * ACTIVE_INSET);
+    }
+}

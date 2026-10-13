@@ -2,7 +2,7 @@
 
 use std::collections::{HashMap, HashSet};
 
-use mdj::values::{format_points, line_style, parse_points};
+use mdj::values::{absent, format_points, line_style, parse_points};
 use mdj::{Editor, Field, Id};
 
 use crate::geom::{Point, Rect};
@@ -136,7 +136,7 @@ pub fn reflow(
             continue;
         }
         let interior = stored.get(1..stored.len().saturating_sub(1)).unwrap_or(&[]);
-        let style = v.num("lineStyle", line_style::OBLIQUE as f64) as i64;
+        let style = v.num("lineStyle", absent::LINE_STYLE as f64) as i64;
         let pts: Vec<(f64, f64)> = route(tr, hr, interior, style)
             .into_iter()
             .map(|p| (p.x, p.y))

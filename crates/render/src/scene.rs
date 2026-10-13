@@ -1,11 +1,11 @@
 use std::collections::HashMap;
 use std::f64::consts::PI;
 
-use mdj::values::{DEFAULT_FONT, Font, edge_position, parse_points};
+use mdj::values::{DEFAULT_FONT, Font, absent, edge_position, parse_points};
 use mdj::{Document, Element, Id};
 
 use crate::geom::{Color, Point, Rect};
-use crate::layout::{NodeLayout, Shape, TEXT_PAD_X, TEXT_PAD_Y, node_layout};
+use crate::layout::{ACTIVE_INSET, HAlign, NodeLayout, Shape, TEXT_PAD_X, TEXT_PAD_Y, node_layout};
 use crate::route;
 use crate::text::Fonts;
 
@@ -160,11 +160,23 @@ fn draw_node(scene: &mut Scene, l: &NodeLayout, fonts: &Fonts) {
         color: l.text,
     };
     match l.shape {
-        Shape::Box => scene.prims.push(Prim::Rect {
-            rect: l.rect,
-            fill: Some(l.fill),
-            stroke: l.line,
-        }),
+        Shape::Box => {
+            scene.prims.push(Prim::Rect {
+                rect: l.rect,
+                fill: Some(l.fill),
+                stroke: l.line,
+            });
+            if l.active {
+                // UML active class: an extra vertical line inside each side.
+                for x in [l.rect.x + ACTIVE_INSET, l.rect.right() - ACTIVE_INSET] {
+                    scene.prims.push(Prim::Line {
+                        points: vec![Point::new(x, l.rect.y), Point::new(x, l.rect.bottom())],
+                        stroke: l.line,
+                        dashed: false,
+                    });
+                }
+            }
+        }
         Shape::Package { tab } => {
             scene.prims.push(Prim::Rect {
                 rect: tab,
@@ -180,6 +192,7 @@ fn draw_node(scene: &mut Scene, l: &NodeLayout, fonts: &Fonts) {
     }
     let line_h = fonts.line_height(l.font_size);
     let ascent = fonts.ascent(l.font_size);
+    let pad_x = TEXT_PAD_X + if l.active { ACTIVE_INSET } else { 0.0 };
     for (i, c) in l.compartments.iter().enumerate() {
         if i > 0 {
             scene.prims.push(Prim::Line {
@@ -195,10 +208,10 @@ fn draw_node(scene: &mut Scene, l: &NodeLayout, fonts: &Fonts) {
         for line in &c.lines {
             let s = style(line);
             let w = fonts.width(&line.text, s.size, s.bold, s.italic);
-            let x = if line.centered {
-                c.rect.x + (c.rect.w - w) / 2.0
-            } else {
-                c.rect.x + TEXT_PAD_X
+            let x = match line.align {
+                HAlign::Left => c.rect.x + pad_x,
+                HAlign::Center => c.rect.x + (c.rect.w - w) / 2.0,
+                HAlign::Right => c.rect.right() - pad_x - w,
             };
             scene.prims.push(Prim::Text {
                 rect: Rect::new(x, y, w, line_h),
@@ -221,7 +234,7 @@ fn edge_points(view: &Element, rects: &HashMap<&str, Rect>) -> Option<Vec<Point>
     if stored.len() >= 2 {
         return Some(stored);
     }
-    let style = view.num("lineStyle", 1.0) as i64;
+    let style = view.num("lineStyle", absent::LINE_STYLE as f64) as i64;
     Some(route::route(tail, head, &[], style))
 }
 
@@ -368,9 +381,9 @@ fn draw_edge(
         let label = view.ref_id(key).and_then(|id| doc.get(id));
         let (pos, alpha, distance) = match label {
             Some(l) => (
-                l.num("edgePosition", edge_position::MIDDLE as f64) as i64,
-                l.num("alpha", PI / 2.0),
-                l.num("distance", 15.0),
+                l.num("edgePosition", absent::EDGE_POSITION as f64) as i64,
+                l.num("alpha", absent::ALPHA),
+                l.num("distance", absent::DISTANCE),
             ),
             None => default_label_placement(key),
         };
@@ -490,6 +503,44 @@ mod tests {
         let mult = label_point(&pts, edge_position::HEAD, PI / 6.0, 25.0);
         assert!(role.y > 100.0, "role name below: {role:?}");
         assert!(mult.y < 100.0, "multiplicity above: {mult:?}");
+    }
+
+    /// StarUML leaves `edgePosition` out when it equals the metamodel default
+    /// (HEAD). Such a label must sit at the head end, not mid-line.
+    #[test]
+    fn label_without_edge_position_sits_at_head() {
+        let file = r#"{"_type":"Project","_id":"P","ownedElements":[
+          {"_type":"UMLModel","_id":"M","ownedElements":[
+            {"_type":"UMLClass","_id":"A","name":"A"},
+            {"_type":"UMLClass","_id":"B","name":"B"},
+            {"_type":"UMLAssociation","_id":"S",
+             "end1":{"_type":"UMLAssociationEnd","_id":"E1","reference":{"$ref":"A"}},
+             "end2":{"_type":"UMLAssociationEnd","_id":"E2","reference":{"$ref":"B"},"name":"role"}},
+            {"_type":"UMLClassDiagram","_id":"D","ownedViews":[
+              {"_type":"UMLClassView","_id":"VA","model":{"$ref":"A"},"left":400,"top":0,"width":100,"height":40},
+              {"_type":"UMLClassView","_id":"VB","model":{"$ref":"B"},"left":0,"top":0,"width":100,"height":40},
+              {"_type":"UMLAssociationView","_id":"VS","model":{"$ref":"S"},"tail":{"$ref":"VA"},"head":{"$ref":"VB"},
+               "lineStyle":1,"points":"400:20;100:20","headRoleNameLabel":{"$ref":"L"},
+               "subViews":[{"_type":"EdgeLabelView","_id":"L","hostEdge":{"$ref":"VS"},"alpha":-0.5235987755982988,"distance":30}]}
+            ]}]}]}"#;
+        let doc = Document::from_json_str(file).unwrap();
+        let scene = build_scene(&doc, "D", &Fonts::default());
+        let role = scene
+            .prims
+            .iter()
+            .find_map(|p| match p {
+                Prim::Text { rect, text, .. } if text == "role" => Some(*rect),
+                _ => None,
+            })
+            .expect("role label drawn");
+        assert!(
+            role.center().x < 160.0,
+            "near the head (x=100), not mid-line: {role:?}"
+        );
+        assert!(
+            role.center().y > 20.0,
+            "below the line, as StarUML draws it: {role:?}"
+        );
     }
 
     #[test]
