@@ -62,7 +62,7 @@ jobs:
           for bin in rust-uml rust-uml-cli; do
             cp "target/${{ matrix.target }}/release/${bin}${{ matrix.ext }}" "dist/$name/"
           done
-          cp README.md LICENSE-MIT LICENSE-APACHE ATTRIBUTION.md examples/shapes.mdj "dist/$name/"
+          cp README.md LICENSE-MIT LICENSE-APACHE ATTRIBUTION.md examples/shapes.mdj examples/structures.mdj "dist/$name/"
           cd dist
           if [ "${{ runner.os }}" = "Windows" ]; then
             7z a "$name.zip" "$name" > /dev/null
