@@ -25,6 +25,7 @@ ab_glyph = "0.2"
 anyhow = "1"
 base64 = "0.23"
 eframe = { version = "0.36", default-features = false }
+getrandom = "0.3"
 egui = { version = "0.36", default-features = false }
 egui_kittest = { version = "0.36", features = ["eframe"] }
 indexmap = "2"

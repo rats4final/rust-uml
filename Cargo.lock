@@ -405,6 +405,7 @@ version = "0.1.0"
 dependencies = [
  "base64",
  "engine",
+ "getrandom 0.3.4",
  "render",
  "serde_json",
  "uml",

@@ -2,8 +2,13 @@
 //!
 //! The transport is newline-delimited JSON-RPC 2.0 (MCP's stdio transport):
 //! feed each line to [`Server::handle_line`] and write back what it returns.
-//! The server holds one [`Session`]; files are only read and written inside
-//! its [`Workspace`].
+//!
+//! The tools run in one of two places:
+//! - [`Server::new`]: an in-process [`Session`] nobody sees; files are only
+//!   read and written inside its [`Workspace`].
+//! - [`Server::bridge`]: a running `rust-uml --control` window, over its
+//!   control channel ([`crate::control`]), so the user watches the agent work.
+//!   The app runs the very same tools ([`call_tool`]) on the model it shows.
 //!
 //! Every tool is a thin wrapper over the command registry, so an agent can do
 //! exactly what the UI does: `command_run` and `command_batch` reach every
@@ -14,6 +19,7 @@ use base64::Engine as _;
 use engine::{Registry, Session};
 use serde_json::{Map, Value, json};
 
+use crate::bridge::BridgeClient;
 use crate::script;
 use crate::workspace::Workspace;
 
@@ -44,11 +50,28 @@ positions, render_preview shows the diagram as an image. Check your work with re
 Files: model_open / model_save read and write inside the workspace folder only. Unsaved changes \
 are lost unless you call model_save. edit.undo undoes one command.";
 
+/// Added to the instructions when the tools drive a running window.
+const LIVE_INSTRUCTIONS: &str = "\n\n\
+You are connected to a running rust-uml window: the user sees every change as you make it. \
+ui_inspect tells you what they have open and selected; ui_screenshot shows you the whole window. \
+model_new and model_open replace what the user is looking at, so ask before using them. Files are \
+confined to the folder the app was started with (--control-root).";
+
 /// One MCP server session.
 pub struct Server {
     reg: Registry,
-    session: Session,
-    workspace: Option<Workspace>,
+    backend: Backend,
+}
+
+/// Where the tools run.
+enum Backend {
+    /// An in-process model nobody sees.
+    Local {
+        session: Box<Session>,
+        workspace: Option<Workspace>,
+    },
+    /// A running app, over its control channel.
+    Bridge(BridgeClient),
 }
 
 /// JSON-RPC error codes.
@@ -63,13 +86,23 @@ impl Server {
     pub fn new(workspace: Option<Workspace>) -> Self {
         Self {
             reg: Registry::default(),
-            session: Session::default(),
-            workspace,
+            backend: Backend::Local {
+                session: Box::default(),
+                workspace,
+            },
         }
     }
 
-    pub fn session(&self) -> &Session {
-        &self.session
+    /// A server whose tools drive a running `rust-uml --control` window.
+    pub fn bridge(client: BridgeClient) -> Self {
+        Self {
+            reg: Registry::default(),
+            backend: Backend::Bridge(client),
+        }
+    }
+
+    fn is_bridge(&self) -> bool {
+        matches!(self.backend, Backend::Bridge(_))
     }
 
     /// Handle one line of input; returns the line to send back, if any
@@ -104,9 +137,9 @@ impl Server {
         // Notifications (no id) never get a reply.
         let id = id?;
         let result = match method {
-            "initialize" => Ok(initialize(&params)),
+            "initialize" => Ok(initialize(&params, self.is_bridge())),
             "ping" => Ok(json!({})),
-            "tools/list" => Ok(json!({ "tools": tool_list() })),
+            "tools/list" => Ok(json!({ "tools": tool_list(self.is_bridge()) })),
             "tools/call" => self.call(&params),
             "resources/list" => Ok(json!({ "resources": [] })),
             "prompts/list" => Ok(json!({ "prompts": [] })),
@@ -123,56 +156,54 @@ impl Server {
             .get("name")
             .and_then(Value::as_str)
             .ok_or((INVALID_PARAMS, "missing tool `name`".to_owned()))?;
-        let Some(tool) = TOOLS.iter().find(|t| t.name == name) else {
-            return Err((INVALID_PARAMS, format!("unknown tool `{name}`")));
-        };
-        let empty = Map::new();
-        let args = match params.get("arguments") {
-            None | Some(Value::Null) => &empty,
-            Some(Value::Object(a)) => a,
-            Some(_) => return Ok(tool_error("`arguments` must be an object")),
-        };
-        if let Some(k) = args
-            .keys()
-            .find(|k| !tool.args.iter().any(|a| a.name == k.as_str()))
-        {
-            return Ok(tool_error(&format!(
-                "unknown argument `{k}` for {name} (accepts: {})",
-                tool.args
-                    .iter()
-                    .map(|a| a.name)
-                    .collect::<Vec<_>>()
-                    .join(", ")
-            )));
+        let arguments = params.get("arguments").unwrap_or(&Value::Null);
+        match &mut self.backend {
+            Backend::Local { session, workspace } => {
+                let mut target = Target::new(&self.reg, session, workspace.as_ref());
+                call_tool(&mut target, name, arguments).map_err(|e| (INVALID_PARAMS, e))
+            }
+            Backend::Bridge(client) => bridge_call(client, name, arguments),
         }
-        Ok(match (tool.run)(self, args) {
-            Ok(Reply::Json(v)) => json!({
-                "content": [{ "type": "text", "text": pretty(&v) }],
-                "isError": false,
-            }),
-            Ok(Reply::Image { png, note }) => json!({
-                "content": [
-                    { "type": "image", "data": base64::engine::general_purpose::STANDARD.encode(png), "mimeType": "image/png" },
-                    { "type": "text", "text": note },
-                ],
-                "isError": false,
-            }),
-            Err(e) => tool_error(&e),
-        })
+    }
+}
+
+/// What a tool works on: the open model, and the folder files may be read
+/// from and written to. The headless server and the running app each provide
+/// one, so the tools behave the same in both.
+pub struct Target<'a> {
+    pub reg: &'a Registry,
+    pub session: &'a mut Session,
+    pub workspace: Option<&'a Workspace>,
+    /// Set when a tool replaced the model (new, open), so a window showing it
+    /// can reset its view.
+    pub replaced: bool,
+}
+
+impl<'a> Target<'a> {
+    pub fn new(
+        reg: &'a Registry,
+        session: &'a mut Session,
+        workspace: Option<&'a Workspace>,
+    ) -> Self {
+        Self {
+            reg,
+            session,
+            workspace,
+            replaced: false,
+        }
     }
 
-    fn workspace(&self) -> Result<&Workspace, String> {
-        self.workspace
-            .as_ref()
-            .ok_or_else(|| "no workspace folder: start the server with --root <folder>".into())
+    fn workspace(&self) -> Result<&'a Workspace, String> {
+        self.workspace.ok_or_else(|| {
+            "no workspace folder: start the server with --root <folder> (the app: --control-root)"
+                .into()
+        })
     }
 
     fn diagram_arg(&mut self, args: &Map<String, Value>) -> Result<Option<String>, String> {
         match args.get("diagram") {
             None | Some(Value::Null) => Ok(None),
-            Some(Value::String(d)) => {
-                crate::find_diagram(&self.reg, &mut self.session, d).map(Some)
-            }
+            Some(Value::String(d)) => crate::find_diagram(self.reg, self.session, d).map(Some),
             Some(_) => Err("`diagram` must be a diagram id or name".into()),
         }
     }
@@ -195,7 +226,7 @@ impl Server {
     fn info(&mut self) -> Result<Value, String> {
         let diagrams = self
             .reg
-            .run(&mut self.session, "model.diagrams", &json!({}))
+            .run(self.session, "model.diagrams", &json!({}))
             .map_err(|e| e.to_string())?;
         Ok(json!({
             "file": self.session.file_name,
@@ -204,9 +235,97 @@ impl Server {
             "elements": self.session.doc.len(),
             "activeDiagram": self.session.active_diagram,
             "diagrams": diagrams,
-            "workspace": self.workspace.as_ref().map(|w| w.root().display().to_string()),
+            "workspace": self.workspace.map(|w| w.root().display().to_string()),
         }))
     }
+}
+
+/// Run the tool `name` on `target`. The value is a `tools/call` result
+/// (content blocks and `isError`); `Err` means there is no such tool.
+pub fn call_tool(target: &mut Target<'_>, name: &str, arguments: &Value) -> Result<Value, String> {
+    let Some(tool) = TOOLS.iter().find(|t| t.name == name) else {
+        return Err(format!("unknown tool `{name}`"));
+    };
+    let empty = Map::new();
+    let args = match arguments {
+        Value::Null => &empty,
+        Value::Object(a) => a,
+        _ => return Ok(tool_error("`arguments` must be an object")),
+    };
+    if let Some(msg) = unknown_argument(tool, args) {
+        return Ok(tool_error(&msg));
+    }
+    Ok(match (tool.run)(target, args) {
+        Ok(Reply::Json(v)) => json!({
+            "content": [{ "type": "text", "text": pretty(&v) }],
+            "isError": false,
+        }),
+        Ok(Reply::Image { png, note }) => image_result(
+            &base64::engine::general_purpose::STANDARD.encode(png),
+            &note,
+        ),
+        Err(e) => tool_error(&e),
+    })
+}
+
+fn unknown_argument(tool: &Tool, args: &Map<String, Value>) -> Option<String> {
+    let k = args
+        .keys()
+        .find(|k| !tool.args.iter().any(|a| a.name == k.as_str()))?;
+    Some(format!(
+        "unknown argument `{k}` for {} (accepts: {})",
+        tool.name,
+        tool.args
+            .iter()
+            .map(|a| a.name)
+            .collect::<Vec<_>>()
+            .join(", ")
+    ))
+}
+
+/// A tool call in bridge mode: the window's own tools go to their control
+/// method, the rest run in the app as they would here.
+fn bridge_call(
+    client: &mut BridgeClient,
+    name: &str,
+    arguments: &Value,
+) -> Result<Value, (i64, String)> {
+    if let Some(tool) = LIVE_TOOLS.iter().find(|t| t.name == name) {
+        let empty = Map::new();
+        let args = match arguments {
+            Value::Null => &empty,
+            Value::Object(a) => a,
+            _ => return Ok(tool_error("`arguments` must be an object")),
+        };
+        if let Some(msg) = unknown_argument(tool, args) {
+            return Ok(tool_error(&msg));
+        }
+        let screenshot = name == "ui_screenshot";
+        let method = if screenshot {
+            "ui.screenshot"
+        } else {
+            "ui.inspect"
+        };
+        return Ok(match client.call(method, &json!({}), true) {
+            Ok(v) if screenshot => image_result(
+                v["png_base64"].as_str().unwrap_or_default(),
+                &format!("the rust-uml window, {}×{} pixels", v["width"], v["height"]),
+            ),
+            Ok(v) => json!({
+                "content": [{ "type": "text", "text": pretty(&v) }],
+                "isError": false,
+            }),
+            Err(e) => tool_error(&e),
+        });
+    }
+    let Some(tool) = TOOLS.iter().find(|t| t.name == name) else {
+        return Err((INVALID_PARAMS, format!("unknown tool `{name}`")));
+    };
+    let params = json!({ "name": name, "arguments": arguments });
+    Ok(match client.call("tool.call", &params, tool.read_only) {
+        Ok(result) => result,
+        Err(e) => tool_error(&e),
+    })
 }
 
 enum Reply {
@@ -214,7 +333,7 @@ enum Reply {
     Image { png: Vec<u8>, note: String },
 }
 
-type ToolFn = fn(&mut Server, &Map<String, Value>) -> Result<Reply, String>;
+type ToolFn = fn(&mut Target<'_>, &Map<String, Value>) -> Result<Reply, String>;
 
 struct Arg {
     name: &'static str,
@@ -275,7 +394,8 @@ const TOOLS: &[Tool] = &[
         destructive: true,
         run: |s, a| {
             s.guard_unsaved(a)?;
-            s.session = Session::default();
+            *s.session = Session::default();
+            s.replaced = true;
             s.info().map(Reply::Json)
         },
     },
@@ -302,8 +422,9 @@ const TOOLS: &[Tool] = &[
                 .file_name()
                 .map(|n| n.to_string_lossy().into_owned())
                 .unwrap_or_default();
-            s.session = Session::open(&text, name, Some(real.display().to_string()))
+            *s.session = Session::open(&text, name, Some(real.display().to_string()))
                 .map_err(|e| format!("{path}: {e}"))?;
+            s.replaced = true;
             s.info().map(Reply::Json)
         },
     },
@@ -372,7 +493,7 @@ const TOOLS: &[Tool] = &[
             let d = s.diagram_arg(a)?;
             let p = json!({ "diagram": d });
             s.reg
-                .run(&mut s.session, "diagram.inspect", &p)
+                .run(s.session, "diagram.inspect", &p)
                 .map(Reply::Json)
                 .map_err(|e| e.to_string())
         },
@@ -443,13 +564,13 @@ const TOOLS: &[Tool] = &[
             let bytes = if svg {
                 let r = s
                     .reg
-                    .run(&mut s.session, "export.svg", &p)
+                    .run(s.session, "export.svg", &p)
                     .map_err(|e| e.to_string())?;
                 r["svg"].as_str().unwrap_or_default().as_bytes().to_vec()
             } else {
                 let r = s
                     .reg
-                    .run(&mut s.session, "export.png", &p)
+                    .run(s.session, "export.png", &p)
                     .map_err(|e| e.to_string())?;
                 base64::engine::general_purpose::STANDARD
                     .decode(r["png_base64"].as_str().unwrap_or_default())
@@ -483,7 +604,7 @@ const TOOLS: &[Tool] = &[
                 p["name"] = n.clone();
             }
             s.reg
-                .run(&mut s.session, "import.mermaid", &p)
+                .run(s.session, "import.mermaid", &p)
                 .map(Reply::Json)
                 .map_err(|e| e.to_string())
         },
@@ -514,7 +635,7 @@ const TOOLS: &[Tool] = &[
                 .reg
                 .specs()
                 .iter()
-                .map(|c| (c, (c.enabled)(&s.session)))
+                .map(|c| (c, (c.enabled)(s.session)))
                 .filter(|(c, on)| {
                     (!enabled_only || *on)
                         && filter.as_ref().is_none_or(|f| {
@@ -550,7 +671,7 @@ const TOOLS: &[Tool] = &[
                 Some(_) => return Err("`params` must be an object".into()),
             };
             s.reg
-                .run(&mut s.session, id, &params)
+                .run(s.session, id, &params)
                 .map(Reply::Json)
                 .map_err(|e| e.to_string())
         },
@@ -574,7 +695,7 @@ const TOOLS: &[Tool] = &[
         run: |s, a| {
             let steps = script::parse_steps(a.get("steps").unwrap_or(&Value::Null))?;
             let atomic = a.get("atomic").and_then(Value::as_bool).unwrap_or(true);
-            match script::run(&s.reg, &mut s.session, &steps, atomic) {
+            match script::run(s.reg, s.session, &steps, atomic) {
                 Ok(results) => Ok(Reply::Json(json!({ "results": results }))),
                 Err(f) => Err(f.to_string()),
             }
@@ -588,7 +709,29 @@ fn str_arg<'a>(a: &'a Map<String, Value>, key: &str) -> Result<&'a str, String> 
         .ok_or_else(|| format!("`{key}` must be text"))
 }
 
-fn initialize(params: &Value) -> Value {
+/// Tools that only exist when driving a running window (bridge mode).
+const LIVE_TOOLS: &[Tool] = &[
+    Tool {
+        name: "ui_inspect",
+        title: "Inspect window",
+        description: "What the user has open in the rust-uml window: file, unsaved changes, open diagram, selection, chosen tool, zoom, status line and open dialogs.",
+        args: &[],
+        read_only: true,
+        destructive: false,
+        run: |_, _| Err("ui_inspect needs a running window (rust-uml-cli mcp --bridge)".into()),
+    },
+    Tool {
+        name: "ui_screenshot",
+        title: "Screenshot window",
+        description: "A PNG of the whole rust-uml window as the user sees it, panels included. To see just a diagram, use render_preview.",
+        args: &[],
+        read_only: true,
+        destructive: false,
+        run: |_, _| Err("ui_screenshot needs a running window (rust-uml-cli mcp --bridge)".into()),
+    },
+];
+
+fn initialize(params: &Value, bridge: bool) -> Value {
     let asked = params.get("protocolVersion").and_then(Value::as_str);
     let version = asked
         .and_then(|v| PROTOCOL_VERSIONS.iter().find(|p| **p == v))
@@ -602,13 +745,19 @@ fn initialize(params: &Value) -> Value {
             "title": "rust-uml",
             "version": env!("CARGO_PKG_VERSION"),
         },
-        "instructions": INSTRUCTIONS,
+        "instructions": if bridge {
+            format!("{INSTRUCTIONS}{LIVE_INSTRUCTIONS}")
+        } else {
+            INSTRUCTIONS.to_owned()
+        },
     })
 }
 
-fn tool_list() -> Vec<Value> {
+fn tool_list(bridge: bool) -> Vec<Value> {
+    let live: &[Tool] = if bridge { LIVE_TOOLS } else { &[] };
     TOOLS
         .iter()
+        .chain(live)
         .map(|t| {
             let mut props = Map::new();
             for a in t.args {
@@ -641,6 +790,16 @@ fn tool_list() -> Vec<Value> {
             })
         })
         .collect()
+}
+
+fn image_result(png_base64: &str, note: &str) -> Value {
+    json!({
+        "content": [
+            { "type": "image", "data": png_base64, "mimeType": "image/png" },
+            { "type": "text", "text": note },
+        ],
+        "isError": false,
+    })
 }
 
 fn tool_error(message: &str) -> Value {

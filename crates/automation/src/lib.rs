@@ -7,7 +7,11 @@
 //!   results of earlier steps (`"$cart.view"`).
 //! - [`workspace`]: file access confined to one folder.
 //! - [`mcp`]: a Model Context Protocol server (JSON-RPC over stdio lines).
+//! - [`control`]: the running app's control channel (loopback TCP, token),
+//!   and [`bridge`]: its client, so the MCP server can drive a live window.
 
+pub mod bridge;
+pub mod control;
 pub mod mcp;
 pub mod script;
 pub mod workspace;
