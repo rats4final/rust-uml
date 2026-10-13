@@ -47,6 +47,68 @@ const MERMAID_EXAMPLES: &[(&str, &str)] = &[
     ),
 ];
 
+/// Work sent from outside the window (the desktop app's control channel),
+/// run on the UI thread at the start of the next frame.
+pub type RemoteJob = Box<dyn FnOnce(&mut Remote<'_>) + Send>;
+
+/// Receives the window's pixels once a requested capture is ready.
+pub type Capture = Box<dyn FnOnce(&egui::ColorImage) + Send>;
+
+/// The app as a [`RemoteJob`] sees it.
+pub struct Remote<'a> {
+    app: &'a mut UmlApp,
+}
+
+impl Remote<'_> {
+    /// The command registry and the open model.
+    pub fn parts(&mut self) -> (&Registry, &mut Session) {
+        (&self.app.registry, &mut self.app.session)
+    }
+
+    /// The open model was replaced: reset the view onto it.
+    pub fn session_replaced(&mut self) {
+        self.app.reset_view();
+    }
+
+    /// What the user sees, for agents.
+    pub fn inspect(&self) -> Value {
+        let app = &self.app;
+        let s = &app.session;
+        let diagram = s.active_diagram.as_deref().and_then(|d| s.doc.get(d));
+        let tool = match app.tool {
+            Tool::Select => "Select",
+            Tool::Node(n) => n.id,
+            Tool::Edge(e) => e.id,
+        };
+        let dialogs: Vec<&str> = [
+            (app.confirm.is_some(), "discard"),
+            (app.path_prompt.is_some(), "path"),
+            (app.mermaid.is_some(), "mermaid"),
+        ]
+        .into_iter()
+        .filter_map(|(open, name)| open.then_some(name))
+        .collect();
+        json!({
+            "file": s.file_name,
+            "path": s.path,
+            "unsavedChanges": s.doc.is_modified(),
+            "activeDiagram": diagram.map(|d| json!({
+                "id": d.id, "name": d.name(), "type": d.type_name,
+            })),
+            "selection": s.selection,
+            "tool": tool,
+            "zoom": app.canvas.zoom(),
+            "status": app.status,
+            "dialogs": dialogs,
+        })
+    }
+
+    /// Capture the window as drawn at the end of this frame.
+    pub fn screenshot(&mut self, done: Capture) {
+        self.app.captures.push(done);
+    }
+}
+
 /// Developer aid: capture the window after a few frames, then close.
 struct Screenshot {
     frames_left: u32,
@@ -69,6 +131,10 @@ pub struct UmlApp {
     scene: Option<(u64, String, Scene)>,
     title: String,
     screenshot: Option<Screenshot>,
+    remote: Option<std::sync::mpsc::Receiver<RemoteJob>>,
+    /// Waiting for the next window capture.
+    captures: Vec<Capture>,
+    capture_requested: bool,
 }
 
 impl UmlApp {
@@ -88,6 +154,48 @@ impl UmlApp {
             scene: None,
             title: String::new(),
             screenshot: None,
+            remote: None,
+            captures: Vec::new(),
+            capture_requested: false,
+        }
+    }
+
+    /// Run jobs sent on `jobs` (by the control channel). Whoever sends one
+    /// should also wake the window (`egui::Context::request_repaint`).
+    pub fn with_remote(mut self, jobs: std::sync::mpsc::Receiver<RemoteJob>) -> Self {
+        self.remote = Some(jobs);
+        self
+    }
+
+    fn run_remote_jobs(&mut self) {
+        let Some(jobs) = self.remote.take() else {
+            return;
+        };
+        while let Ok(job) = jobs.try_recv() {
+            job(&mut Remote { app: self });
+        }
+        self.remote = Some(jobs);
+    }
+
+    fn drive_captures(&mut self, ctx: &egui::Context) {
+        if self.captures.is_empty() {
+            return;
+        }
+        let image = ctx.input(|i| {
+            i.raw.events.iter().find_map(|e| match e {
+                egui::Event::Screenshot { image, .. } => Some(image.clone()),
+                _ => None,
+            })
+        });
+        if let Some(image) = image {
+            for done in self.captures.drain(..) {
+                done(&image);
+            }
+            self.capture_requested = false;
+        } else if !self.capture_requested {
+            self.capture_requested = true;
+            ctx.send_viewport_cmd(egui::ViewportCommand::Screenshot(egui::UserData::default()));
+            ctx.request_repaint();
         }
     }
 
@@ -152,6 +260,10 @@ impl UmlApp {
 
     fn replace_session(&mut self, session: Session) {
         self.session = session;
+        self.reset_view();
+    }
+
+    fn reset_view(&mut self) {
         self.canvas.reset_view();
         self.properties = Properties::default();
         self.tool = Tool::Select;
@@ -556,7 +668,9 @@ impl UmlApp {
 impl eframe::App for UmlApp {
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         let ctx = ui.ctx().clone();
+        let diagram_before = self.session.active_diagram.clone();
         self.handle_file_events();
+        self.run_remote_jobs();
         self.shortcuts(&ctx);
 
         let title = format!(
@@ -633,7 +747,6 @@ impl eframe::App for UmlApp {
                 }
             });
 
-        let diagram_before = self.session.active_diagram.clone();
         for (id, params) in commands {
             self.exec(id, params);
         }
@@ -644,6 +757,7 @@ impl eframe::App for UmlApp {
             self.canvas.request_fit();
         }
         self.drive_screenshot(&ctx);
+        self.drive_captures(&ctx);
     }
 }
 
@@ -722,6 +836,79 @@ mod tests {
         );
         assert_eq!(app.tool, Tool::Select, "the tool resets after one use");
         app.session.selection[0].clone()
+    }
+
+    #[test]
+    fn remote_jobs_run_between_frames() {
+        let (jobs, rx) = std::sync::mpsc::channel::<RemoteJob>();
+        let mut h = Harness::builder()
+            .with_size(Vec2::new(1280.0, 800.0))
+            .build_eframe(|cc| UmlApp::new(cc, Box::new(NoFiles)).with_remote(rx));
+        h.run();
+
+        // An agent draws a class and looks at what the user sees.
+        let (seen_tx, seen) = std::sync::mpsc::channel::<Value>();
+        jobs.send(Box::new(move |r: &mut Remote<'_>| {
+            let (reg, s) = r.parts();
+            reg.run(
+                s,
+                "diagram.add",
+                &json!({"type": "UMLClassDiagram", "name": "Live"}),
+            )
+            .unwrap();
+            reg.run(
+                s,
+                "node.create",
+                &json!({"kind": "Class", "x": 60, "y": 60}),
+            )
+            .unwrap();
+            seen_tx.send(r.inspect()).unwrap();
+        }))
+        .unwrap();
+        h.run();
+        let seen = seen.try_recv().unwrap();
+        assert_eq!(seen["activeDiagram"]["name"], "Live");
+        assert_eq!(seen["unsavedChanges"], true);
+        assert_eq!(seen["tool"], "Select");
+        assert_eq!(seen["dialogs"], json!([]));
+        let app = h.state();
+        assert_eq!(views_of_type(app, "UMLClassView").len(), 1);
+        assert!(
+            matches!(&app.scene, Some((_, d, _)) if app.session.active_diagram.as_ref() == Some(d)),
+            "the window draws the agent's diagram"
+        );
+
+        // A window capture is handed over when the frame arrives.
+        let (shot_tx, shot) = std::sync::mpsc::channel::<[usize; 2]>();
+        jobs.send(Box::new(move |r: &mut Remote<'_>| {
+            r.screenshot(Box::new(move |image| shot_tx.send(image.size).unwrap()));
+        }))
+        .unwrap();
+        h.run();
+        assert!(h.state().capture_requested);
+        h.input_mut().events.push(egui::Event::Screenshot {
+            viewport_id: egui::ViewportId::ROOT,
+            user_data: egui::UserData::default(),
+            image: std::sync::Arc::new(egui::ColorImage::filled([3, 2], egui::Color32::RED)),
+        });
+        h.run();
+        assert_eq!(shot.try_recv().unwrap(), [3, 2]);
+        assert!(!h.state().capture_requested);
+
+        // Replacing the model resets the view onto the new one.
+        h.state_mut().tool = match uml::tool("Class") {
+            Some(uml::Tool::Node(n)) => Tool::Node(n),
+            _ => panic!("no Class tool"),
+        };
+        jobs.send(Box::new(|r: &mut Remote<'_>| {
+            let (_, s) = r.parts();
+            *s = Session::default();
+            r.session_replaced();
+        }))
+        .unwrap();
+        h.run();
+        assert_eq!(h.state().tool, Tool::Select);
+        assert!(views_of_type(h.state(), "UMLClassView").is_empty());
     }
 
     #[test]

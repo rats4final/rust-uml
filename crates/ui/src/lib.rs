@@ -11,7 +11,7 @@ mod fonts;
 mod platform;
 mod properties;
 
-pub use app::UmlApp;
+pub use app::{Capture, Remote, RemoteJob, UmlApp};
 pub use platform::{FileEvent, FileKind, FileService};
 
 /// Shown in the window title and About box. Deliberately not "StarUML":
