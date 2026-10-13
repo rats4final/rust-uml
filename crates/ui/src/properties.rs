@@ -29,6 +29,35 @@ const INSTANCES: &[&str] = &[
     "UMLNodeInstance",
 ];
 const CONNECTOR_KIND: &[&str] = &["assembly", "delegation"];
+const PSEUDOSTATE_KIND: &[&str] = &[
+    "initial",
+    "deepHistory",
+    "shallowHistory",
+    "join",
+    "fork",
+    "junction",
+    "choice",
+    "entryPoint",
+    "exitPoint",
+    "terminate",
+];
+const ACTION_KIND: &[&str] = &[
+    "opaque",
+    "create",
+    "destroy",
+    "read",
+    "write",
+    "insert",
+    "delete",
+    "sendSignal",
+    "acceptSignal",
+    "triggerEvent",
+    "acceptEvent",
+    "structured",
+    "timeEvent",
+    "callBehavior",
+    "callOperation",
+];
 const VISIBILITY: &[&str] = &["public", "protected", "private", "package"];
 const DIRECTION: &[&str] = &["in", "inout", "out", "return"];
 const NAVIGABLE: &[&str] = &["unspecified", "navigable", "notNavigable"];
@@ -174,6 +203,33 @@ impl Properties {
             }
         }
         match t {
+            "UMLTransition" => {
+                self.field(ui, el, "Guard", "guard", el.str("guard").unwrap_or(""), out);
+            }
+            "UMLControlFlow" | "UMLObjectFlow" => {
+                self.field(ui, el, "Guard", "guard", el.str("guard").unwrap_or(""), out);
+                self.field(
+                    ui,
+                    el,
+                    "Weight",
+                    "weight",
+                    el.str("weight").unwrap_or(""),
+                    out,
+                );
+            }
+            "UMLPseudostate" => {
+                ui.label("Kind");
+                combo(ui, el, "kind", PSEUDOSTATE_KIND, "initial", out);
+                ui.end_row();
+            }
+            "UMLAction" => {
+                ui.label("Kind");
+                combo(ui, el, "kind", ACTION_KIND, "opaque", out);
+                ui.end_row();
+            }
+            "UMLObjectNode" => {
+                self.field(ui, el, "Type", "type", uml::var_text(doc, el, "type"), out);
+            }
             "UMLSlot" => {
                 self.field(ui, el, "Value", "value", el.str("value").unwrap_or(""), out);
             }

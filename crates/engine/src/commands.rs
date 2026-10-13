@@ -461,7 +461,7 @@ fn open_diagram(s: &mut Session, p: &Value) -> Result<Value, CommandError> {
 
 fn add_diagram(s: &mut Session, p: &Value) -> Result<Value, CommandError> {
     let ty = params::str(p, "type")?;
-    let Some(&(diagram_type, _, base)) = uml::DIAGRAMS
+    let Some(&(diagram_type, _, _)) = uml::DIAGRAMS
         .iter()
         .find(|(t, label, _)| *t == ty || label.eq_ignore_ascii_case(ty))
     else {
@@ -486,25 +486,10 @@ fn add_diagram(s: &mut Session, p: &Value) -> Result<Value, CommandError> {
             }
         },
     };
-    let id = s.edit(|e, _| {
-        let taken: HashSet<String> = e
-            .doc()
-            .get(&parent)
-            .map(|p| {
-                p.children("ownedElements")
-                    .iter()
-                    .filter_map(|c| e.doc().get(c))
-                    .map(|c| c.name().to_owned())
-                    .collect()
-            })
-            .unwrap_or_default();
-        let name = (1..=taken.len() + 1)
-            .map(|n| format!("{base}{n}"))
-            .find(|n| !taken.contains(n))
-            .unwrap_or_else(|| base.to_owned());
-        let el = Element::new(e.new_id(), diagram_type).with("name", Field::str(name));
-        Ok(e.append(&parent, "ownedElements", vec![el]))
-    })?;
+    // Statechart/activity/profile diagrams get their state machine, activity
+    // or profile, as in StarUML.
+    let id =
+        s.edit(|e, _| uml::create_diagram(e, &parent, diagram_type).map_err(CommandError::Failed))?;
     s.active_diagram = Some(id.clone());
     s.selection = vec![id.clone()];
     Ok(json!({ "id": id }))
@@ -651,6 +636,44 @@ const ENUMS: &[(&str, &str, &[&str])] = &[
     ),
     ("direction", "", &["in", "inout", "out", "return"]),
     ("kind", "UMLConnector", &["assembly", "delegation"]),
+    (
+        "kind",
+        "UMLPseudostate",
+        &[
+            "initial",
+            "deepHistory",
+            "shallowHistory",
+            "join",
+            "fork",
+            "junction",
+            "choice",
+            "entryPoint",
+            "exitPoint",
+            "terminate",
+        ],
+    ),
+    (
+        "kind",
+        "UMLAction",
+        &[
+            "opaque",
+            "create",
+            "destroy",
+            "read",
+            "write",
+            "insert",
+            "delete",
+            "sendSignal",
+            "acceptSignal",
+            "triggerEvent",
+            "acceptEvent",
+            "structured",
+            "timeEvent",
+            "callBehavior",
+            "callOperation",
+        ],
+    ),
+    ("kind", "UMLTransition", &["external", "internal", "local"]),
     (
         "kind",
         "Tag",

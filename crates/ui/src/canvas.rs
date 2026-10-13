@@ -356,6 +356,27 @@ impl Canvas {
                         painter.rect_stroke(r, CornerRadius::ZERO, stroke, StrokeKind::Middle);
                     }
                 }
+                Prim::RoundRect {
+                    rect,
+                    radius,
+                    fill,
+                    stroke,
+                } => {
+                    let r = Rect::from_min_max(
+                        to_screen(rect.x, rect.y),
+                        to_screen(rect.right(), rect.bottom()),
+                    );
+                    let corner = CornerRadius::same((*radius as f32 * z).clamp(0.0, 255.0) as u8);
+                    if let Some(f) = fill {
+                        painter.rect_filled(r, corner, col(*f));
+                    }
+                    painter.rect_stroke(
+                        r,
+                        corner,
+                        Stroke::new(1.0, col(*stroke)),
+                        StrokeKind::Middle,
+                    );
+                }
                 Prim::Ellipse {
                     rect,
                     fill,

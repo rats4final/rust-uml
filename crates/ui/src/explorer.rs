@@ -13,6 +13,13 @@ const CHILD_FIELDS: &[&str] = &[
     "operations",
     "literals",
     "slots",
+    "regions",
+    "vertices",
+    "transitions",
+    "nodes",
+    "edges",
+    "groups",
+    "extensionPoints",
 ];
 const MAX_DEPTH: usize = 64;
 
