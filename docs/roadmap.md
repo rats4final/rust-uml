@@ -1,6 +1,6 @@
 # Roadmap and handoff
 
-**Read this to pick up the work.** Status as of 2026-10-13, after v0.5.0 (agent milestone parts 1–3).
+**Read this to pick up the work.** Status as of 2026-10-13: v0.5.0 (agent milestone parts 1–3) plus part 4, live app control (not yet released).
 Order of reading for a new agent/session: `AGENTS.md` → this file → `docs/parity.md` → `log/devlog.md`.
 
 ## 1. Where things stand
@@ -106,7 +106,7 @@ release when it's user-visible.
 - Left: found/lost messages, gates/endpoints, state invariants, continuations, interaction uses,
   time/duration constraints; dragging a message vertically (today: delete and redraw).
 
-### A — Agent-ready, PhotoCraft-style (parts 1–3 in v0.5.0; the owner put it before M3b part 2)
+### A — Agent-ready, PhotoCraft-style ✅ (parts 1–3 in v0.5.0, part 4 after; the owner put it before M3b part 2)
 
 The owner asked for PhotoCraft-style CLI and AI integrations ahead of more diagram families, and
 said **no built-in AI assistant panel**: AI stays outside the app, through the CLI and MCP (no API
@@ -130,9 +130,17 @@ keys inside rust-uml). Guide for users: `docs/agents.md`.
    `examples/mermaid/`. Left: flowchart/ER/mind map/requirement (need their families),
    automatic sequence numbers, Auto Layout as a menu command (the layout exists).
    **Not yet checked in StarUML:** open an imported model in StarUML 7.1.1.
-4. ⬜ **Live app control:** `rust-uml --control <port>` loopback JSON-lines channel with a token
-   file (PhotoCraft's design: `docs/control-protocol.md` there), `ui.inspect`, `ui.screenshot`,
-   `engine.execute`; then `rust-uml-cli mcp --bridge`. StarUML's HTTP API (M8) on the same server.
+4. ✅ **Live app control:** `rust-uml --control <port> --control-token-file <path>
+   [--control-root <dir>]`, a loopback JSON-lines channel (PhotoCraft's design: token on the first
+   line, 60 s reply deadline that says whether the request ran). Methods `engine.execute`,
+   `engine.commands`, `tool.call`, `ui.inspect`, `ui.screenshot`. `tool.call` runs the MCP tools
+   themselves (`automation::mcp::call_tool`) on the window's model, so `rust-uml-cli mcp --bridge`
+   just forwards them and adds `ui_inspect`/`ui_screenshot`. Transport and dispatch in
+   `automation::control` (no egui; tested over real sockets with a stand-in window), client in
+   `automation::bridge`, UI side `ui::RemoteJob` (jobs run between frames), glue in
+   `apps/desktop/src/control.rs`. Verified by driving the real window under WSLg through the bridge.
+   Left: pointer/key driving (`ui.pointer`-style), StarUML's HTTP API on the same server (M8),
+   **trying it from a real MCP client** (Claude Code) — the end-to-end run used a scripted client.
 
 ### M3b part 2 — Communication, timing, interaction overview, information flow (after A)
 

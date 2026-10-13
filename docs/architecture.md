@@ -30,7 +30,7 @@ File ▸ Save                     (ui → FileService)  → Document::to_json_st
 | `render` | L2 | Text metrics (Liberation Sans = Arial metrics), box layout, edge routing, SVG/PNG | Windows, input |
 | `engine` | L3 | Sessions, selection, the command list, parameter validation | egui |
 | `ui` | L4 | egui widgets, mouse and keyboard | Operating systems (dialogs come in through `FileService`) |
-| `automation` | L4 | Scripts of commands with `$name.field` references, file access confined to one folder, the MCP server | egui, the UI |
+| `automation` | L4 | Scripts of commands with `$name.field` references, file access confined to one folder, the MCP server, the running app's control channel and its bridge client | egui, the UI |
 
 ## Design choices and why
 

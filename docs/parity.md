@@ -1,6 +1,6 @@
 # Parity with StarUML 7.1.1
 
-Status line: **v0.5.0 — agent milestone (A), parts 1–3: scriptable CLI, MCP server, Mermaid import.** Updated 2026-10-13.
+Status line: **Agent milestone (A) done: scriptable CLI, MCP server, Mermaid import (v0.5.0), live app control.** Updated 2026-10-13.
 
 Each row comes from the evidence in [`evidence.md`](evidence.md). "Paid" marks features StarUML
 locks behind a licence (see evidence §4: only exports are locked, by watermark).
@@ -86,7 +86,7 @@ Legend: ✅ done · 🟡 partial · ⬜ not started
 | CLI: scripts, chained steps, batch over a folder | ✅ | Beyond StarUML. `run --cmd … --as …`, `--script`, `batch`; all-or-nothing; `docs/agents.md` |
 | CLI: per-subcommand help, JSON output | ✅ | `help <sub>`, `--help`, `info/commands/tools --json` |
 | MCP server for AI agents | ✅ | `rust-uml-cli mcp --root <dir>`: 11 tools incl. image previews; StarUML reaches MCP through its HTTP API instead |
-| Drive the running desktop app (control channel, MCP bridge) | ⬜ | Beyond StarUML; agent milestone part 4 |
+| Drive the running desktop app (control channel, MCP bridge) | ✅ | Beyond StarUML. `rust-uml --control`, token file, agent files confined to `--control-root`; `mcp --bridge` adds `ui_inspect`, `ui_screenshot`. Pointer/key driving ⬜ |
 | CLI: ejs code generation, html, pdf | ⬜ | |
 | Local HTTP API (`/generate_diagram`, …) | ⬜ | Same command registry would back it |
 | Code generation / reverse engineering | ⬜ | Separate StarUML extensions, not in the installed app |

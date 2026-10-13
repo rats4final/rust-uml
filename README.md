@@ -35,6 +35,10 @@ rust-uml-cli import examples/mermaid/checkout.mmd -o checkout.png
 
 # Let Claude (or any MCP client) build and read your models
 claude mcp add rust-uml -- rust-uml-cli mcp --root ~/models
+
+# ...or watch it work in the open window
+rust-uml --control 7878 --control-token-file ~/.rust-uml-token --control-root ~/models
+claude mcp add rust-uml-live -- rust-uml-cli mcp --bridge 127.0.0.1:7878 --control-token-file ~/.rust-uml-token
 ```
 
 See [`docs/agents.md`](docs/agents.md).

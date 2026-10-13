@@ -115,9 +115,59 @@ diagram."*
 The MCP tools accept a diagram's id or its name (raw commands take ids). Bad arguments come back as tool errors the agent
 can read and fix, not as protocol failures.
 
+## Live: an agent drives the open window
+
+Start the app with a control channel, and point the MCP server at it with `--bridge`. Every tool
+above then works on the model **shown in the window**, so you watch the agent build the diagram,
+and two more tools let it see what you see:
+
+```sh
+rust-uml --control 7878 --control-token-file ~/.rust-uml-token --control-root ~/models
+claude mcp add rust-uml-live -- rust-uml-cli mcp --bridge 127.0.0.1:7878 \
+  --control-token-file ~/.rust-uml-token
+```
+
+| Extra tool (bridge only) | Does |
+|---|---|
+| `ui_inspect` | file, unsaved changes, open diagram, selection, chosen tool, zoom, status line, open dialogs |
+| `ui_screenshot` | a PNG of the whole window, panels included |
+
+**Safety.** The app listens on `127.0.0.1` only. The token file is created on first use with a new
+256-bit token, readable by you alone (on Unix an existing file that others can read is refused);
+the bridge must present it before anything runs, and a wrong token closes the connection. Agent
+file access (`model_open`, `model_save`, `diagram_export`) is confined to `--control-root` with the
+same rules as `--root`; without `--control-root` agents can't touch files at all. Your own File
+menu is unaffected. `file.new` and `model_new` refuse to throw away unsaved work unless asked to
+(`discard: true`).
+
+### The control protocol
+
+For writing your own client. One JSON object per line, both ways. The first line on a connection:
+
+```json
+{"id": 0, "method": "auth", "params": {"token": "<64 hex digits>"}}
+```
+
+Then each request `{"id", "method", "params"}` gets `{"id", "ok": true, "result"}` or
+`{"id", "ok": false, "error"}`:
+
+| Method | Params | Result |
+|---|---|---|
+| `ping` | | `{}` |
+| `engine.execute` | `{command, params?}` | the command's result (see `rust-uml-cli commands`) |
+| `engine.commands` | | every command with `enabled` for the current state |
+| `tool.call` | `{name, arguments?}` | an MCP tool from the table above, run on the open model (an MCP `tools/call` result) |
+| `ui.inspect` | | as `ui_inspect` |
+| `ui.screenshot` | | `{png_base64, width, height}` |
+
+Requests run on the UI thread between frames. A request still queued after 60 s is dropped
+unrun and says `timeout: not run` (safe to resend); `timeout: no reply` means it started and may
+still apply. A minimised window may not draw frames, so requests to it time out. The bridge
+never resends an edit after a broken connection; it reports that the edit may have applied.
+
 ## Not yet
 
-- Driving the **running desktop app** (a loopback control channel, and `mcp --bridge` to it).
-- StarUML's local HTTP API (`/generate_diagram`, …).
+- StarUML's local HTTP API (`/generate_diagram`, …), on the same control server.
+- Driving the UI by pointer and keys (clicks, drags) over the control channel.
 
 See `docs/roadmap.md`.

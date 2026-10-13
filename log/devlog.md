@@ -2,6 +2,22 @@
 
 Newest first. Terse: what landed, numbers, what's still open.
 
+## 2026-10-13 — agent milestone, part 4: live app control
+
+- `rust-uml --control <port> --control-token-file <path> [--control-root <dir>]`: loopback-only
+  JSON lines; 256-bit token (`getrandom`), file created 0600, a group/world-readable one refused,
+  compared in constant time; auth must be the first line; max 8 connections, 64 MB lines.
+- Methods `ping`, `engine.execute`, `engine.commands`, `tool.call`, `ui.inspect`, `ui.screenshot`.
+  `tool.call` runs the MCP tools on the window's model: the tools now take a `mcp::Target`, shared
+  by the headless server and the app. `file.new` over the channel refuses to drop unsaved work.
+- Requests run between frames (`ui::RemoteJob`); a request that times out unrun is never run
+  later ("timeout: not run" vs "timeout: no reply").
+- `rust-uml-cli mcp --bridge 127.0.0.1:<port> --control-token-file <path>` forwards every tool and
+  adds `ui_inspect`/`ui_screenshot`; edits are never resent, reads retried once.
+- Desktop flags parsed strictly (unknown options are errors now). 121 tests; drove the real window
+  under WSLg via the bridge (Mermaid import, inspect, screenshot, save inside/outside the root).
+- Open: try from Claude Code itself; pointer/key driving; StarUML's HTTP API on this server.
+
 ## 2026-10-13 — v0.5.0: agent milestone parts 1–3 released
 
 - Release notes for the scriptable CLI, MCP server and Mermaid import.
