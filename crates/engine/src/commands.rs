@@ -3,7 +3,7 @@ use std::collections::HashSet;
 use base64::Engine as _;
 use mdj::{Document, Element, Field, Id};
 use serde_json::{Value, json};
-use uml::{EdgeKind, FeatureKind, NodeKind};
+use uml::FeatureKind;
 
 use crate::params;
 use crate::session::{Session, diagram_of, is_diagram};
@@ -162,20 +162,33 @@ fn specs() -> Vec<CommandSpec> {
             run: open_diagram,
         },
         CommandSpec {
-            id: "diagram.add-class-diagram",
-            label: "Add Class Diagram",
+            id: "diagram.add",
+            label: "Add Diagram",
             menu: Some("Model"),
             shortcut: None,
-            params: r#"{"parent"?: model or package id}"#,
+            params: r#"{"type": "UMLClassDiagram"|"UMLPackageDiagram"|"UMLObjectDiagram"|"UMLComponentDiagram"|"UMLDeploymentDiagram"|"UMLCompositeStructureDiagram"|"UMLProfileDiagram", "parent"?: model or package id}"#,
             enabled: always,
-            run: add_class_diagram,
+            run: add_diagram,
+        },
+        CommandSpec {
+            id: "diagram.add-class-diagram",
+            label: "Add Class Diagram",
+            menu: None,
+            shortcut: None,
+            params: r#"{"parent"?: model or package id} — same as diagram.add with type UMLClassDiagram"#,
+            enabled: always,
+            run: |s, p| {
+                let mut p = p.as_object().cloned().unwrap_or_default();
+                p.insert("type".into(), json!("UMLClassDiagram"));
+                add_diagram(s, &Value::Object(p))
+            },
         },
         CommandSpec {
             id: "node.create",
             label: "Create Element",
             menu: None,
             shortcut: None,
-            params: r#"{"kind": "Class"|"Interface"|"Enumeration"|"DataType"|"Package", "x": n, "y": n}"#,
+            params: r#"{"kind": toolbox id or label (UMLClass, "Port", "Note", … see `rust-uml-cli tools`), "x": n, "y": n, "container"?: box view id to create it inside}"#,
             enabled: has_diagram,
             run: create_node,
         },
@@ -184,7 +197,7 @@ fn specs() -> Vec<CommandSpec> {
             label: "Create Relationship",
             menu: None,
             shortcut: None,
-            params: r#"{"kind": "Association"|"Directed Association"|"Aggregation"|"Composition"|"Generalization"|"Dependency"|"Interface Realization", "tail": view id, "head": view id}"#,
+            params: r#"{"kind": toolbox id or label (UMLAssociation, "Composition", "Containment", "Note Link", …), "tail": view id, "head": view id}"#,
             enabled: has_diagram,
             run: create_edge,
         },
@@ -220,7 +233,7 @@ fn specs() -> Vec<CommandSpec> {
             label: "Add Feature",
             menu: None,
             shortcut: None,
-            params: r#"{"classifier": id, "kind": "attribute"|"operation"|"literal"}"#,
+            params: r#"{"classifier": id, "kind": "attribute"|"operation"|"literal"|"slot"}"#,
             enabled: always,
             run: add_feature,
         },
@@ -446,7 +459,14 @@ fn open_diagram(s: &mut Session, p: &Value) -> Result<Value, CommandError> {
     Ok(Value::Null)
 }
 
-fn add_class_diagram(s: &mut Session, p: &Value) -> Result<Value, CommandError> {
+fn add_diagram(s: &mut Session, p: &Value) -> Result<Value, CommandError> {
+    let ty = params::str(p, "type")?;
+    let Some(&(diagram_type, _, base)) = uml::DIAGRAMS
+        .iter()
+        .find(|(t, label, _)| *t == ty || label.eq_ignore_ascii_case(ty))
+    else {
+        return Err(CommandError::Param(format!("unknown diagram type `{ty}`")));
+    };
     let parent = match params::opt_str(p, "parent") {
         Some(id) => {
             let el = get(&s.doc, id)?;
@@ -467,13 +487,22 @@ fn add_class_diagram(s: &mut Session, p: &Value) -> Result<Value, CommandError> 
         },
     };
     let id = s.edit(|e, _| {
-        let existing = e
+        let taken: HashSet<String> = e
             .doc()
             .get(&parent)
-            .map(|p| p.children("ownedElements").len())
-            .unwrap_or(0);
-        let el = Element::new(e.new_id(), "UMLClassDiagram")
-            .with("name", Field::str(format!("ClassDiagram{}", existing + 1)));
+            .map(|p| {
+                p.children("ownedElements")
+                    .iter()
+                    .filter_map(|c| e.doc().get(c))
+                    .map(|c| c.name().to_owned())
+                    .collect()
+            })
+            .unwrap_or_default();
+        let name = (1..=taken.len() + 1)
+            .map(|n| format!("{base}{n}"))
+            .find(|n| !taken.contains(n))
+            .unwrap_or_else(|| base.to_owned());
+        let el = Element::new(e.new_id(), diagram_type).with("name", Field::str(name));
         Ok(e.append(&parent, "ownedElements", vec![el]))
     })?;
     s.active_diagram = Some(id.clone());
@@ -481,24 +510,19 @@ fn add_class_diagram(s: &mut Session, p: &Value) -> Result<Value, CommandError> 
     Ok(json!({ "id": id }))
 }
 
-fn parse_kind<T: Copy>(
-    all: &[T],
-    label: fn(T) -> &'static str,
-    given: &str,
-) -> Result<T, CommandError> {
-    let norm = |s: &str| s.to_ascii_lowercase().replace([' ', '-', '_'], "");
-    all.iter()
-        .copied()
-        .find(|k| norm(label(*k)) == norm(given))
-        .ok_or_else(|| CommandError::Param(format!("unknown kind `{given}`")))
-}
-
 fn create_node(s: &mut Session, p: &Value) -> Result<Value, CommandError> {
-    let kind = parse_kind(&NodeKind::ALL, NodeKind::label, params::str(p, "kind")?)?;
+    let kind = params::str(p, "kind")?;
+    let spec = uml::node_spec(kind)
+        .ok_or_else(|| CommandError::Param(format!("unknown kind `{kind}`")))?;
     let (x, y) = (params::coord(p, "x")?, params::coord(p, "y")?);
+    let container = match params::opt_str(p, "container") {
+        Some(c) => Some(node_view(s, c)?.id.clone()),
+        None => None,
+    };
     let diagram = active(s)?;
     let (model, view) = s.edit(|e, c| {
-        let (m, v) = uml::create_node(e, &diagram, kind, x, y);
+        let (m, v) = uml::create_node(e, &diagram, spec, x, y, container.as_deref())
+            .map_err(CommandError::Failed)?;
         c.touched.insert(v.clone());
         Ok((m, v))
     })?;
@@ -507,13 +531,14 @@ fn create_node(s: &mut Session, p: &Value) -> Result<Value, CommandError> {
 }
 
 fn create_edge(s: &mut Session, p: &Value) -> Result<Value, CommandError> {
-    let kind = parse_kind(&EdgeKind::ALL, EdgeKind::label, params::str(p, "kind")?)?;
+    let kind = params::str(p, "kind")?;
+    let spec = uml::edge_spec(kind)
+        .ok_or_else(|| CommandError::Param(format!("unknown kind `{kind}`")))?;
     let tail = node_view(s, params::str(p, "tail")?)?.id.clone();
     let head = node_view(s, params::str(p, "head")?)?.id.clone();
     let diagram = active(s)?;
     let (model, view) = s.edit(|e, _| {
-        uml::create_edge(e, &diagram, kind, &tail, &head)
-            .ok_or_else(|| CommandError::Failed("both ends must show a model element".into()))
+        uml::create_edge(e, &diagram, spec, &tail, &head).map_err(CommandError::Failed)
     })?;
     s.selection = vec![view.clone()];
     Ok(json!({ "model": model, "view": view }))
@@ -525,7 +550,11 @@ fn move_views(s: &mut Session, p: &Value) -> Result<Value, CommandError> {
     for id in &ids {
         node_view(s, id)?;
     }
-    let moved: HashSet<Id> = ids.into_iter().collect();
+    // Boxes carry what sits inside them (ports, parts, nested classes).
+    let moved: HashSet<Id> = ids
+        .iter()
+        .flat_map(|v| uml::with_contained(&s.doc, v))
+        .collect();
     let diagram = active(s)?;
     s.edit(|e, c| {
         let doc = e.doc();
@@ -606,11 +635,27 @@ const PROTECTED: &[&str] = &[
 const TEXT_OR_REF: &[&str] = &["type", "stereotype"];
 
 /// Allowed words for enumeration fields.
-const ENUMS: &[(&str, &[&str])] = &[
-    ("visibility", &["public", "protected", "private", "package"]),
-    ("aggregation", &["none", "shared", "composite"]),
-    ("navigable", &["unspecified", "navigable", "notNavigable"]),
-    ("direction", &["in", "inout", "out", "return"]),
+/// Allowed words for enumeration fields: `(field, element type or "" for any, words)`.
+/// The same field name can mean different enums on different types (`kind`).
+const ENUMS: &[(&str, &str, &[&str])] = &[
+    (
+        "visibility",
+        "",
+        &["public", "protected", "private", "package"],
+    ),
+    ("aggregation", "", &["none", "shared", "composite"]),
+    (
+        "navigable",
+        "",
+        &["unspecified", "navigable", "notNavigable"],
+    ),
+    ("direction", "", &["in", "inout", "out", "return"]),
+    ("kind", "UMLConnector", &["assembly", "delegation"]),
+    (
+        "kind",
+        "Tag",
+        &["string", "reference", "boolean", "number", "enum"],
+    ),
 ];
 
 fn set_property(s: &mut Session, p: &Value) -> Result<Value, CommandError> {
@@ -638,7 +683,10 @@ fn set_property(s: &mut Session, p: &Value) -> Result<Value, CommandError> {
             "`value` must be a string, bool, number or null".into(),
         ));
     }
-    if let Some((_, allowed)) = ENUMS.iter().find(|(k, _)| *k == key)
+    let el_type = el.type_name.clone();
+    if let Some((_, _, allowed)) = ENUMS
+        .iter()
+        .find(|(k, t, _)| *k == key && (t.is_empty() || *t == el_type))
         && !value.is_null()
         && !value.as_str().is_some_and(|v| allowed.contains(&v))
     {
@@ -666,30 +714,11 @@ fn set_property(s: &mut Session, p: &Value) -> Result<Value, CommandError> {
 
 fn add_feature(s: &mut Session, p: &Value) -> Result<Value, CommandError> {
     let classifier = params::str(p, "classifier")?.to_owned();
-    let kind = match params::str(p, "kind")? {
-        "attribute" => FeatureKind::Attribute,
-        "operation" => FeatureKind::Operation,
-        "literal" => FeatureKind::Literal,
-        other => {
-            return Err(CommandError::Param(format!(
-                "unknown feature kind `{other}`"
-            )));
-        }
-    };
+    let given = params::str(p, "kind")?;
+    let kind = FeatureKind::parse(given)
+        .ok_or_else(|| CommandError::Param(format!("unknown feature kind `{given}`")))?;
     let t = get(&s.doc, &classifier)?.type_name.as_str();
-    let ok = match kind {
-        FeatureKind::Literal => t == "UMLEnumeration",
-        _ => matches!(
-            t,
-            "UMLClass"
-                | "UMLInterface"
-                | "UMLEnumeration"
-                | "UMLDataType"
-                | "UMLSignal"
-                | "UMLPrimitiveType"
-        ),
-    };
-    if !ok {
+    if !kind.allowed_on(t) {
         return Err(CommandError::Param(format!(
             "a {t} cannot have that feature"
         )));
@@ -913,6 +942,123 @@ mod tests {
         assert!(reg.run(&mut s, "element.set", &ok).is_ok());
     }
 
+    #[test]
+    fn every_m2_diagram_type_can_be_added_and_offers_tools() {
+        let reg = Registry::default();
+        let mut s = Session::default();
+        for (ty, _, _) in uml::DIAGRAMS {
+            let d = run(&reg, &mut s, "diagram.add", json!({ "type": ty }));
+            assert_eq!(s.active_diagram.as_deref(), d["id"].as_str());
+            assert_eq!(s.doc.get(d["id"].as_str().unwrap()).unwrap().type_name, *ty);
+            assert!(uml::tool_groups(ty).count() >= 2, "{ty} has tools");
+        }
+        // The old command still works.
+        run(&reg, &mut s, "diagram.add-class-diagram", json!({}));
+    }
+
+    #[test]
+    fn ports_need_a_box_and_move_with_it() {
+        let reg = Registry::default();
+        let mut s = Session::default();
+        run(
+            &reg,
+            &mut s,
+            "diagram.add",
+            json!({"type": "UMLComponentDiagram"}),
+        );
+        let err = reg.run(
+            &mut s,
+            "node.create",
+            &json!({"kind": "UMLPort", "x": 0, "y": 0}),
+        );
+        assert!(matches!(err, Err(CommandError::Failed(_))), "{err:?}");
+
+        let comp = run(
+            &reg,
+            &mut s,
+            "node.create",
+            json!({"kind": "Component", "x": 100, "y": 100}),
+        );
+        let cv = comp["view"].as_str().unwrap().to_owned();
+        let port = run(
+            &reg,
+            &mut s,
+            "node.create",
+            json!({"kind": "Port", "x": 240, "y": 120, "container": cv}),
+        );
+        let pv = port["view"].as_str().unwrap().to_owned();
+        let other = run(
+            &reg,
+            &mut s,
+            "node.create",
+            json!({"kind": "Component", "x": 400, "y": 100}),
+        );
+        let ov = other["view"].as_str().unwrap();
+        run(
+            &reg,
+            &mut s,
+            "edge.create",
+            json!({"kind": "Connector", "tail": pv, "head": ov}),
+        );
+
+        let left = |s: &Session, v: &str| s.doc.get(v).unwrap().num("left", 0.0);
+        let before = (left(&s, &cv), left(&s, &pv));
+        run(
+            &reg,
+            &mut s,
+            "view.move",
+            json!({"views": [cv], "dx": 30, "dy": 0}),
+        );
+        assert_eq!(
+            (left(&s, &cv), left(&s, &pv)),
+            (before.0 + 30.0, before.1 + 30.0)
+        );
+        let svg = run(&reg, &mut s, "export.svg", json!({}));
+        assert!(svg["svg"].as_str().unwrap().contains("Port1"));
+    }
+
+    #[test]
+    fn containment_line_via_commands() {
+        let reg = Registry::default();
+        let mut s = Session::default();
+        run(
+            &reg,
+            &mut s,
+            "diagram.add",
+            json!({"type": "UMLPackageDiagram"}),
+        );
+        let pkg = run(
+            &reg,
+            &mut s,
+            "node.create",
+            json!({"kind": "Package", "x": 0, "y": 0}),
+        );
+        let class = run(
+            &reg,
+            &mut s,
+            "node.create",
+            json!({"kind": "Class", "x": 300, "y": 0}),
+        );
+        run(
+            &reg,
+            &mut s,
+            "edge.create",
+            json!({"kind": "Containment", "tail": class["view"], "head": pkg["view"]}),
+        );
+        let owner = s
+            .doc
+            .get(class["model"].as_str().unwrap())
+            .unwrap()
+            .parent
+            .clone();
+        assert_eq!(owner.as_deref(), pkg["model"].as_str());
+        let svg = run(&reg, &mut s, "export.svg", json!({}));
+        assert!(
+            svg["svg"].as_str().unwrap().contains("<ellipse"),
+            "⊕ end drawn"
+        );
+    }
+
     /// Rule: no command panics, whatever the parameters or state.
     #[test]
     fn no_command_panics_on_hostile_params() {
@@ -946,6 +1092,13 @@ mod tests {
             json!({"ids": [real[2]]}),
             json!({"operation": real[1], "direction": "sideways"}),
             json!({"ids": [real[0], "missing"]}),
+            json!({"kind": "UMLPort", "x": 0, "y": 0}),
+            json!({"kind": "UMLPort", "x": 0, "y": 0, "container": real[1]}),
+            json!({"kind": "Note", "x": 0, "y": 0, "container": "missing"}),
+            json!({"kind": "UMLContainment", "tail": real[0], "head": real[0]}),
+            json!({"type": "UMLSequenceDiagram"}),
+            json!({"type": "UMLClassDiagram", "parent": real[0]}),
+            json!({"id": real[1], "key": "kind", "value": "sideways"}),
         ];
         for spec in reg.specs() {
             if spec.id == "file.new" {
