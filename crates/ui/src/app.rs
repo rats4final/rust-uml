@@ -2,7 +2,6 @@ use egui::{Key, KeyboardShortcut, Modifiers};
 use engine::{Registry, Session};
 use render::Scene;
 use serde_json::{Value, json};
-use uml::{EdgeKind, NodeKind};
 
 use crate::canvas::{Canvas, Tool};
 use crate::explorer;
@@ -305,7 +304,13 @@ impl UmlApp {
                 }
             });
             ui.menu_button("Model", |ui| {
-                self.command_button(ui, "diagram.add-class-diagram");
+                ui.menu_button("Add Diagram", |ui| {
+                    for (ty, label, _) in uml::DIAGRAMS {
+                        if ui.button(*label).clicked() {
+                            self.exec("diagram.add", json!({ "type": ty }));
+                        }
+                    }
+                });
             });
             ui.menu_button("View", |ui| {
                 if ui.button("Zoom In").clicked() {
@@ -345,18 +350,37 @@ impl UmlApp {
         }
     }
 
+    /// The tools of the active diagram type, grouped as in StarUML.
     fn toolbox(&mut self, ui: &mut egui::Ui) {
         ui.selectable_value(&mut self.tool, Tool::Select, "Select");
-        ui.separator();
-        ui.weak("Elements");
-        for k in NodeKind::ALL {
-            ui.selectable_value(&mut self.tool, Tool::Node(k), k.label());
-        }
-        ui.separator();
-        ui.weak("Relationships");
-        for k in EdgeKind::ALL {
-            ui.selectable_value(&mut self.tool, Tool::Edge(k), k.label());
-        }
+        let diagram_type = self
+            .session
+            .active_diagram
+            .as_deref()
+            .and_then(|d| self.session.doc.get(d))
+            .map(|d| d.type_name.clone())
+            .unwrap_or_default();
+        egui::ScrollArea::vertical()
+            .auto_shrink(false)
+            .show(ui, |ui| {
+                for group in uml::tool_groups(&diagram_type) {
+                    ui.separator();
+                    ui.weak(group.label);
+                    for id in group.tools {
+                        let tool = match uml::tool(id) {
+                            Some(uml::Tool::Node(spec)) => Tool::Node(spec),
+                            Some(uml::Tool::Edge(spec)) => Tool::Edge(spec),
+                            None => continue,
+                        };
+                        let label = match tool {
+                            Tool::Node(n) => n.label,
+                            Tool::Edge(e) => e.label,
+                            Tool::Select => "Select",
+                        };
+                        ui.selectable_value(&mut self.tool, tool, label);
+                    }
+                }
+            });
     }
 
     fn path_dialog(&mut self, ctx: &egui::Context) {
@@ -479,7 +503,7 @@ impl eframe::App for UmlApp {
             });
         egui::Panel::left("toolbox")
             .resizable(false)
-            .exact_size(150.0)
+            .exact_size(170.0)
             .show(ui, |ui| self.toolbox(ui));
         egui::CentralPanel::default()
             .frame(egui::Frame::NONE)
@@ -655,6 +679,40 @@ mod tests {
         assert_eq!(edges[0].ref_id("head"), Some(parent.as_str()));
         let points = mdj::values::parse_points(edges[0].str("points").unwrap_or(""));
         assert!(points.len() >= 2, "the new edge was routed: {points:?}");
+    }
+
+    #[test]
+    fn component_diagram_toolbox_places_a_port_on_a_component() {
+        let mut h = harness();
+        h.run();
+        h.state_mut()
+            .exec("diagram.add", json!({"type": "UMLComponentDiagram"}));
+        h.run();
+        assert!(
+            h.query_by_role_and_label(Role::Button, "Port").is_some(),
+            "toolbox switched"
+        );
+        assert!(
+            h.query_by_role_and_label(Role::Button, "Enumeration")
+                .is_none()
+        );
+
+        h.get_by_role_and_label(Role::Button, "Component").click();
+        h.run();
+        let at = h.state().canvas.to_screen(render::Point::new(100.0, 100.0));
+        click(&mut h, at);
+        let comp = h.state().session.selection[0].clone();
+
+        h.get_by_role_and_label(Role::Button, "Port").click();
+        h.run();
+        // Just inside the component's right edge (it is 140 wide).
+        let at = h.state().canvas.to_screen(render::Point::new(236.0, 125.0));
+        click(&mut h, at);
+        let app = h.state();
+        let port = app.session.doc.get(&app.session.selection[0]).unwrap();
+        assert_eq!(port.type_name, "UMLPortView");
+        assert_eq!(port.ref_id("containerView"), Some(comp.as_str()));
+        assert_eq!(port.num("left", 0.0) + 7.0, 240.0, "snapped to the border");
     }
 
     #[test]

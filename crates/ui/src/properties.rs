@@ -15,7 +15,20 @@ const CLASSIFIERS: &[&str] = &[
     "UMLEnumeration",
     "UMLSignal",
     "UMLPrimitiveType",
+    "UMLComponent",
+    "UMLArtifact",
+    "UMLNode",
+    "UMLStereotype",
+    "UMLCollaboration",
 ];
+/// Instances: they have a classifier and slots.
+const INSTANCES: &[&str] = &[
+    "UMLObject",
+    "UMLArtifactInstance",
+    "UMLComponentInstance",
+    "UMLNodeInstance",
+];
+const CONNECTOR_KIND: &[&str] = &["assembly", "delegation"];
 const VISIBILITY: &[&str] = &["public", "protected", "private", "package"];
 const DIRECTION: &[&str] = &["in", "inout", "out", "return"];
 const NAVIGABLE: &[&str] = &["unspecified", "navigable", "notNavigable"];
@@ -40,8 +53,19 @@ impl Properties {
         egui::ScrollArea::vertical()
             .auto_shrink(false)
             .show(ui, |ui| {
-                ui.heading(el.type_name.strip_prefix("UML").unwrap_or(&el.type_name));
+                ui.heading(
+                    el.type_name
+                        .strip_prefix("UML")
+                        .unwrap_or(&el.type_name)
+                        .trim_end_matches("View"),
+                );
                 ui.add_space(4.0);
+                if el.type_name.ends_with("View") {
+                    // A shape without a model element (note, text): its own text.
+                    ui.label("Text");
+                    self.text(ui, el, "text", el.str("text").unwrap_or(""), true, &mut out);
+                    return;
+                }
                 egui::Grid::new("props")
                     .num_columns(2)
                     .spacing([8.0, 6.0])
@@ -93,12 +117,120 @@ impl Properties {
     fn specific(&mut self, ui: &mut egui::Ui, doc: &Document, el: &Element, out: &mut Commands) {
         let t = el.type_name.as_str();
         if CLASSIFIERS.contains(&t) {
-            check(ui, el, "isAbstract", "Abstract", out);
+            check(ui, el, "isAbstract", "Abstract", false, out);
             ui.end_row();
-            check(ui, el, "isLeaf", "Leaf", out);
+            check(ui, el, "isLeaf", "Leaf", false, out);
             ui.end_row();
         }
+        if t == "UMLClass" {
+            check(ui, el, "isActive", "Active", false, out);
+            ui.end_row();
+        }
+        if INSTANCES.contains(&t) {
+            self.field(
+                ui,
+                el,
+                "Classifier",
+                "classifier",
+                uml::var_text(doc, el, "classifier"),
+                out,
+            );
+            self.field(ui, el, "Value", "value", el.str("value").unwrap_or(""), out);
+        }
+        // Relationships with two ends (associations, connectors, links, paths).
+        if el.get("end1").is_some() {
+            if t == "UMLConnector" {
+                ui.label("Kind");
+                combo(ui, el, "kind", CONNECTOR_KIND, "assembly", out);
+                ui.end_row();
+            }
+            for (key, title) in [("end1", "End 1 (tail)"), ("end2", "End 2 (head)")] {
+                let Some(end) = el.children(key).first().and_then(|id| doc.get(id)) else {
+                    continue;
+                };
+                let target = end
+                    .ref_id("reference")
+                    .and_then(|r| doc.get(r))
+                    .map(Element::name)
+                    .unwrap_or("?");
+                ui.strong(title);
+                ui.weak(target);
+                ui.end_row();
+                self.field(ui, end, "Role", "name", end.name(), out);
+                self.field(
+                    ui,
+                    end,
+                    "Multiplicity",
+                    "multiplicity",
+                    end.str("multiplicity").unwrap_or(""),
+                    out,
+                );
+                ui.label("Navigable");
+                combo(ui, end, "navigable", NAVIGABLE, "unspecified", out);
+                ui.end_row();
+                ui.label("Aggregation");
+                combo(ui, end, "aggregation", AGGREGATION, "none", out);
+                ui.end_row();
+            }
+        }
         match t {
+            "UMLSlot" => {
+                self.field(ui, el, "Value", "value", el.str("value").unwrap_or(""), out);
+            }
+            "UMLArtifact" => {
+                self.field(
+                    ui,
+                    el,
+                    "File name",
+                    "fileName",
+                    el.str("fileName").unwrap_or(""),
+                    out,
+                );
+            }
+            "UMLComponent" => {
+                // The metamodel default is true.
+                check(
+                    ui,
+                    el,
+                    "isIndirectlyInstantiated",
+                    "Indirectly instantiated",
+                    true,
+                    out,
+                );
+                ui.end_row();
+            }
+            "UMLModel" => {
+                self.field(
+                    ui,
+                    el,
+                    "Viewpoint",
+                    "viewpoint",
+                    el.str("viewpoint").unwrap_or(""),
+                    out,
+                );
+            }
+            "UMLCollaborationUse" => {
+                self.field(ui, el, "Type", "type", uml::var_text(doc, el, "type"), out);
+            }
+            "UMLPort" => {
+                self.field(ui, el, "Type", "type", uml::var_text(doc, el, "type"), out);
+                self.field(
+                    ui,
+                    el,
+                    "Multiplicity",
+                    "multiplicity",
+                    el.str("multiplicity").unwrap_or(""),
+                    out,
+                );
+                for (k, l) in [
+                    ("isBehavior", "Behavior"),
+                    ("isService", "Service"),
+                    ("isConjugated", "Conjugated"),
+                ] {
+                    check(ui, el, k, l, false, out);
+                    ui.end_row();
+                }
+            }
             "UMLAttribute" => {
                 self.field(ui, el, "Type", "type", uml::var_text(doc, el, "type"), out);
                 self.field(
@@ -122,7 +254,7 @@ impl Properties {
                     ("isReadOnly", "Read only"),
                     ("isDerived", "Derived"),
                 ] {
-                    check(ui, el, k, l, out);
+                    check(ui, el, k, l, false, out);
                     ui.end_row();
                 }
             }
@@ -147,7 +279,7 @@ impl Properties {
                     ("isAbstract", "Abstract"),
                     ("isQuery", "Query"),
                 ] {
-                    check(ui, el, k, l, out);
+                    check(ui, el, k, l, false, out);
                     ui.end_row();
                 }
             }
@@ -156,36 +288,6 @@ impl Properties {
                 ui.label("Direction");
                 combo(ui, el, "direction", DIRECTION, "in", out);
                 ui.end_row();
-            }
-            "UMLAssociation" => {
-                for (key, title) in [("end1", "End 1 (tail)"), ("end2", "End 2 (head)")] {
-                    let Some(end) = el.children(key).first().and_then(|id| doc.get(id)) else {
-                        continue;
-                    };
-                    let target = end
-                        .ref_id("reference")
-                        .and_then(|r| doc.get(r))
-                        .map(Element::name)
-                        .unwrap_or("?");
-                    ui.strong(title);
-                    ui.weak(target);
-                    ui.end_row();
-                    self.field(ui, end, "Role", "name", end.name(), out);
-                    self.field(
-                        ui,
-                        end,
-                        "Multiplicity",
-                        "multiplicity",
-                        end.str("multiplicity").unwrap_or(""),
-                        out,
-                    );
-                    ui.label("Navigable");
-                    combo(ui, end, "navigable", NAVIGABLE, "unspecified", out);
-                    ui.end_row();
-                    ui.label("Aggregation");
-                    combo(ui, end, "aggregation", AGGREGATION, "none", out);
-                    ui.end_row();
-                }
             }
             _ => {}
         }
@@ -200,6 +302,9 @@ impl Properties {
         if CLASSIFIERS.contains(&t) {
             sections.push(("Attributes", "attributes", "attribute"));
             sections.push(("Operations", "operations", "operation"));
+        }
+        if INSTANCES.contains(&t) {
+            sections.push(("Slots", "slots", "slot"));
         }
         for (title, key, kind) in sections {
             ui.add_space(8.0);
@@ -218,6 +323,7 @@ impl Properties {
                 let text = match kind {
                     "attribute" => uml::attribute_text(doc, f),
                     "operation" => uml::operation_text(doc, f),
+                    "slot" => uml::slot_text(doc, f),
                     _ => f.name().to_owned(),
                 };
                 feature_row(ui, id, &text, out);
@@ -322,9 +428,18 @@ fn feature_row(ui: &mut egui::Ui, id: &str, text: &str, out: &mut Commands) {
     });
 }
 
-fn check(ui: &mut egui::Ui, el: &Element, key: &str, label: &str, out: &mut Commands) {
+/// A checkbox bound to `el.key`; `default` is the metamodel default used when
+/// the field is missing (StarUML's rule, see docs/evidence.md §3).
+fn check(
+    ui: &mut egui::Ui,
+    el: &Element,
+    key: &str,
+    label: &str,
+    default: bool,
+    out: &mut Commands,
+) {
     ui.label("");
-    let mut v = el.bool(key, false);
+    let mut v = el.bool(key, default);
     if ui.checkbox(&mut v, label).changed() {
         out.push((
             "element.set",

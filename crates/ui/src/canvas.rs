@@ -8,7 +8,7 @@ use egui::{
 };
 use render::{HitShape, Prim, Scene};
 use serde_json::{Value, json};
-use uml::{EdgeKind, NodeKind};
+use uml::{EdgeSpec, NodeSpec};
 
 use crate::fonts;
 
@@ -17,11 +17,11 @@ const HANDLE: f32 = 7.0;
 const MIN_ZOOM: f32 = 0.1;
 const MAX_ZOOM: f32 = 8.0;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Tool {
     Select,
-    Node(NodeKind),
-    Edge(EdgeKind),
+    Node(&'static NodeSpec),
+    Edge(&'static EdgeSpec),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -235,11 +235,13 @@ impl Canvas {
                         self.drag = Drag::Pan;
                     }
                 }
-                Tool::Node(kind) => {
-                    out.commands.push((
-                        "node.create",
-                        json!({ "kind": kind.label(), "x": p.x.round(), "y": p.y.round() }),
-                    ));
+                Tool::Node(spec) => {
+                    let mut params = json!({ "kind": spec.id, "x": p.x.round(), "y": p.y.round() });
+                    // Dropped on a box: create it inside (the engine decides whether it fits).
+                    if let Some((container, _)) = scene.node_at(dp(p)) {
+                        params["container"] = json!(container);
+                    }
+                    out.commands.push(("node.create", params));
                     out.tool_done = true;
                 }
                 Tool::Edge(_) => {
@@ -291,10 +293,10 @@ impl Canvas {
                     ));
                 }
                 Drag::Edge { tail, to, .. } => {
-                    if let (Tool::Edge(kind), Some((head, _))) = (tool, scene.node_at(dp(to))) {
+                    if let (Tool::Edge(spec), Some((head, _))) = (tool, scene.node_at(dp(to))) {
                         out.commands.push((
                             "edge.create",
-                            json!({ "kind": kind.label(), "tail": tail, "head": head }),
+                            json!({ "kind": spec.id, "tail": tail, "head": head }),
                         ));
                     }
                     out.tool_done = true;
@@ -327,7 +329,12 @@ impl Canvas {
         let pts = |p: &[render::Point]| p.iter().map(|p| to_screen(p.x, p.y)).collect::<Vec<_>>();
         for prim in &scene.prims {
             match prim {
-                Prim::Rect { rect, fill, stroke } => {
+                Prim::Rect {
+                    rect,
+                    fill,
+                    stroke,
+                    dashed,
+                } => {
                     let r = Rect::from_min_max(
                         to_screen(rect.x, rect.y),
                         to_screen(rect.right(), rect.bottom()),
@@ -335,12 +342,43 @@ impl Canvas {
                     if let Some(f) = fill {
                         painter.rect_filled(r, CornerRadius::ZERO, col(*f));
                     }
-                    painter.rect_stroke(
-                        r,
-                        CornerRadius::ZERO,
-                        Stroke::new(1.0, col(*stroke)),
-                        StrokeKind::Middle,
-                    );
+                    let stroke = Stroke::new(1.0, col(*stroke));
+                    if *dashed {
+                        let c = [
+                            r.left_top(),
+                            r.right_top(),
+                            r.right_bottom(),
+                            r.left_bottom(),
+                            r.left_top(),
+                        ];
+                        painter.extend(Shape::dashed_line(&c, stroke, 6.0 * z, 4.0 * z));
+                    } else {
+                        painter.rect_stroke(r, CornerRadius::ZERO, stroke, StrokeKind::Middle);
+                    }
+                }
+                Prim::Ellipse {
+                    rect,
+                    fill,
+                    stroke,
+                    dashed,
+                } => {
+                    let center = to_screen(rect.x + rect.w / 2.0, rect.y + rect.h / 2.0);
+                    let radius = Vec2::new(rect.w as f32 / 2.0, rect.h as f32 / 2.0) * z;
+                    if let Some(f) = fill {
+                        painter.add(Shape::ellipse_filled(center, radius, col(*f)));
+                    }
+                    let stroke = Stroke::new(1.0, col(*stroke));
+                    if *dashed {
+                        let outline: Vec<Pos2> = (0..=64)
+                            .map(|i| {
+                                let a = i as f32 / 64.0 * std::f32::consts::TAU;
+                                center + Vec2::new(a.cos() * radius.x, a.sin() * radius.y)
+                            })
+                            .collect();
+                        painter.extend(Shape::dashed_line(&outline, stroke, 6.0 * z, 4.0 * z));
+                    } else {
+                        painter.add(Shape::ellipse_stroke(center, radius, stroke));
+                    }
                 }
                 Prim::Line {
                     points,

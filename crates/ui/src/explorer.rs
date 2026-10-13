@@ -7,7 +7,13 @@ use mdj::Element;
 use serde_json::{Value, json};
 
 /// Child lists shown in the tree. Views are never shown.
-const CHILD_FIELDS: &[&str] = &["ownedElements", "attributes", "operations", "literals"];
+const CHILD_FIELDS: &[&str] = &[
+    "ownedElements",
+    "attributes",
+    "operations",
+    "literals",
+    "slots",
+];
 const MAX_DEPTH: usize = 64;
 
 pub fn show(ui: &mut egui::Ui, session: &Session) -> Vec<(&'static str, Value)> {
