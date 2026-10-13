@@ -189,6 +189,41 @@ impl<'a> Editor<'a> {
         true
     }
 
+    /// Move `id` (with everything it owns) to the end of `new_parent.key`.
+    /// Returns `false` and changes nothing if `id` has no parent, the new
+    /// parent is missing, or it lies inside `id`'s own subtree.
+    pub fn relocate(&mut self, id: &str, new_parent: &str, key: &str) -> bool {
+        if self.doc.get(new_parent).is_none()
+            || self.doc.subtree_ids(id).iter().any(|x| x == new_parent)
+        {
+            return false;
+        }
+        let Some((parent, old_key, index)) = self.doc.position_of(id) else {
+            return false;
+        };
+        let Some(Op::Insert { elements, .. }) = self.doc.apply_op(Op::Remove {
+            parent: parent.clone(),
+            key: old_key.clone(),
+            index,
+            drop_empty: false,
+        }) else {
+            return false;
+        };
+        self.inverse.push(Op::Insert {
+            parent,
+            key: old_key,
+            index,
+            elements: elements.clone(),
+        });
+        self.apply(Op::Insert {
+            parent: new_parent.to_owned(),
+            key: key.to_owned(),
+            index: Some(usize::MAX),
+            elements,
+        });
+        true
+    }
+
     /// Remove `id` and its owned descendants. References to it elsewhere are
     /// left alone; see [`crate::uml::delete_elements`] for a cascading delete.
     pub fn remove(&mut self, id: &str) -> bool {
@@ -370,6 +405,43 @@ mod tests {
         assert_eq!(doc.get(&model).unwrap().children("ownedElements")[1], "B");
         assert!(!doc.edit(|e| e.reorder("B", 99)));
         doc.undo();
+        assert_eq!(doc.to_value(), before);
+    }
+
+    #[test]
+    fn relocate_moves_subtree_and_undoes() {
+        let mut doc = Document::new_project();
+        let model = doc.get(doc.root()).unwrap().children("ownedElements")[0].clone();
+        doc.edit(|e| {
+            e.append(
+                &model,
+                "ownedElements",
+                vec![Element::new("PKG".into(), "UMLPackage")],
+            );
+            let c = e.append(&model, "ownedElements", vec![class("C")]);
+            e.append(
+                &c,
+                "attributes",
+                vec![Element::new("X".into(), "UMLAttribute")],
+            );
+        });
+        let before = doc.to_value();
+        assert!(doc.edit(|e| e.relocate("C", "PKG", "ownedElements")));
+        assert_eq!(doc.get("C").unwrap().parent.as_deref(), Some("PKG"));
+        assert_eq!(
+            doc.get("X").unwrap().parent.as_deref(),
+            Some("C"),
+            "subtree kept"
+        );
+        assert!(
+            !doc.get(&model)
+                .unwrap()
+                .children("ownedElements")
+                .contains(&"C".to_owned())
+        );
+        // Never into its own subtree.
+        assert!(!doc.edit(|e| e.relocate("C", "X", "ownedElements")));
+        doc.undo(); // the refused move recorded nothing, so this undoes the relocate
         assert_eq!(doc.to_value(), before);
     }
 
