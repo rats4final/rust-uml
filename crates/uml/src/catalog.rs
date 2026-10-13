@@ -630,6 +630,43 @@ pub const NODES: &[NodeSpec] = &[
             (260.0, 120.0),
         )
     },
+    // Interaction overview diagrams: actions that call an interaction, drawn
+    // as frames (StarUML's interactionUseInOverviewFn / interactionInOverviewFn).
+    NodeSpec {
+        slot: Slot::ActivityNodes,
+        name_compartment: false,
+        labels: &["nameLabel", "frameTypeLabel"],
+        model_fields: &[("kind", Init::Str("callBehavior"))],
+        ..node(
+            "UMLInteractionUseInOverview",
+            "Interaction Use",
+            "UMLAction",
+            "UMLInteractionUseView",
+            "Action",
+            (160.0, 60.0),
+        )
+    },
+    NodeSpec {
+        slot: Slot::ActivityNodes,
+        name_compartment: false,
+        labels: &["nameLabel", "frameTypeLabel"],
+        model_fields: &[("kind", Init::Str("callBehavior"))],
+        ..node(
+            "UMLInteractionInOverview",
+            "Interaction (Inline)",
+            "UMLAction",
+            "UMLInteractionInlineView",
+            "Action",
+            (260.0, 180.0),
+        )
+    },
+    // Information flow diagrams
+    classifier(
+        "UMLInformationItem",
+        "Information Item",
+        "UMLInformationItemView",
+        "InformationItem",
+    ),
     // Annotations (no model element)
     NodeSpec {
         model_type: None,
@@ -970,6 +1007,12 @@ pub const EDGES: &[EdgeSpec] = &[
         "Async Signal Message",
         &[("messageSort", Init::Str("asynchSignal"))],
     ),
+    directed(
+        "UMLInformationFlow",
+        "Information Flow",
+        "UMLInformationFlow",
+        "UMLInformationFlowView",
+    ),
     role_connector("UMLConnector", "Connector"),
     role_connector("UMLSelfConnector", "Self Connector"),
     comm_message("UMLForwardMessage", "Forward Message"),
@@ -1010,7 +1053,11 @@ pub struct ToolGroup {
 pub const TOOL_GROUPS: &[ToolGroup] = &[
     ToolGroup {
         label: "Classes",
-        diagrams: &["UMLClassDiagram", "UMLCompositeStructureDiagram"],
+        diagrams: &[
+            "UMLClassDiagram",
+            "UMLCompositeStructureDiagram",
+            "UMLInformationFlowDiagram",
+        ],
         tools: &[
             "UMLClass",
             "UMLInterface",
@@ -1108,7 +1155,7 @@ pub const TOOL_GROUPS: &[ToolGroup] = &[
     },
     ToolGroup {
         label: "Use Cases",
-        diagrams: &["UMLUseCaseDiagram"],
+        diagrams: &["UMLUseCaseDiagram", "UMLInformationFlowDiagram"],
         tools: &[
             "UMLPackage",
             "UMLUseCaseSubject",
@@ -1195,6 +1242,26 @@ pub const TOOL_GROUPS: &[ToolGroup] = &[
         tools: &["UMLCombinedFragment"],
     },
     ToolGroup {
+        label: "Interaction Overview",
+        diagrams: &["UMLInteractionOverviewDiagram"],
+        tools: &[
+            "UMLInteractionUseInOverview",
+            "UMLInteractionInOverview",
+            "UMLInitialNode",
+            "UMLActivityFinalNode",
+            "UMLForkNode",
+            "UMLJoinNode",
+            "UMLMergeNode",
+            "UMLDecisionNode",
+            "UMLControlFlow",
+        ],
+    },
+    ToolGroup {
+        label: "Information Flow",
+        diagrams: &["UMLInformationFlowDiagram"],
+        tools: &["UMLInformationItem", "UMLInformationFlow"],
+    },
+    ToolGroup {
         label: "Communication",
         diagrams: COMMUNICATION,
         tools: &[
@@ -1245,6 +1312,16 @@ pub const DIAGRAMS: &[(&str, &str, &str)] = &[
         "UMLCommunicationDiagram",
         "Communication Diagram",
         "CommunicationDiagram",
+    ),
+    (
+        "UMLInteractionOverviewDiagram",
+        "Interaction Overview Diagram",
+        "InteractionOverviewDiagram",
+    ),
+    (
+        "UMLInformationFlowDiagram",
+        "Information Flow Diagram",
+        "InformationFlowDiagram",
     ),
 ];
 

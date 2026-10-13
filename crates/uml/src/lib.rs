@@ -239,6 +239,115 @@ mod tests {
     }
 
     #[test]
+    fn interaction_overview_like_staruml() {
+        let mut doc = Document::new_project();
+        let dgm = diagram_of_type(&mut doc, "UMLInteractionOverviewDiagram");
+        // Collaboration → Interaction → Activity → diagram, plus a frame.
+        let parent_of = |doc: &Document, id: &str| doc.get(id).unwrap().parent.clone().unwrap();
+        let activity = parent_of(&doc, &dgm);
+        let outer = parent_of(&doc, &activity);
+        let collaboration = parent_of(&doc, &outer);
+        let type_of = |doc: &Document, id: &str| doc.get(id).unwrap().type_name.clone();
+        assert_eq!(type_of(&doc, &activity), "UMLActivity");
+        assert_eq!(type_of(&doc, &outer), "UMLInteraction");
+        assert_eq!(type_of(&doc, &collaboration), "UMLCollaboration");
+        let frame = doc.get(dgm.as_str()).unwrap().children("ownedViews")[0].clone();
+        assert_eq!(type_of(&doc, &frame), "UMLFrameView");
+
+        // Interaction Use: an action calling a use of a new interaction.
+        let (action, view) = node(
+            &mut doc,
+            &dgm,
+            "UMLInteractionUseInOverview",
+            60.0,
+            80.0,
+            None,
+        );
+        assert_eq!(type_of(&doc, &view), "UMLInteractionUseView");
+        let a = doc.get(&action).unwrap();
+        assert_eq!(a.type_name, "UMLAction");
+        assert_eq!(a.str("kind"), Some("callBehavior"));
+        assert_eq!(a.parent.as_deref(), Some(activity.as_str()));
+        let usage = doc.get(a.ref_id("target").unwrap()).unwrap();
+        assert_eq!(usage.type_name, "UMLInteractionUse");
+        assert_eq!(
+            usage.parent.as_deref(),
+            Some(outer.as_str()),
+            "in the outer fragments"
+        );
+        let called = usage.ref_id("refersTo").unwrap();
+        assert_eq!(parent_of(&doc, called), collaboration);
+
+        // Interaction (Inline): an action calling a sequence diagram of its own.
+        let (inline, iv) = node(
+            &mut doc,
+            &dgm,
+            "UMLInteractionInOverview",
+            300.0,
+            80.0,
+            None,
+        );
+        assert_eq!(type_of(&doc, &iv), "UMLInteractionInlineView");
+        let target = doc
+            .get(&inline)
+            .unwrap()
+            .ref_id("target")
+            .unwrap()
+            .to_owned();
+        assert_eq!(type_of(&doc, &target), "UMLSequenceDiagram");
+        let home = parent_of(&doc, &target);
+        assert_eq!(type_of(&doc, &home), "UMLInteraction");
+        assert_eq!(parent_of(&doc, &home), collaboration);
+
+        // The activity tools work here as they do on activity diagrams.
+        let (_, start) = node(&mut doc, &dgm, "UMLInitialNode", 20.0, 20.0, None);
+        let (flow, _) = edge(&mut doc, &dgm, "UMLControlFlow", &start, &view);
+        assert_eq!(parent_of(&doc, &flow.unwrap()), activity);
+
+        // Added to an existing activity, no wrappers.
+        let added = doc
+            .try_edit(|e| create_diagram(e, &activity, "UMLInteractionOverviewDiagram"))
+            .unwrap();
+        assert_eq!(parent_of(&doc, &added), activity);
+    }
+
+    #[test]
+    fn information_flow_like_staruml() {
+        let mut doc = Document::new_project();
+        let dgm = diagram_of_type(&mut doc, "UMLInformationFlowDiagram");
+        let model = doc.get(doc.root()).unwrap().children("ownedElements")[0].clone();
+        assert_eq!(
+            doc.get(&dgm).unwrap().parent.as_deref(),
+            Some(model.as_str())
+        );
+        let (item, iv) = node(&mut doc, &dgm, "UMLInformationItem", 0.0, 0.0, None);
+        assert_eq!(doc.get(&item).unwrap().name(), "InformationItem1");
+        let (_, cv) = node(&mut doc, &dgm, "UMLClass", 300.0, 0.0, None);
+        let (_, av) = node(&mut doc, &dgm, "UMLActor", 300.0, 200.0, None);
+        let (flow, _) = edge(&mut doc, &dgm, "UMLInformationFlow", &iv, &cv);
+        let flow = doc.get(&flow.unwrap()).unwrap();
+        assert_eq!(flow.type_name, "UMLInformationFlow");
+        assert_eq!(
+            flow.parent.as_deref(),
+            Some(item.as_str()),
+            "owned by its source"
+        );
+        assert!(doc.get(&av).is_some(), "use case tools are offered too");
+        let tools: Vec<&str> = tool_groups("UMLInformationFlowDiagram")
+            .flat_map(|g| g.tools.iter().copied())
+            .collect();
+        for t in [
+            "UMLInformationItem",
+            "UMLInformationFlow",
+            "UMLClass",
+            "UMLActor",
+            "UMLInclude",
+        ] {
+            assert!(tools.contains(&t), "{t}");
+        }
+    }
+
+    #[test]
     fn communication_diagrams_like_staruml() {
         let mut doc = Document::new_project();
         let dgm = diagram_of_type(&mut doc, "UMLCommunicationDiagram");

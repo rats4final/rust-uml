@@ -303,6 +303,12 @@ pub fn create_node(
             if spec.id == "UMLLifeline" {
                 add_lifeline_role(e, &target.owner, &id);
             }
+            if matches!(
+                spec.id,
+                "UMLInteractionUseInOverview" | "UMLInteractionInOverview"
+            ) {
+                add_overview_target(e, &target.owner, &id, spec.id);
+            }
             Some(id)
         }
         None => None,
@@ -338,6 +344,44 @@ fn add_lifeline_role(e: &mut Editor, interaction: &str, lifeline: &str) {
         .with("name", Field::str(format!("Role{}", taken + 1)));
     let role = e.append(&classifier, "attributes", vec![role]);
     e.set(lifeline, "represent", Field::Ref(role));
+}
+
+/// What an interaction-overview action calls, as StarUML creates it: a new
+/// interaction next to the one that owns the overview's activity, and
+/// either an interaction use referring to it (Interaction Use; the use goes
+/// in the outer interaction's `fragments`) or a sequence diagram inside it
+/// (Interaction (Inline)). The action's `target` points at the use or the
+/// diagram.
+fn add_overview_target(e: &mut Editor, activity: &str, action: &str, tool: &str) {
+    let doc = e.doc();
+    let outer = doc.get(activity).and_then(|a| a.parent.clone());
+    let home = outer
+        .as_deref()
+        .and_then(|o| doc.get(o))
+        .and_then(|o| o.parent.clone())
+        .or_else(|| outer.clone())
+        .unwrap_or_else(|| doc.root().to_owned());
+    let outer_interaction =
+        outer.filter(|o| doc.get(o).is_some_and(|o| o.type_name == "UMLInteraction"));
+    let name = unique_name(doc, &home, "Interaction");
+    let mut tree =
+        Tree::new(Element::new(e.new_id(), "UMLInteraction").with("name", Field::str(name)));
+    if tool == "UMLInteractionInOverview" {
+        let diagram = Element::new(e.new_id(), "UMLSequenceDiagram")
+            .with("name", Field::str("SequenceDiagram1"));
+        let (_, diagram) = tree.child(0, "ownedElements", diagram);
+        e.append(&home, "ownedElements", tree.elements);
+        e.set(action, "target", Field::Ref(diagram));
+        return;
+    }
+    let interaction = e.append(&home, "ownedElements", tree.elements);
+    let fragments_of = outer_interaction.unwrap_or_else(|| interaction.clone());
+    let use_name = unique_name(e.doc(), &fragments_of, "InteractionUse");
+    let usage = Element::new(e.new_id(), "UMLInteractionUse")
+        .with("name", Field::str(use_name))
+        .with("refersTo", Field::Ref(interaction));
+    let usage = e.append(&fragments_of, "fragments", vec![usage]);
+    e.set(action, "target", Field::Ref(usage));
 }
 
 /// Top-left for a box of `size` centred on the nearest point of `container`'s border.
@@ -1237,8 +1281,10 @@ pub fn with_contained(doc: &Document, view: &str) -> Vec<Id> {
 
 /// Create a diagram of `diagram_type` under `parent`, the way StarUML does:
 /// a statechart diagram lives in a state machine (created with one region),
-/// an activity diagram in an activity, a profile diagram in a profile —
-/// unless `parent` already is one. Returns the diagram's id.
+/// an activity diagram in an activity, a profile diagram in a profile, a
+/// sequence or communication diagram in an interaction, an interaction
+/// overview diagram in an activity inside an interaction — unless `parent`
+/// already is the right kind. Returns the diagram's id.
 pub fn create_diagram(e: &mut Editor, parent: &str, diagram_type: &str) -> Result<Id, String> {
     let &(_, _, base) = DIAGRAMS
         .iter()
@@ -1249,20 +1295,25 @@ pub fn create_diagram(e: &mut Editor, parent: &str, diagram_type: &str) -> Resul
         .get(parent)
         .map(|p| p.type_name.clone())
         .ok_or("no such parent")?;
-    let wrapper = match diagram_type {
-        "UMLStatechartDiagram" if parent_type != "UMLStateMachine" => {
-            Some(("UMLStateMachine", "StateMachine"))
+    const INTERACTION: (&str, &str) = ("UMLInteraction", "Interaction");
+    const ACTIVITY: (&str, &str) = ("UMLActivity", "Activity");
+    // Wrappers to create, outermost first.
+    let wrappers: &[(&str, &str)] = match (diagram_type, parent_type.as_str()) {
+        ("UMLStatechartDiagram", p) if p != "UMLStateMachine" => {
+            &[("UMLStateMachine", "StateMachine")]
         }
-        "UMLActivityDiagram" if parent_type != "UMLActivity" => Some(("UMLActivity", "Activity")),
-        "UMLProfileDiagram" if parent_type != "UMLProfile" => Some(("UMLProfile", "Profile")),
-        "UMLSequenceDiagram" | "UMLCommunicationDiagram" if parent_type != "UMLInteraction" => {
-            Some(("UMLInteraction", "Interaction"))
+        ("UMLActivityDiagram", p) if p != "UMLActivity" => &[ACTIVITY],
+        ("UMLProfileDiagram", p) if p != "UMLProfile" => &[("UMLProfile", "Profile")],
+        ("UMLSequenceDiagram" | "UMLCommunicationDiagram", p) if p != "UMLInteraction" => {
+            &[INTERACTION]
         }
-        _ => None,
+        ("UMLInteractionOverviewDiagram", "UMLActivity") => &[],
+        ("UMLInteractionOverviewDiagram", "UMLInteraction") => &[ACTIVITY],
+        ("UMLInteractionOverviewDiagram", _) => &[INTERACTION, ACTIVITY],
+        _ => &[],
     };
-    // A sequence or communication diagram's interaction sits in a
-    // collaboration unless added to a classifier (as StarUML does).
-    let parent = if wrapper.is_some_and(|(w, _)| w == "UMLInteraction")
+    // An interaction sits in a collaboration unless added to a classifier.
+    let mut owner = if wrappers.first() == Some(&INTERACTION)
         && matches!(
             parent_type.as_str(),
             "UMLModel" | "UMLPackage" | "Project" | "UMLSubsystem"
@@ -1273,26 +1324,22 @@ pub fn create_diagram(e: &mut Editor, parent: &str, diagram_type: &str) -> Resul
     } else {
         parent.to_owned()
     };
-    let parent = parent.as_str();
-    let owner = match wrapper {
-        Some((wrapper_type, wrapper_base)) => {
-            let name = unique_name(e.doc(), parent, wrapper_base);
-            let mut tree =
-                Tree::new(Element::new(e.new_id(), wrapper_type).with("name", Field::str(name)));
-            if wrapper_type == "UMLStateMachine" {
-                let region = Element::new(e.new_id(), "UMLRegion");
-                tree.child(0, "regions", region);
-            }
-            e.append(parent, "ownedElements", tree.elements)
+    for &(wrapper_type, wrapper_base) in wrappers {
+        let name = unique_name(e.doc(), &owner, wrapper_base);
+        let mut tree =
+            Tree::new(Element::new(e.new_id(), wrapper_type).with("name", Field::str(name)));
+        if wrapper_type == "UMLStateMachine" {
+            let region = Element::new(e.new_id(), "UMLRegion");
+            tree.child(0, "regions", region);
         }
-        None => parent.to_owned(),
-    };
+        owner = e.append(&owner, "ownedElements", tree.elements);
+    }
     let name = unique_name(e.doc(), &owner, base);
     let diagram = Element::new(e.new_id(), diagram_type).with("name", Field::str(name));
     let id = e.append(&owner, "ownedElements", vec![diagram]);
     if matches!(
         diagram_type,
-        "UMLSequenceDiagram" | "UMLCommunicationDiagram"
+        "UMLSequenceDiagram" | "UMLCommunicationDiagram" | "UMLInteractionOverviewDiagram"
     ) {
         add_frame(e, &id);
     }
