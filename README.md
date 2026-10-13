@@ -22,6 +22,20 @@ cargo run -p desktop -- your-model.mdj
 cargo run -p cli -- image your-model.mdj -f png -o out/
 ```
 
+## Built for scripts and agents
+
+Every action is a command, so the CLI and AI agents can do anything the UI does:
+
+```sh
+# Build a diagram in one go, save it and export it
+rust-uml-cli run --new --script examples/scripts/shop.json -o shop.mdj -o shop.png
+
+# Let Claude (or any MCP client) build and read your models
+claude mcp add rust-uml -- rust-uml-cli mcp --root ~/models
+```
+
+See [`docs/agents.md`](docs/agents.md).
+
 More in [`docs/development.md`](docs/development.md). Contributors and AI agents: start with
 [`AGENTS.md`](AGENTS.md).
 

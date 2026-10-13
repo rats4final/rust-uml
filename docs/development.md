@@ -8,6 +8,9 @@ cargo run -p cli -- info path/to/model.mdj        # CLI
 cargo run -p cli -- image model.mdj -f svg -o out # export every diagram
 cargo run -p cli -- commands                      # list every command and its params
 cargo run -p cli -- run model.mdj node.create '{"kind":"Class","x":40,"y":40}' -o model.mdj
+cargo run -p cli -- run --new --script examples/scripts/shop.json -o shop.mdj -o shop.png
+cargo run -p cli -- help                          # every subcommand; `help run` explains one
+cargo run -p cli -- mcp --root .                  # MCP server for AI agents (docs/agents.md)
 ```
 
 Linux file dialogs need an XDG desktop portal or `zenity`. Where neither exists (plain WSL), use

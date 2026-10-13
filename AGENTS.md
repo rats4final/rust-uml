@@ -13,6 +13,7 @@ codebase. Read this file first, then `docs/`.
 | `docs/evidence.md` | What StarUML is and how its files look, with the evidence for each claim |
 | `docs/parity.md` | Every StarUML feature and where we stand: the work list |
 | `docs/architecture.md` | Crate map, layers, how a click becomes a saved file |
+| `docs/agents.md` | Scripts, batch runs and the MCP server: driving rust-uml from outside |
 | `docs/development.md` | Build, test, run, web build |
 | `log/devlog.md` | What landed recently and what's still open |
 
@@ -25,9 +26,10 @@ crates/
   render   L2  layout, display list (Scene), routing, SVG/PNG export, bundled fonts
   engine   L3  Session + command registry: every action is a command with JSON params
   ui       L4  egui shell (thin); platform services injected through FileService
+  automation L4 scripts with $references, root-scoped file access, MCP server (no egui)
 apps/
   desktop  rust-uml       native app (eframe + rfd dialogs)
-  cli      rust-uml-cli   headless: new / info / image / commands / run
+  cli      rust-uml-cli   headless: new / info / image / run / batch / commands / tools / mcp
   web      rust-uml-web   the same UI in a browser (trunk + wasm-bindgen)
 xtask/     cargo xtask layers | wasm | targets | ci
 ```
@@ -50,7 +52,8 @@ below `ui` may use egui, eframe, winit or rfd. Register new crates in `xtask/src
    per-kind enums.
 4. **Everything is a command.** New user-visible behaviour = a `CommandSpec` in
    `crates/engine/src/commands.rs` with id, label, menu, shortcut, params doc, `enabled`, `run`, plus
-   tests. The UI, CLI and future HTTP API all dispatch by id.
+   tests. The UI, CLI, scripts and MCP server all dispatch by id, so agents get new commands for free;
+   keep the params doc exact, because agents read it.
 5. **Files stay lossless.** Loading then saving any StarUML file must not change it. Run the
    real-file test (`crates/mdj/tests/staruml_files.rs`) against a local StarUML install when you
    touch `mdj`. Never commit StarUML's files.

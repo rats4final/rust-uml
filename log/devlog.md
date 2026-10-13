@@ -2,6 +2,19 @@
 
 Newest first. Terse: what landed, numbers, what's still open.
 
+## 2026-10-12 — agent milestone, parts 1–2: scriptable CLI and MCP server
+
+- Owner chose agent features (PhotoCraft-style) before M3b part 2; no in-app AI panel.
+- `engine`: `name` on `diagram.add`/`node.create`/`edge.create`/`feature.add`; `element.set
+  {id, values}` (one undo step, all checked first); `diagram.inspect`; `model.tree`. 24 commands.
+- New crate `automation` (L4): scripts with `$name.path` references, all-or-nothing by default;
+  `Workspace` confines files to one folder (no `..`, no writing through links, model/image
+  extensions only); MCP server (JSON-RPC over stdio, 11 tools, PNG previews).
+- `rust-uml-cli`: `run` chains `--cmd/--params/--as`, `--script`, `--new`, repeatable `-o`;
+  `batch`; `help <sub>`; `--json`; `mcp --root`. Old `run <file> <cmd> <json>` form unchanged.
+- `examples/scripts/shop.json`; `docs/agents.md`. 87 tests; wasm/Windows/macOS checks clean.
+- Open: try the MCP server from a real client; Mermaid import; live-app control channel.
+
 ## 2026-10-12 — v0.4.0: sequence diagrams
 
 - Sequence diagrams as StarUML builds them: collaboration → interaction → diagram + frame;

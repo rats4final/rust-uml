@@ -1,6 +1,6 @@
 # Roadmap and handoff
 
-**Read this to pick up the work.** Status as of 2026-10-12, after v0.4.0.
+**Read this to pick up the work.** Status as of 2026-10-12, after v0.4.0 and agent milestone parts 1–2 (not yet released).
 Order of reading for a new agent/session: `AGENTS.md` → this file → `docs/parity.md` → `log/devlog.md`.
 
 ## 1. Where things stand
@@ -106,7 +106,30 @@ release when it's user-visible.
 - Left: found/lost messages, gates/endpoints, state invariants, continuations, interaction uses,
   time/duration constraints; dragging a message vertically (today: delete and redraw).
 
-### M3b part 2 — Communication, timing, interaction overview, information flow (next)
+### A — Agent-ready, PhotoCraft-style (in progress; the owner put it before M3b part 2)
+
+The owner asked for PhotoCraft-style CLI and AI integrations ahead of more diagram families, and
+said **no built-in AI assistant panel**: AI stays outside the app, through the CLI and MCP (no API
+keys inside rust-uml). Guide for users: `docs/agents.md`.
+
+1. ✅ **CLI:** `run` chains steps (`--cmd/--params/--as`, `--script file|-`, `--new`, repeatable
+   `-o` by extension), all-or-nothing; `batch --in --out [--script] [--image]`; `help <sub>`;
+   `--json` listings. Engine additions for agents: `name` on create commands, `element.set
+   {values}`, `diagram.inspect`, `model.tree`. Shared layer: `crates/automation` (`script`,
+   `workspace`, `mcp`).
+2. ✅ **MCP server:** `rust-uml-cli mcp --root <dir>`, hand-rolled JSON-RPC over stdio (no SDK
+   dependency), 11 tools incl. `render_preview` (PNG image content) and `command_batch`. Tested by
+   an in-process conversation and by spawning the binary. **Not yet tried from a real client** —
+   do `claude mcp add rust-uml -- rust-uml-cli mcp --root <dir>` and ask it to build a diagram.
+3. ⬜ **Mermaid import** (parity row): `classDiagram`, `sequenceDiagram`, `stateDiagram-v2`,
+   `flowchart` → activity. Needs a simple layered auto-layout (also M6's auto layout). Evidence:
+   `extensions/default/mermaid` (behaviour only). Expose as a command (`model.import-mermaid
+   {text}`) so CLI, MCP and the UI get it at once.
+4. ⬜ **Live app control:** `rust-uml --control <port>` loopback JSON-lines channel with a token
+   file (PhotoCraft's design: `docs/control-protocol.md` there), `ui.inspect`, `ui.screenshot`,
+   `engine.execute`; then `rust-uml-cli mcp --bridge`. StarUML's HTTP API (M8) on the same server.
+
+### M3b part 2 — Communication, timing, interaction overview, information flow (after A)
 
 Evidence pointers: `communicationDiagramFn`, `timingDiagramFn`, `interactionOverviewDiagramFn` and
 their `viewFor…DiagramFn` in `uml-factory.js` (communication messages create a connector between
@@ -144,9 +167,10 @@ PDF (vector; StarUML uses pdfkit — consider `printpdf`/`krilla` from the Scene
 ### M8 — Integration
 
 - Local HTTP API mirroring StarUML's (`/generate_diagram`, `/get_all_diagrams_info`,
-  `/get_current_diagram_info`, `/get_diagram_image_by_id`) on top of the command registry; desktop only.
-- MCP server exposing the commands (the registry already has ids, labels and param docs).
-- Mermaid import (StarUML: `extensions/default/mermaid`), StarUML v1 `.uml` import.
+  `/get_current_diagram_info`, `/get_diagram_image_by_id`) on top of the command registry; desktop
+  only. (Moved into milestone A part 4.)
+- ~~MCP server~~ done in milestone A; ~~Mermaid import~~ moved to milestone A part 3.
+- StarUML v1 `.uml` import.
 - CLI parity: `ejs`-style code generation (use a Rust template engine such as minijinja), `html`, `pdf`.
 
 ### M9 — Packaging

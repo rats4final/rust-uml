@@ -1,6 +1,6 @@
 # Parity with StarUML 7.1.1
 
-Status line: **M3b (part 1) — sequence diagrams.** Updated 2026-10-12.
+Status line: **Agent milestone (A), parts 1–2: scriptable CLI and MCP server.** Updated 2026-10-12.
 
 Each row comes from the evidence in [`evidence.md`](evidence.md). "Paid" marks features StarUML
 locks behind a licence (see evidence §4: only exports are locked, by watermark).
@@ -83,6 +83,10 @@ Legend: ✅ done · 🟡 partial · ⬜ not started
 | Browser (WebAssembly) | ✅ | trunk build (7.3 MB wasm), runs in Chromium; open = file picker, save = download |
 | CLI: image export | ✅ | `rust-uml-cli image` (PNG/SVG) |
 | CLI: run any command | ✅ | `rust-uml-cli run <file> <command> <json>` |
+| CLI: scripts, chained steps, batch over a folder | ✅ | Beyond StarUML. `run --cmd … --as …`, `--script`, `batch`; all-or-nothing; `docs/agents.md` |
+| CLI: per-subcommand help, JSON output | ✅ | `help <sub>`, `--help`, `info/commands/tools --json` |
+| MCP server for AI agents | ✅ | `rust-uml-cli mcp --root <dir>`: 11 tools incl. image previews; StarUML reaches MCP through its HTTP API instead |
+| Drive the running desktop app (control channel, MCP bridge) | ⬜ | Beyond StarUML; agent milestone part 4 |
 | CLI: ejs code generation, html, pdf | ⬜ | |
 | Local HTTP API (`/generate_diagram`, …) | ⬜ | Same command registry would back it |
 | Code generation / reverse engineering | ⬜ | Separate StarUML extensions, not in the installed app |
