@@ -106,5 +106,29 @@ edge UMLControlFlow "$pick_v" "$join_v" > /dev/null
 edge UMLControlFlow "$invoice_v" "$join_v" > /dev/null
 edge UMLControlFlow "$join_v" "$end_v" > /dev/null
 
+# --- Sequence diagram ------------------------------------------------------
+diagram UMLSequenceDiagram "Checkout"
+read -r c c_v < <(node UMLLifeline 40 40 customer)
+read -r sh sh_v < <(node UMLLifeline 220 40 shop)
+read -r p p_v < <(node UMLLifeline 400 40 payments)
+for lv in "$c_v" "$sh_v" "$p_v"; do resize "$lv" 100 380; done
+msg() { # kind tail head y name -> model
+  local m; m="$(run edge.create "{\"kind\":\"$1\",\"tail\":\"$2\",\"head\":\"$3\",\"y\":$4}" | get model)"
+  set_field "$m" name "\"$5\""
+  echo "$m"
+}
+msg UMLMessage "$c_v" "$sh_v" 120 checkout > /dev/null
+set_field "$(msg UMLMessage "$sh_v" "$p_v" 160 charge)" arguments '"total"'
+msg UMLReplyMessage "$p_v" "$sh_v" 210 approved > /dev/null
+read -r frag frag_v < <(node UMLCombinedFragment 180 240 "")
+resize "$frag_v" 330 150
+run feature.add "{\"classifier\":\"$frag\",\"kind\":\"operand\"}" > /dev/null
+ops="$(run model.get "{\"id\":\"$frag\"}" | python3 -I -c 'import json,sys; print(" ".join(json.load(sys.stdin)["fields"]["operands"]["children"]))')"
+set -- $ops
+set_field "$1" guard '"in stock"'
+set_field "$2" guard '"else"'
+msg UMLAsyncMessage "$sh_v" "$c_v" 305 confirmation > /dev/null
+msg UMLAsyncMessage "$sh_v" "$c_v" 372 backorderNotice > /dev/null
+
 mv "$file" "$out"
 echo "wrote $out"
