@@ -197,7 +197,7 @@ fn specs() -> Vec<CommandSpec> {
             label: "Create Relationship",
             menu: None,
             shortcut: None,
-            params: r#"{"kind": toolbox id or label (UMLAssociation, "Composition", "Containment", "Note Link", …), "tail": view id, "head": view id}"#,
+            params: r#"{"kind": toolbox id or label (UMLAssociation, "Composition", "Containment", "Note Link", …), "tail": view id, "head": view id, "y"?: height for sequence messages}"#,
             enabled: has_diagram,
             run: create_edge,
         },
@@ -233,7 +233,7 @@ fn specs() -> Vec<CommandSpec> {
             label: "Add Feature",
             menu: None,
             shortcut: None,
-            params: r#"{"classifier": id, "kind": "attribute"|"operation"|"literal"|"slot"}"#,
+            params: r#"{"classifier": id, "kind": "attribute"|"operation"|"literal"|"slot"|"operand"}"#,
             enabled: always,
             run: add_feature,
         },
@@ -522,8 +522,13 @@ fn create_edge(s: &mut Session, p: &Value) -> Result<Value, CommandError> {
     let tail = node_view(s, params::str(p, "tail")?)?.id.clone();
     let head = node_view(s, params::str(p, "head")?)?.id.clone();
     let diagram = active(s)?;
+    // Sequence messages are drawn at the height the drag started.
+    let at_y = match p.get("y") {
+        None | Some(Value::Null) => None,
+        Some(_) => Some(params::coord(p, "y")?),
+    };
     let (model, view) = s.edit(|e, _| {
-        uml::create_edge(e, &diagram, spec, &tail, &head).map_err(CommandError::Failed)
+        uml::create_edge_at(e, &diagram, spec, &tail, &head, at_y).map_err(CommandError::Failed)
     })?;
     s.selection = vec![view.clone()];
     Ok(json!({ "model": model, "view": view }))
@@ -674,6 +679,26 @@ const ENUMS: &[(&str, &str, &[&str])] = &[
         ],
     ),
     ("kind", "UMLTransition", &["external", "internal", "local"]),
+    (
+        "messageSort",
+        "UMLMessage",
+        &[
+            "synchCall",
+            "asynchCall",
+            "asynchSignal",
+            "createMessage",
+            "deleteMessage",
+            "reply",
+        ],
+    ),
+    (
+        "interactionOperator",
+        "UMLCombinedFragment",
+        &[
+            "alt", "opt", "par", "loop", "critical", "neg", "assert", "strict", "seq", "ignore",
+            "consider", "break",
+        ],
+    ),
     (
         "kind",
         "Tag",
@@ -1082,6 +1107,89 @@ mod tests {
         );
     }
 
+    #[test]
+    fn sequence_messages_follow_moving_lifelines() {
+        let reg = Registry::default();
+        let mut s = Session::default();
+        run(
+            &reg,
+            &mut s,
+            "diagram.add",
+            json!({"type": "UMLSequenceDiagram"}),
+        );
+        let a = run(
+            &reg,
+            &mut s,
+            "node.create",
+            json!({"kind": "Lifeline", "x": 50, "y": 40}),
+        );
+        let b = run(
+            &reg,
+            &mut s,
+            "node.create",
+            json!({"kind": "Lifeline", "x": 250, "y": 40}),
+        );
+        let m = run(
+            &reg,
+            &mut s,
+            "edge.create",
+            json!({"kind": "Message", "tail": a["view"], "head": b["view"], "y": 140}),
+        );
+        let points = |s: &Session| {
+            let v = s.doc.get(m["view"].as_str().unwrap()).unwrap();
+            mdj::values::parse_points(v.str("points").unwrap())
+        };
+        assert_eq!(points(&s), vec![(100.0, 140.0), (300.0, 140.0)]);
+        run(
+            &reg,
+            &mut s,
+            "view.move",
+            json!({"views": [b["view"]], "dx": 100, "dy": 0}),
+        );
+        assert_eq!(
+            points(&s),
+            vec![(100.0, 140.0), (400.0, 140.0)],
+            "same height, new x"
+        );
+        let act = s
+            .doc
+            .get(m["view"].as_str().unwrap())
+            .unwrap()
+            .ref_id("activation")
+            .unwrap()
+            .to_owned();
+        assert_eq!(
+            s.doc.get(&act).unwrap().num("left", 0.0),
+            393.0,
+            "activation moved along"
+        );
+        let svg = run(&reg, &mut s, "export.svg", json!({}));
+        assert!(
+            svg["svg"].as_str().unwrap().contains("sd SequenceDiagram1"),
+            "frame tag"
+        );
+        let op = run(
+            &reg,
+            &mut s,
+            "node.create",
+            json!({"kind": "Combined Fragment", "x": 30, "y": 100}),
+        );
+        run(
+            &reg,
+            &mut s,
+            "feature.add",
+            json!({"classifier": op["model"], "kind": "operand"}),
+        );
+        assert_eq!(
+            s.doc
+                .get(op["model"].as_str().unwrap())
+                .unwrap()
+                .children("operands")
+                .len(),
+            2
+        );
+    }
+
     /// Rule: no command panics, whatever the parameters or state.
     #[test]
     fn no_command_panics_on_hostile_params() {
@@ -1122,6 +1230,8 @@ mod tests {
             json!({"type": "UMLSequenceDiagram"}),
             json!({"type": "UMLClassDiagram", "parent": real[0]}),
             json!({"id": real[1], "key": "kind", "value": "sideways"}),
+            json!({"kind": "Message", "tail": real[0], "head": real[0], "y": "high"}),
+            json!({"kind": "Lifeline", "x": 0, "y": 0}),
         ];
         for spec in reg.specs() {
             if spec.id == "file.new" {

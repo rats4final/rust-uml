@@ -20,6 +20,10 @@ const CHILD_FIELDS: &[&str] = &[
     "edges",
     "groups",
     "extensionPoints",
+    "participants",
+    "messages",
+    "fragments",
+    "operands",
 ];
 const MAX_DEPTH: usize = 64;
 

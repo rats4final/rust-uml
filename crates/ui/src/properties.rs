@@ -29,6 +29,18 @@ const INSTANCES: &[&str] = &[
     "UMLNodeInstance",
 ];
 const CONNECTOR_KIND: &[&str] = &["assembly", "delegation"];
+const MESSAGE_SORT: &[&str] = &[
+    "synchCall",
+    "asynchCall",
+    "asynchSignal",
+    "createMessage",
+    "deleteMessage",
+    "reply",
+];
+const INTERACTION_OPERATOR: &[&str] = &[
+    "alt", "opt", "par", "loop", "critical", "neg", "assert", "strict", "seq", "ignore",
+    "consider", "break",
+];
 const PSEUDOSTATE_KIND: &[&str] = &[
     "initial",
     "deepHistory",
@@ -203,6 +215,55 @@ impl Properties {
             }
         }
         match t {
+            "UMLMessage" => {
+                ui.label("Sort");
+                combo(ui, el, "messageSort", MESSAGE_SORT, "synchCall", out);
+                ui.end_row();
+                for (label, key) in [
+                    ("Arguments", "arguments"),
+                    ("Guard", "guard"),
+                    ("Sequence number", "sequenceNumber"),
+                    ("Assign to", "assignmentTarget"),
+                ] {
+                    self.field(ui, el, label, key, el.str(key).unwrap_or(""), out);
+                }
+            }
+            "UMLLifeline" => {
+                self.field(
+                    ui,
+                    el,
+                    "Selector",
+                    "selector",
+                    el.str("selector").unwrap_or(""),
+                    out,
+                );
+                // The lifeline's type is its role's type.
+                if let Some(role) = el.ref_id("represent").and_then(|r| doc.get(r)) {
+                    self.field(
+                        ui,
+                        role,
+                        "Type",
+                        "type",
+                        uml::var_text(doc, role, "type"),
+                        out,
+                    );
+                }
+            }
+            "UMLCombinedFragment" => {
+                ui.label("Operator");
+                combo(
+                    ui,
+                    el,
+                    "interactionOperator",
+                    INTERACTION_OPERATOR,
+                    "alt",
+                    out,
+                );
+                ui.end_row();
+            }
+            "UMLInteractionOperand" => {
+                self.field(ui, el, "Guard", "guard", el.str("guard").unwrap_or(""), out);
+            }
             "UMLTransition" => {
                 self.field(ui, el, "Guard", "guard", el.str("guard").unwrap_or(""), out);
             }
@@ -362,6 +423,9 @@ impl Properties {
         if INSTANCES.contains(&t) {
             sections.push(("Slots", "slots", "slot"));
         }
+        if t == "UMLCombinedFragment" {
+            sections.push(("Operands", "operands", "operand"));
+        }
         for (title, key, kind) in sections {
             ui.add_space(8.0);
             ui.horizontal(|ui| {
@@ -380,6 +444,7 @@ impl Properties {
                     "attribute" => uml::attribute_text(doc, f),
                     "operation" => uml::operation_text(doc, f),
                     "slot" => uml::slot_text(doc, f),
+                    "operand" => format!("[{}]", f.str("guard").unwrap_or("")),
                     _ => f.name().to_owned(),
                 };
                 feature_row(ui, id, &text, out);

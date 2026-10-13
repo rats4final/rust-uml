@@ -292,11 +292,12 @@ impl Canvas {
                         json!({ "view": view, "width": w, "height": h }),
                     ));
                 }
-                Drag::Edge { tail, to, .. } => {
+                Drag::Edge { tail, from, to } => {
                     if let (Tool::Edge(spec), Some((head, _))) = (tool, scene.node_at(dp(to))) {
+                        // `y`: sequence messages are drawn at the height the drag started.
                         out.commands.push((
                             "edge.create",
-                            json!({ "kind": spec.id, "tail": tail, "head": head }),
+                            json!({ "kind": spec.id, "tail": tail, "head": head, "y": from.y.round() }),
                         ));
                     }
                     out.tool_done = true;
