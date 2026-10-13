@@ -21,6 +21,17 @@ pub enum Slot {
     Participants,
     /// `fragments` of the diagram's interaction (combined fragments).
     Fragments,
+    /// Timing diagrams. A lifeline: `participants` of the interaction, its
+    /// view inside the timing frame.
+    TimingLifeline,
+    /// A state/condition: a constraint in the lifeline's `ownedElements`,
+    /// its view inside the lifeline's (dropped on a lifeline or a state).
+    TimingState,
+    /// A time segment: a state invariant in the interaction's `fragments`,
+    /// its view inside the state's (dropped on a state).
+    TimingSegment,
+    /// A time tick: a view only, inside the timing frame.
+    TimingTick,
 }
 
 /// Whether a node can or must be dropped onto another box.
@@ -660,6 +671,61 @@ pub const NODES: &[NodeSpec] = &[
             (260.0, 180.0),
         )
     },
+    // Timing diagrams (StarUML's lifelineFn, timingStateFn, timeSegmentFn,
+    // timeTickFn). Positions are arranged by the frame, not where dropped.
+    NodeSpec {
+        slot: Slot::TimingLifeline,
+        name_compartment: false,
+        labels: &["nameLabel"],
+        diagrams: TIMING,
+        ..node(
+            "UMLLifeline",
+            "Lifeline",
+            "UMLLifeline",
+            "UMLTimingLifelineView",
+            "Lifeline",
+            (600.0, 50.0),
+        )
+    },
+    NodeSpec {
+        slot: Slot::TimingState,
+        name_compartment: false,
+        labels: &["nameLabel"],
+        ..node(
+            "UMLTimingState",
+            "State/Condition",
+            "UMLConstraint",
+            "UMLTimingStateView",
+            "State-Condition",
+            (500.0, 25.0),
+        )
+    },
+    NodeSpec {
+        slot: Slot::TimingSegment,
+        name_compartment: false,
+        ..node(
+            "UMLTimeSegment",
+            "Time Segment",
+            "UMLStateInvariant",
+            "UMLTimeSegmentView",
+            "Time Segment",
+            (60.0, 25.0),
+        )
+    },
+    NodeSpec {
+        slot: Slot::TimingTick,
+        model_type: None,
+        name_compartment: false,
+        ..node(
+            "UMLTimeTick",
+            "Time Tick",
+            "",
+            "UMLTimeTickView",
+            "",
+            // As wide as a new segment, so ticks mark segment boundaries.
+            (60.0, 11.0),
+        )
+    },
     // Information flow diagrams
     classifier(
         "UMLInformationItem",
@@ -820,6 +886,7 @@ const fn message(
 }
 
 const COMMUNICATION: &[&str] = &["UMLCommunicationDiagram"];
+const TIMING: &[&str] = &["UMLTimingDiagram"];
 
 /// A connector between lifelines on a communication diagram.
 const fn role_connector(id: &'static str, label: &'static str) -> EdgeSpec {
@@ -1013,6 +1080,18 @@ pub const EDGES: &[EdgeSpec] = &[
         "UMLInformationFlow",
         "UMLInformationFlowView",
     ),
+    // Timing messages join two time segments; source and target are the
+    // lifelines the segments cover.
+    EdgeSpec {
+        owner: EdgeOwner::SourceInteraction,
+        diagrams: TIMING,
+        ..directed(
+            "UMLMessage",
+            "Message",
+            "UMLMessage",
+            "UMLTimingMessageView",
+        )
+    },
     role_connector("UMLConnector", "Connector"),
     role_connector("UMLSelfConnector", "Self Connector"),
     comm_message("UMLForwardMessage", "Forward Message"),
@@ -1257,6 +1336,17 @@ pub const TOOL_GROUPS: &[ToolGroup] = &[
         ],
     },
     ToolGroup {
+        label: "Timing",
+        diagrams: TIMING,
+        tools: &[
+            "UMLLifeline",
+            "UMLTimingState",
+            "UMLTimeSegment",
+            "UMLTimeTick",
+            "UMLMessage",
+        ],
+    },
+    ToolGroup {
         label: "Information Flow",
         diagrams: &["UMLInformationFlowDiagram"],
         tools: &["UMLInformationItem", "UMLInformationFlow"],
@@ -1313,6 +1403,7 @@ pub const DIAGRAMS: &[(&str, &str, &str)] = &[
         "Communication Diagram",
         "CommunicationDiagram",
     ),
+    ("UMLTimingDiagram", "Timing Diagram", "TimingDiagram"),
     (
         "UMLInteractionOverviewDiagram",
         "Interaction Overview Diagram",

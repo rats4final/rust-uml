@@ -93,6 +93,12 @@ mod tests {
         doc.try_edit(|e| create_diagram(e, &model, ty)).unwrap()
     }
 
+    /// A state view in a new lifeline of the timing diagram `dgm`.
+    fn timing_state(doc: &mut Document, dgm: &str) -> Id {
+        let (_, lifeline) = node(doc, dgm, "UMLLifeline", 0.0, 0.0, None);
+        node(doc, dgm, "UMLTimingState", 0.0, 0.0, Some(&lifeline)).1
+    }
+
     #[test]
     fn every_node_tool_builds_its_view_type() {
         let mut doc = Document::new_project();
@@ -101,10 +107,15 @@ mod tests {
                 Some(ty) => diagram_of_type(&mut doc, ty),
                 None => diagram_offering(&mut doc, spec.id),
             };
-            let container = if spec.placement == catalog::Placement::OnClassifier {
-                Some(node(&mut doc, &dgm, "UMLClass", 0.0, 0.0, None).1)
-            } else {
-                None
+            let container = match spec.slot {
+                _ if spec.placement == catalog::Placement::OnClassifier => {
+                    Some(node(&mut doc, &dgm, "UMLClass", 0.0, 0.0, None).1)
+                }
+                catalog::Slot::TimingState => {
+                    Some(node(&mut doc, &dgm, "UMLLifeline", 0.0, 0.0, None).1)
+                }
+                catalog::Slot::TimingSegment => Some(timing_state(&mut doc, &dgm)),
+                _ => None,
             };
             let (_, v) = node(&mut doc, &dgm, spec.id, 300.0, 300.0, container.as_deref());
             let view = doc.get(&v).unwrap();
@@ -309,6 +320,107 @@ mod tests {
             .try_edit(|e| create_diagram(e, &activity, "UMLInteractionOverviewDiagram"))
             .unwrap();
         assert_eq!(parent_of(&doc, &added), activity);
+    }
+
+    #[test]
+    fn timing_diagrams_like_staruml() {
+        let mut doc = Document::new_project();
+        let dgm = diagram_of_type(&mut doc, "UMLTimingDiagram");
+        let interaction = doc.get(&dgm).unwrap().parent.clone().unwrap();
+        assert_eq!(doc.get(&interaction).unwrap().type_name, "UMLInteraction");
+        let frame = doc.get(&dgm).unwrap().children("ownedViews")[0].clone();
+        let f = doc.get(&frame).unwrap();
+        assert_eq!(f.type_name, "UMLTimingFrameView");
+        assert_eq!(f.ref_id("model"), Some(dgm.as_str()));
+        assert_eq!((f.num("left", 0.0), f.num("width", 0.0)), (5.0, 695.0));
+
+        // Lifelines go in the frame (even when created elsewhere), stacked.
+        let (a, av) = node(&mut doc, &dgm, "UMLLifeline", 300.0, 300.0, None);
+        let (_, bv) = node(&mut doc, &dgm, "UMLLifeline", 0.0, 0.0, Some(&frame));
+        let v = |doc: &Document, id: &str| doc.get(id).unwrap().clone();
+        let lv = v(&doc, &av);
+        assert_eq!(lv.type_name, "UMLTimingLifelineView");
+        assert_eq!(lv.ref_id("containerView"), Some(frame.as_str()));
+        assert_eq!((lv.num("left", 0.0), lv.num("width", 0.0)), (5.0, 695.0));
+        assert!(v(&doc, &bv).num("top", 0.0) >= lv.num("top", 0.0) + lv.num("height", 0.0));
+        assert!(
+            doc.get(&a).unwrap().ref_id("represent").is_some(),
+            "a role, as in sequence diagrams"
+        );
+
+        // States go in a lifeline (dropped on it or on one of its states).
+        let (idle, idle_v) = node(&mut doc, &dgm, "UMLTimingState", 0.0, 0.0, Some(&av));
+        let (_, busy_v) = node(&mut doc, &dgm, "UMLTimingState", 0.0, 0.0, Some(&idle_v));
+        let state = v(&doc, &idle);
+        assert_eq!(state.type_name, "UMLConstraint");
+        assert_eq!(state.name(), "State-Condition1");
+        assert_eq!(state.parent.as_deref(), Some(a.as_str()));
+        assert_eq!(v(&doc, &busy_v).ref_id("containerView"), Some(av.as_str()));
+        assert!(
+            v(&doc, &av).num("height", 0.0) >= 100.0,
+            "the lifeline grew"
+        );
+        assert!(
+            doc.try_edit(|e| create_node(
+                e,
+                &dgm,
+                node_spec_on("UMLTimingState", "UMLTimingDiagram").unwrap(),
+                0.0,
+                0.0,
+                None
+            ))
+            .is_err(),
+            "a state needs a lifeline"
+        );
+
+        // A segment covers the lifeline, in that state; it follows the last.
+        let (seg, seg_v) = node(&mut doc, &dgm, "UMLTimeSegment", 0.0, 0.0, Some(&idle_v));
+        let (_, seg2_v) = node(&mut doc, &dgm, "UMLTimeSegment", 0.0, 0.0, Some(&busy_v));
+        let sg = v(&doc, &seg);
+        assert_eq!(sg.type_name, "UMLStateInvariant");
+        assert_eq!(sg.parent.as_deref(), Some(interaction.as_str()));
+        assert_eq!(sg.ref_id("covered"), Some(a.as_str()));
+        assert_eq!(sg.ref_id("invariant"), Some(idle.as_str()));
+        let first = v(&doc, &seg_v);
+        assert_eq!(
+            v(&doc, &seg2_v).num("left", 0.0),
+            first.num("left", 0.0) + first.num("width", 0.0)
+        );
+
+        // Ticks sit on the frame's bottom edge; they have no model.
+        let (tick, tick_v) = node(&mut doc, &dgm, "UMLTimeTick", 0.0, 0.0, None);
+        assert!(tick.is_empty());
+        assert_eq!(
+            v(&doc, &tick_v).ref_id("containerView"),
+            Some(frame.as_str())
+        );
+
+        // Messages join segments; source and target are the lifelines.
+        let (b_state, b_state_v) = node(&mut doc, &dgm, "UMLTimingState", 0.0, 0.0, Some(&bv));
+        let _ = b_state;
+        let (_, b_seg_v) = node(&mut doc, &dgm, "UMLTimeSegment", 0.0, 0.0, Some(&b_state_v));
+        let (m, mv) = edge(&mut doc, &dgm, "UMLMessage", &seg_v, &b_seg_v);
+        let m = v(&doc, &m.unwrap());
+        assert_eq!(m.parent.as_deref(), Some(interaction.as_str()));
+        assert_eq!(m.ref_id("source"), Some(a.as_str()));
+        assert_eq!(v(&doc, &mv).type_name, "UMLTimingMessageView");
+        let lifeline_b = v(&doc, &bv).ref_id("model").unwrap().to_owned();
+        assert_eq!(m.ref_id("target"), Some(lifeline_b.as_str()));
+        assert!(
+            doc.try_edit(|e| create_edge(
+                e,
+                &dgm,
+                edge_spec_on("UMLMessage", "UMLTimingDiagram").unwrap(),
+                &av,
+                &bv
+            ))
+            .is_err(),
+            "lifelines aren't segments"
+        );
+
+        // Deleting a lifeline's view takes its states and segments.
+        doc.edit(|e| delete_views(e, std::slice::from_ref(&av)));
+        assert!(doc.get(&seg_v).is_none() && doc.get(&idle_v).is_none());
     }
 
     #[test]
@@ -677,8 +789,18 @@ mod tests {
             } else {
                 end_tool
             };
-            let (_, va) = node(&mut doc, &dgm, end_tool, 0.0, 0.0, None);
-            let (_, vb) = node(&mut doc, &dgm, end_tool, 300.0, 0.0, None);
+            let (va, vb) = if spec.view_type == "UMLTimingMessageView" {
+                let (sa, sb) = (timing_state(&mut doc, &dgm), timing_state(&mut doc, &dgm));
+                (
+                    node(&mut doc, &dgm, "UMLTimeSegment", 0.0, 0.0, Some(&sa)).1,
+                    node(&mut doc, &dgm, "UMLTimeSegment", 0.0, 0.0, Some(&sb)).1,
+                )
+            } else {
+                (
+                    node(&mut doc, &dgm, end_tool, 0.0, 0.0, None).1,
+                    node(&mut doc, &dgm, end_tool, 300.0, 0.0, None).1,
+                )
+            };
             let (_, ev) = edge(&mut doc, &dgm, spec.id, &va, &vb);
             let reloaded = Document::from_json_str(&doc.to_json_string().unwrap()).unwrap();
             let got = edge_spec_of(&reloaded, reloaded.get(&ev).unwrap()).map(|s| s.id);

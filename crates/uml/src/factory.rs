@@ -247,6 +247,9 @@ pub fn target_for(
                 container: None,
             })
         }
+        Slot::TimingLifeline | Slot::TimingState | Slot::TimingSegment | Slot::TimingTick => {
+            timing_target(doc, diagram, &diagram_owner, spec, container_view)
+        }
         Slot::ActivityNodes | Slot::ActivityGroups => {
             let activity = doc
                 .get(&diagram_owner)
@@ -271,6 +274,195 @@ pub fn target_for(
         }
     }
 }
+
+/// Where a timing-diagram element goes: lifelines and ticks inside the
+/// timing frame, states inside a lifeline, segments inside a state.
+fn timing_target(
+    doc: &Document,
+    diagram: &str,
+    diagram_owner: &str,
+    spec: &NodeSpec,
+    container_view: Option<&Element>,
+) -> Result<Target, String> {
+    let interaction = doc
+        .get(diagram_owner)
+        .filter(|o| o.type_name == "UMLInteraction")
+        .ok_or(
+            "Timing elements belong to an interaction: add a Timing Diagram (Model ▸ Add Diagram).",
+        )?;
+    let of_type = |t: &str| container_view.filter(|v| v.type_name == t);
+    match spec.slot {
+        Slot::TimingState => {
+            // On a lifeline, or on one of its states.
+            let lifeline = of_type("UMLTimingLifelineView")
+                .or_else(|| {
+                    of_type("UMLTimingStateView")
+                        .and_then(|s| s.ref_id("containerView"))
+                        .and_then(|c| doc.get(c))
+                })
+                .ok_or("Place a State/Condition on a lifeline.")?;
+            let model = lifeline
+                .ref_id("model")
+                .ok_or("That lifeline has no model element.")?;
+            Ok(Target {
+                owner: model.to_owned(),
+                list: "ownedElements",
+                container: Some(lifeline.id.clone()),
+            })
+        }
+        Slot::TimingSegment => {
+            let state = of_type("UMLTimingStateView")
+                .ok_or("Place a Time Segment on a State/Condition.")?;
+            Ok(Target {
+                owner: interaction.id.clone(),
+                list: "fragments",
+                container: Some(state.id.clone()),
+            })
+        }
+        // Lifelines and ticks: on the timing frame (the diagram's own, unless
+        // dropped on one).
+        _ => {
+            let frame = of_type("UMLTimingFrameView")
+                .map(|f| f.id.clone())
+                .or_else(|| timing_frame(doc, diagram))
+                .ok_or("This timing diagram has no frame to put it in.")?;
+            Ok(Target {
+                owner: interaction.id.clone(),
+                list: "participants",
+                container: Some(frame),
+            })
+        }
+    }
+}
+
+/// The timing diagram's frame view.
+fn timing_frame(doc: &Document, diagram: &str) -> Option<Id> {
+    doc.get(diagram)?
+        .children("ownedViews")
+        .iter()
+        .find(|v| {
+            doc.get(v)
+                .is_some_and(|v| v.type_name == "UMLTimingFrameView")
+        })
+        .cloned()
+}
+
+/// Starting geometry for a timing view, as the frame would arrange it
+/// (StarUML and our renderer re-arrange on drawing): lifelines stacked
+/// across the frame, states stacked in their lifeline (which grows), segments
+/// and ticks one after another along the time axis.
+fn place_timing_view(e: &mut Editor, view: &str, slot: Slot, container: &str) {
+    let doc = e.doc();
+    let rect = |id: &str| {
+        doc.get(id).map_or((0.0, 0.0, 0.0, 0.0), |v| {
+            (
+                v.num("left", 0.0),
+                v.num("top", 0.0),
+                v.num("width", 0.0),
+                v.num("height", 0.0),
+            )
+        })
+    };
+    let contained = |id: &str| -> Vec<Id> {
+        doc.get(id)
+            .and_then(|c| c.get("containedViews"))
+            .map(|f| f.refs().to_vec())
+            .unwrap_or_default()
+            .into_iter()
+            .filter(|v| v != view)
+            .collect()
+    };
+    let of_type = |ids: &[Id], t: &str| -> Vec<Id> {
+        ids.iter()
+            .filter(|v| doc.get(v).is_some_and(|v| v.type_name == t))
+            .cloned()
+            .collect()
+    };
+    let (cl, ct, cw, ch) = rect(container);
+    let mut sets: Vec<(Id, &str, f64)> = Vec::new();
+    match slot {
+        Slot::TimingLifeline => {
+            let below = of_type(&contained(container), "UMLTimingLifelineView")
+                .iter()
+                .map(|l| {
+                    let (_, t, _, h) = rect(l);
+                    t + h
+                })
+                .fold(ct + TIMING_FRAME_HEAD, f64::max);
+            sets.extend([
+                (view.to_owned(), "left", cl),
+                (view.to_owned(), "top", below),
+                (view.to_owned(), "width", cw),
+                (view.to_owned(), "height", 2.0 * TIMING_PAD),
+            ]);
+        }
+        Slot::TimingState => {
+            let states = of_type(&contained(container), "UMLTimingStateView").len() as f64;
+            sets.extend([
+                (view.to_owned(), "left", cl + TIMING_NAME_BAND),
+                (
+                    view.to_owned(),
+                    "top",
+                    ct + TIMING_PAD + TIMING_ROW * states,
+                ),
+                (view.to_owned(), "width", (cw - TIMING_NAME_BAND).max(0.0)),
+                (view.to_owned(), "height", TIMING_ROW),
+                // The lifeline grows to hold its states.
+                (
+                    container.to_owned(),
+                    "height",
+                    ch.max(2.0 * TIMING_PAD + TIMING_ROW * (states + 1.0)),
+                ),
+            ]);
+        }
+        Slot::TimingSegment => {
+            // After the last segment on any state of the same lifeline.
+            let lifeline = doc
+                .get(container)
+                .and_then(|s| s.ref_id("containerView"))
+                .unwrap_or(container)
+                .to_owned();
+            let after = of_type(&contained(&lifeline), "UMLTimingStateView")
+                .iter()
+                .flat_map(|st| of_type(&contained(st), "UMLTimeSegmentView"))
+                .map(|sg| {
+                    let (l, _, w, _) = rect(&sg);
+                    l + w
+                })
+                .fold(cl + TIMING_STATE_LABEL, f64::max);
+            sets.extend([
+                (view.to_owned(), "left", after),
+                (view.to_owned(), "top", ct),
+                (view.to_owned(), "height", TIMING_ROW),
+            ]);
+        }
+        Slot::TimingTick => {
+            let after = of_type(&contained(container), "UMLTimeTickView")
+                .iter()
+                .map(|t| {
+                    let (l, _, w, _) = rect(t);
+                    l + w
+                })
+                .fold(cl + TIMING_NAME_BAND + TIMING_STATE_LABEL, f64::max);
+            sets.extend([
+                (view.to_owned(), "left", after),
+                (view.to_owned(), "top", ct + ch - 5.0),
+            ]);
+        }
+        _ => {}
+    }
+    for (id, key, v) in sets {
+        e.set(&id, key, Field::int(v.round() as i64));
+    }
+}
+
+/// Timing layout sizes (StarUML: frame tag ≈ 25, lifeline padding 25, state
+/// row 25); the name band and state label width are starting guesses.
+const TIMING_FRAME_HEAD: f64 = 30.0;
+const TIMING_PAD: f64 = 25.0;
+const TIMING_ROW: f64 = 25.0;
+const TIMING_NAME_BAND: f64 = 40.0;
+const TIMING_STATE_LABEL: f64 = 120.0;
 
 /// Create a model element (if the spec has one) and its view on `diagram`
 /// at `(x, y)`, inside `container` if given and allowed. Returns
@@ -309,6 +501,22 @@ pub fn create_node(
             ) {
                 add_overview_target(e, &target.owner, &id, spec.id);
             }
+            if spec.slot == Slot::TimingSegment {
+                // The segment covers the state's lifeline, in that state.
+                let state = target
+                    .container
+                    .as_deref()
+                    .and_then(|c| e.doc().get(c))
+                    .and_then(|c| c.ref_id("model"))
+                    .map(str::to_owned);
+                if let Some(state) = state {
+                    let lifeline = e.doc().get(&state).and_then(|s| s.parent.clone());
+                    if let Some(lifeline) = lifeline {
+                        e.set(&id, "covered", Field::Ref(lifeline));
+                    }
+                    e.set(&id, "invariant", Field::Ref(state));
+                }
+            }
             Some(id)
         }
         None => None,
@@ -319,6 +527,13 @@ pub fn create_node(
         _ => (x, y),
     };
     let view = add_node_view(e, diagram, spec, model_id.as_deref(), x, y, container);
+    if let (
+        Slot::TimingLifeline | Slot::TimingState | Slot::TimingSegment | Slot::TimingTick,
+        Some(c),
+    ) = (spec.slot, container)
+    {
+        place_timing_view(e, &view, spec.slot, c);
+    }
     Ok((model_id, view))
 }
 
@@ -620,6 +835,9 @@ pub fn create_edge_at(
     if spec.view_type == "UMLCommMessageView" {
         return create_comm_message(e, diagram, spec, tail_view, head_view);
     }
+    if spec.view_type == "UMLTimingMessageView" {
+        return create_timing_message(e, diagram, spec, tail_view, head_view);
+    }
     let model_of = |v: &str| {
         e.doc()
             .get(v)
@@ -818,6 +1036,47 @@ fn create_comm_message(
         t.set(0, key, Field::Ref(lid));
     }
     let view = e.append(diagram, "ownedViews", t.elements);
+    Ok((Some(model), view))
+}
+
+/// A timing-diagram message between two time segments, from the lifeline
+/// the tail segment covers to the one the head segment covers. Drawn from
+/// the end of the tail segment to the start of the head segment.
+fn create_timing_message(
+    e: &mut Editor,
+    diagram: &str,
+    spec: &EdgeSpec,
+    tail_view: &str,
+    head_view: &str,
+) -> Result<(Option<Id>, Id), String> {
+    let doc = e.doc();
+    let segment = |v: &str| doc.get(v).filter(|v| v.type_name == "UMLTimeSegmentView");
+    let covered = |v: &str| {
+        segment(v)
+            .and_then(|s| s.ref_id("model"))
+            .and_then(|m| doc.get(m))
+            .and_then(|m| m.ref_id("covered"))
+            .map(str::to_owned)
+    };
+    let (Some(source), Some(target)) = (covered(tail_view), covered(head_view)) else {
+        return Err("Timing messages connect two time segments.".into());
+    };
+    let point = |v: &str, at_end: bool| {
+        segment(v).map_or((0.0, 0.0), |s| {
+            let x = s.num("left", 0.0) + if at_end { s.num("width", 0.0) } else { 0.0 };
+            (x, s.num("top", 0.0) + s.num("height", 0.0) / 2.0)
+        })
+    };
+    let points = [point(tail_view, true), point(head_view, false)];
+    let (owner, list) = edge_owner(doc, spec, &source)?;
+    let name = unique_name(doc, &owner, "Message");
+    let msg = Element::new(e.new_id(), "UMLMessage")
+        .with("name", Field::str(name))
+        .with("source", Field::Ref(source))
+        .with("target", Field::Ref(target));
+    let model = e.append(&owner, list, vec![msg]);
+    let view = add_edge_view(e, diagram, spec, Some(&model), tail_view, head_view);
+    e.set(&view, "points", Field::str(format_points(&points)));
     Ok((Some(model), view))
 }
 
@@ -1304,7 +1563,9 @@ pub fn create_diagram(e: &mut Editor, parent: &str, diagram_type: &str) -> Resul
         }
         ("UMLActivityDiagram", p) if p != "UMLActivity" => &[ACTIVITY],
         ("UMLProfileDiagram", p) if p != "UMLProfile" => &[("UMLProfile", "Profile")],
-        ("UMLSequenceDiagram" | "UMLCommunicationDiagram", p) if p != "UMLInteraction" => {
+        ("UMLSequenceDiagram" | "UMLCommunicationDiagram" | "UMLTimingDiagram", p)
+            if p != "UMLInteraction" =>
+        {
             &[INTERACTION]
         }
         ("UMLInteractionOverviewDiagram", "UMLActivity") => &[],
@@ -1337,24 +1598,27 @@ pub fn create_diagram(e: &mut Editor, parent: &str, diagram_type: &str) -> Resul
     let name = unique_name(e.doc(), &owner, base);
     let diagram = Element::new(e.new_id(), diagram_type).with("name", Field::str(name));
     let id = e.append(&owner, "ownedElements", vec![diagram]);
-    if matches!(
-        diagram_type,
-        "UMLSequenceDiagram" | "UMLCommunicationDiagram" | "UMLInteractionOverviewDiagram"
-    ) {
-        add_frame(e, &id);
+    match diagram_type {
+        "UMLSequenceDiagram" | "UMLCommunicationDiagram" | "UMLInteractionOverviewDiagram" => {
+            add_frame(e, &id, "UMLFrameView", (8, 8, 700, 600));
+        }
+        // StarUML's _addTimingFrame: initialised from (5, 5) to (700, 600).
+        "UMLTimingDiagram" => add_frame(e, &id, "UMLTimingFrameView", (5, 5, 695, 595)),
+        _ => {}
     }
     Ok(id)
 }
 
-/// The frame StarUML puts on a new interaction diagram: model = the diagram,
-/// at (8, 8), 700 × 600, with name and frame-type labels.
-fn add_frame(e: &mut Editor, diagram: &str) {
-    let frame = view(e, "UMLFrameView")
+/// The frame StarUML puts on a new interaction diagram: a `view_type` view
+/// whose model is the diagram itself, at the given place and size, with
+/// name and frame-type labels.
+fn add_frame(e: &mut Editor, diagram: &str, view_type: &str, (x, y, w, h): (i64, i64, i64, i64)) {
+    let frame = view(e, view_type)
         .with("model", Field::Ref(diagram.to_owned()))
-        .with("left", Field::int(8))
-        .with("top", Field::int(8))
-        .with("width", Field::int(700))
-        .with("height", Field::int(600));
+        .with("left", Field::int(x))
+        .with("top", Field::int(y))
+        .with("width", Field::int(w))
+        .with("height", Field::int(h));
     let mut t = Tree::new(frame);
     for key in ["nameLabel", "frameTypeLabel"] {
         let (_, lid) = t.child(0, "subViews", sub_view(e, "LabelView"));
