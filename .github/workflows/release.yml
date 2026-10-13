@@ -63,6 +63,9 @@ jobs:
             cp "target/${{ matrix.target }}/release/${bin}${{ matrix.ext }}" "dist/$name/"
           done
           cp README.md LICENSE-MIT LICENSE-APACHE ATTRIBUTION.md examples/shapes.mdj examples/structures.mdj examples/behaviour.mdj "dist/$name/"
+          # The README's script and Mermaid commands use these paths.
+          mkdir -p "dist/$name/examples"
+          cp -r examples/mermaid examples/scripts "dist/$name/examples/"
           cd dist
           if [ "${{ runner.os }}" = "Windows" ]; then
             7z a "$name.zip" "$name" > /dev/null
