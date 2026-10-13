@@ -29,16 +29,40 @@ pub fn to_svg(scene: &Scene) -> String {
     );
     for prim in &scene.prims {
         match prim {
-            Prim::Rect { rect, fill, stroke } => {
+            Prim::Rect {
+                rect,
+                fill,
+                stroke,
+                dashed,
+            } => {
                 let _ = writeln!(
                     s,
-                    r#"<rect x="{}" y="{}" width="{}" height="{}" fill="{}" stroke="{}"/>"#,
+                    r#"<rect x="{}" y="{}" width="{}" height="{}" fill="{}" stroke="{}"{}/>"#,
                     fmt(rect.x),
                     fmt(rect.y),
                     fmt(rect.w),
                     fmt(rect.h),
                     paint(*fill),
-                    stroke.to_hex()
+                    stroke.to_hex(),
+                    dash(*dashed)
+                );
+            }
+            Prim::Ellipse {
+                rect,
+                fill,
+                stroke,
+                dashed,
+            } => {
+                let _ = writeln!(
+                    s,
+                    r#"<ellipse cx="{}" cy="{}" rx="{}" ry="{}" fill="{}" stroke="{}"{}/>"#,
+                    fmt(rect.x + rect.w / 2.0),
+                    fmt(rect.y + rect.h / 2.0),
+                    fmt(rect.w / 2.0),
+                    fmt(rect.h / 2.0),
+                    paint(*fill),
+                    stroke.to_hex(),
+                    dash(*dashed)
                 );
             }
             Prim::Line {
@@ -46,16 +70,12 @@ pub fn to_svg(scene: &Scene) -> String {
                 stroke,
                 dashed,
             } => {
-                let dash = if *dashed {
-                    r#" stroke-dasharray="6 4""#
-                } else {
-                    ""
-                };
                 let _ = writeln!(
                     s,
-                    r#"<polyline points="{}" fill="none" stroke="{}"{dash}/>"#,
+                    r#"<polyline points="{}" fill="none" stroke="{}"{}/>"#,
                     points_attr(points),
-                    stroke.to_hex()
+                    stroke.to_hex(),
+                    dash(*dashed)
                 );
             }
             Prim::Polygon {
@@ -110,6 +130,14 @@ fn fmt(v: f64) -> String {
         format!("{}", r as i64)
     } else {
         format!("{r}")
+    }
+}
+
+fn dash(dashed: bool) -> &'static str {
+    if dashed {
+        r#" stroke-dasharray="6 4""#
+    } else {
+        ""
     }
 }
 

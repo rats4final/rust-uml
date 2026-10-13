@@ -5,7 +5,10 @@ use mdj::values::{DEFAULT_FONT, Font, absent, edge_position, parse_points};
 use mdj::{Document, Element, Id};
 
 use crate::geom::{Color, Point, Rect};
-use crate::layout::{ACTIVE_INSET, HAlign, NodeLayout, Shape, TEXT_PAD_X, TEXT_PAD_Y, node_layout};
+use crate::layout::{
+    ACTIVE_INSET, HAlign, ICON_SPACE, Icon, NODE_DEPTH, NOTE_FOLD, NodeLayout, Shape, TEXT_PAD_X,
+    TEXT_PAD_Y, node_layout,
+};
 use crate::route;
 use crate::text::Fonts;
 
@@ -31,6 +34,14 @@ pub enum Prim {
         rect: Rect,
         fill: Option<Color>,
         stroke: Color,
+        dashed: bool,
+    },
+    /// The ellipse inscribed in `rect`.
+    Ellipse {
+        rect: Rect,
+        fill: Option<Color>,
+        stroke: Color,
+        dashed: bool,
     },
     Line {
         points: Vec<Point>,
@@ -109,12 +120,14 @@ pub fn build_scene(doc: &Document, diagram: &str, fonts: &Fonts) -> Scene {
     let Some(diagram) = doc.get(diagram) else {
         return scene;
     };
-    let views: Vec<&Element> = diagram
+    let mut views: Vec<&Element> = diagram
         .children("ownedViews")
         .iter()
         .filter_map(|id| doc.get(id))
         .filter(|v| v.bool("visible", true))
         .collect();
+    // Containers paint before what sits inside them (stable for the rest).
+    views.sort_by_key(|v| container_depth(doc, v));
 
     let layouts: HashMap<&str, NodeLayout> = views
         .iter()
@@ -151,6 +164,20 @@ pub fn build_scene(doc: &Document, diagram: &str, fonts: &Fonts) -> Scene {
     scene
 }
 
+/// How many boxes `view` sits inside (`containerView` chain), capped.
+fn container_depth(doc: &Document, view: &Element) -> usize {
+    let mut depth = 0;
+    let mut cur = view;
+    while let Some(next) = cur.ref_id("containerView").and_then(|c| doc.get(c)) {
+        depth += 1;
+        if depth >= 32 {
+            break; // a cycle in a hand-edited file
+        }
+        cur = next;
+    }
+    depth
+}
+
 fn draw_node(scene: &mut Scene, l: &NodeLayout, fonts: &Fonts) {
     let style = |line: &crate::layout::TextLine| TextStyle {
         size: l.font_size,
@@ -159,56 +186,123 @@ fn draw_node(scene: &mut Scene, l: &NodeLayout, fonts: &Fonts) {
         underline: line.underline,
         color: l.text,
     };
+    let (r, fill, stroke, dashed) = (l.rect, Some(l.fill), l.line, l.dashed);
+    let rect = |scene: &mut Scene, rect: Rect| {
+        scene.prims.push(Prim::Rect {
+            rect,
+            fill,
+            stroke,
+            dashed,
+        });
+    };
+    let polygon = |scene: &mut Scene, points: Vec<Point>| {
+        scene.prims.push(Prim::Polygon {
+            points,
+            fill,
+            stroke,
+        });
+    };
+    let line = |scene: &mut Scene, points: Vec<Point>| {
+        scene.prims.push(Prim::Line {
+            points,
+            stroke,
+            dashed: false,
+        });
+    };
     match l.shape {
-        Shape::Box => {
-            scene.prims.push(Prim::Rect {
-                rect: l.rect,
-                fill: Some(l.fill),
-                stroke: l.line,
-            });
-            if l.active {
-                // UML active class: an extra vertical line inside each side.
-                for x in [l.rect.x + ACTIVE_INSET, l.rect.right() - ACTIVE_INSET] {
-                    scene.prims.push(Prim::Line {
-                        points: vec![Point::new(x, l.rect.y), Point::new(x, l.rect.bottom())],
-                        stroke: l.line,
-                        dashed: false,
-                    });
-                }
-            }
-        }
+        Shape::Box | Shape::Port => rect(scene, r),
         Shape::Package { tab } => {
-            scene.prims.push(Prim::Rect {
-                rect: tab,
-                fill: Some(l.fill),
-                stroke: l.line,
-            });
-            scene.prims.push(Prim::Rect {
-                rect: Rect::new(l.rect.x, tab.bottom(), l.rect.w, l.rect.h - tab.h),
-                fill: Some(l.fill),
-                stroke: l.line,
+            rect(scene, tab);
+            rect(scene, Rect::new(r.x, tab.bottom(), r.w, r.h - tab.h));
+        }
+        Shape::Node3D => {
+            let d = NODE_DEPTH;
+            // Top and right faces, then the front face over them.
+            polygon(
+                scene,
+                vec![
+                    Point::new(r.x, r.y + d),
+                    Point::new(r.x + d, r.y),
+                    Point::new(r.right(), r.y),
+                    Point::new(r.right() - d, r.y + d),
+                ],
+            );
+            polygon(
+                scene,
+                vec![
+                    Point::new(r.right() - d, r.y + d),
+                    Point::new(r.right(), r.y),
+                    Point::new(r.right(), r.bottom() - d),
+                    Point::new(r.right() - d, r.bottom()),
+                ],
+            );
+            rect(scene, Rect::new(r.x, r.y + d, r.w - d, r.h - d));
+        }
+        Shape::Ellipse => scene.prims.push(Prim::Ellipse {
+            rect: r,
+            fill,
+            stroke,
+            dashed,
+        }),
+        Shape::Note => {
+            let f = NOTE_FOLD;
+            polygon(
+                scene,
+                vec![
+                    Point::new(r.x, r.y),
+                    Point::new(r.right() - f, r.y),
+                    Point::new(r.right(), r.y + f),
+                    Point::new(r.right(), r.bottom()),
+                    Point::new(r.x, r.bottom()),
+                ],
+            );
+            line(
+                scene,
+                vec![
+                    Point::new(r.right() - f, r.y),
+                    Point::new(r.right() - f, r.y + f),
+                    Point::new(r.right(), r.y + f),
+                ],
+            );
+        }
+        Shape::Text => {}
+        Shape::Lollipop { circle } => {
+            scene.prims.push(Prim::Ellipse {
+                rect: circle,
+                fill,
+                stroke,
+                dashed: false,
             });
         }
     }
+    if l.active {
+        // UML active class: an extra vertical line inside each side.
+        for x in [r.x + ACTIVE_INSET, r.right() - ACTIVE_INSET] {
+            line(scene, vec![Point::new(x, r.y), Point::new(x, r.bottom())]);
+        }
+    }
+    if let Some(icon) = l.icon {
+        draw_icon(scene, icon, r, stroke, l.fill);
+    }
+
     let line_h = fonts.line_height(l.font_size);
     let ascent = fonts.ascent(l.font_size);
     let pad_x = TEXT_PAD_X + if l.active { ACTIVE_INSET } else { 0.0 };
     for (i, c) in l.compartments.iter().enumerate() {
-        if i > 0 {
-            scene.prims.push(Prim::Line {
-                points: vec![
+        if i > 0 && l.separators {
+            line(
+                scene,
+                vec![
                     Point::new(c.rect.x, c.rect.y),
                     Point::new(c.rect.right(), c.rect.y),
                 ],
-                stroke: l.line,
-                dashed: false,
-            });
+            );
         }
         let mut y = c.rect.y + TEXT_PAD_Y;
-        for line in &c.lines {
-            let s = style(line);
-            let w = fonts.width(&line.text, s.size, s.bold, s.italic);
-            let x = match line.align {
+        for text_line in &c.lines {
+            let s = style(text_line);
+            let w = fonts.width(&text_line.text, s.size, s.bold, s.italic);
+            let x = match text_line.align {
                 HAlign::Left => c.rect.x + pad_x,
                 HAlign::Center => c.rect.x + (c.rect.w - w) / 2.0,
                 HAlign::Right => c.rect.right() - pad_x - w,
@@ -216,10 +310,73 @@ fn draw_node(scene: &mut Scene, l: &NodeLayout, fonts: &Fonts) {
             scene.prims.push(Prim::Text {
                 rect: Rect::new(x, y, w, line_h),
                 baseline: ascent,
-                text: line.text.clone(),
+                text: text_line.text.clone(),
                 style: s,
             });
             y += line_h;
+        }
+    }
+    for label in &l.outside {
+        let s = style(&label.line);
+        let w = fonts.width(&label.line.text, s.size, s.bold, s.italic);
+        scene.prims.push(Prim::Text {
+            rect: Rect::new(
+                label.center.x - w / 2.0,
+                label.center.y - line_h / 2.0,
+                w,
+                line_h,
+            ),
+            baseline: ascent,
+            text: label.line.text.clone(),
+            style: s,
+        });
+    }
+}
+
+/// The small component or artifact symbol in a box's top-right corner.
+fn draw_icon(scene: &mut Scene, icon: Icon, r: Rect, stroke: Color, fill: Color) {
+    let (x, y) = (r.right() - ICON_SPACE + 4.0, r.y + 5.0);
+    match icon {
+        Icon::Component => {
+            // A box with two tabs on its left side.
+            scene.prims.push(Prim::Rect {
+                rect: Rect::new(x + 3.0, y, 13.0, 15.0),
+                fill: Some(fill),
+                stroke,
+                dashed: false,
+            });
+            for ty in [y + 3.0, y + 9.0] {
+                scene.prims.push(Prim::Rect {
+                    rect: Rect::new(x, ty, 7.0, 3.5),
+                    fill: Some(fill),
+                    stroke,
+                    dashed: false,
+                });
+            }
+        }
+        Icon::Artifact => {
+            // A page with a folded corner.
+            let (w, h, f) = (12.0, 15.0, 4.0);
+            scene.prims.push(Prim::Polygon {
+                points: vec![
+                    Point::new(x + 2.0, y),
+                    Point::new(x + 2.0 + w - f, y),
+                    Point::new(x + 2.0 + w, y + f),
+                    Point::new(x + 2.0 + w, y + h),
+                    Point::new(x + 2.0, y + h),
+                ],
+                fill: Some(fill),
+                stroke,
+            });
+            scene.prims.push(Prim::Line {
+                points: vec![
+                    Point::new(x + 2.0 + w - f, y),
+                    Point::new(x + 2.0 + w - f, y + f),
+                    Point::new(x + 2.0 + w, y + f),
+                ],
+                stroke,
+                dashed: false,
+            });
         }
     }
 }
@@ -246,6 +403,8 @@ enum EndMark {
     FilledTriangle,
     HollowDiamond,
     FilledDiamond,
+    /// ⊕ at the container end of a containment line.
+    CirclePlus,
 }
 
 /// Line style and end markers for an edge view. Associations look at their
@@ -286,6 +445,8 @@ fn edge_style(doc: &Document, view: &Element) -> (bool, EndMark, EndMark) {
     .any(|k| t.contains(k))
     {
         (true, EndMark::OpenArrow)
+    } else if t.contains("Containment") {
+        (false, EndMark::CirclePlus)
     } else if t.contains("NoteLink") || t.contains("ConstraintLink") {
         (true, EndMark::None)
     } else {
@@ -343,6 +504,7 @@ fn draw_edge(
             "stereotypeLabel",
             model
                 .and_then(|m| uml::stereotype_text(doc, m))
+                .or_else(|| edge_keyword(&view.type_name).map(str::to_owned))
                 .unwrap_or_default(),
         ),
         (
@@ -405,6 +567,14 @@ fn draw_edge(
         boxes.push(rect);
     }
     boxes
+}
+
+/// Keyword UML shows on some relationships when they have no stereotype.
+fn edge_keyword(view_type: &str) -> Option<&'static str> {
+    match view_type {
+        "UMLDeploymentView" => Some("«deploy»"),
+        _ => None,
+    }
 }
 
 fn default_label_placement(key: &str) -> (i64, f64, f64) {
@@ -477,6 +647,26 @@ fn draw_mark(scene: &mut Scene, tip: Point, from: Point, mark: EndMark, stroke: 
             }),
             stroke,
         }),
+        EndMark::CirclePlus => {
+            const R: f64 = 7.0;
+            let c = at(R, 0.0);
+            scene.prims.push(Prim::Ellipse {
+                rect: Rect::new(c.x - R, c.y - R, 2.0 * R, 2.0 * R),
+                fill: Some(Color::WHITE),
+                stroke,
+                dashed: false,
+            });
+            for (dx, dy) in [(R, 0.0), (0.0, R)] {
+                scene.prims.push(Prim::Line {
+                    points: vec![
+                        Point::new(c.x - dx, c.y - dy),
+                        Point::new(c.x + dx, c.y + dy),
+                    ],
+                    stroke,
+                    dashed: false,
+                });
+            }
+        }
     }
 }
 

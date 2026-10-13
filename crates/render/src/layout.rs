@@ -1,12 +1,12 @@
-//! Box geometry for node views: what text each compartment holds and the
-//! smallest size that fits it.
+//! Box geometry for node views: which shape a view draws as, what text each
+//! compartment holds, and the smallest size that fits it.
 
 use std::collections::HashMap;
 
 use mdj::values::{DEFAULT_FONT, Font, absent, align};
 use mdj::{Document, Element};
 
-use crate::geom::{Color, Rect};
+use crate::geom::{Color, Point, Rect};
 use crate::text::Fonts;
 
 const PAD_X: f64 = 6.0;
@@ -16,6 +16,16 @@ const MIN_WIDTH: f64 = 40.0;
 pub(crate) const PACKAGE_TAB_H: f64 = 14.0;
 /// Gap between the outer and inner side borders of an active class.
 pub(crate) const ACTIVE_INSET: f64 = 4.0;
+/// Depth of a node's 3-D box.
+pub(crate) const NODE_DEPTH: f64 = 10.0;
+/// Size of the folded corner of a note.
+pub(crate) const NOTE_FOLD: f64 = 10.0;
+/// Diameter of an interface's lollipop circle.
+pub(crate) const LOLLIPOP: f64 = 20.0;
+/// Room kept free at the top-right for a component/artifact icon.
+pub(crate) const ICON_SPACE: f64 = 22.0;
+/// A port is a small square (StarUML: 14 × 14).
+const PORT_SIZE: f64 = 14.0;
 
 /// Horizontal placement of a line inside its compartment.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -64,6 +74,152 @@ impl TextLine {
     }
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub struct Compartment {
+    pub lines: Vec<TextLine>,
+    pub rect: Rect,
+}
+
+/// The outline a node view draws.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum Shape {
+    Box,
+    /// A folder: the tab sits at the top-left, the body below it.
+    Package {
+        tab: Rect,
+    },
+    /// UML node: a box with top and right faces.
+    Node3D,
+    /// Collaborations: a dashed ellipse.
+    Ellipse,
+    /// A note: a box with a folded top-right corner.
+    Note,
+    /// Free text: no outline.
+    Text,
+    /// A port: a small square on its owner's border; its name is drawn outside.
+    Port,
+    /// An interface shown as a "lollipop": a circle, name below.
+    Lollipop {
+        circle: Rect,
+    },
+}
+
+/// A small symbol in the top-right corner.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Icon {
+    Component,
+    Artifact,
+}
+
+/// Text drawn outside the shape, centred on `center` (port names).
+#[derive(Debug, Clone, PartialEq)]
+pub struct OutsideLabel {
+    pub line: TextLine,
+    pub center: Point,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct NodeLayout {
+    /// Final rectangle: the stored size, grown if the content needs more.
+    pub rect: Rect,
+    pub min_w: f64,
+    pub min_h: f64,
+    pub shape: Shape,
+    pub compartments: Vec<Compartment>,
+    /// Draw lines between compartments.
+    pub separators: bool,
+    pub font_size: f64,
+    pub fill: Color,
+    pub line: Color,
+    pub text: Color,
+    /// An active class (`isActive`): drawn with double side borders.
+    pub active: bool,
+    /// Dashed outline (shared parts, collaborations).
+    pub dashed: bool,
+    pub icon: Option<Icon>,
+    pub outside: Vec<OutsideLabel>,
+}
+
+/// Default «keyword» shown for a model type when it has no explicit stereotype.
+fn keyword(model_type: &str) -> Option<&'static str> {
+    Some(match model_type {
+        "UMLInterface" => "«interface»",
+        "UMLEnumeration" => "«enumeration»",
+        "UMLDataType" => "«dataType»",
+        "UMLPrimitiveType" => "«primitiveType»",
+        "UMLSignal" => "«signal»",
+        "UMLMetaClass" => "«metaclass»",
+        "UMLStereotype" => "«stereotype»",
+        "UMLArtifact" => "«artifact»",
+        "UMLComponent" => "«component»",
+        "UMLModel" => "«model»",
+        "UMLSubsystem" => "«subsystem»",
+        _ => return None,
+    })
+}
+
+/// `stereotypeDisplay` values that show a symbol instead of (or with) text.
+fn shows_icon(display: &str) -> bool {
+    matches!(
+        display,
+        "icon" | "icon-label" | "decoration" | "decoration-label"
+    )
+}
+
+/// `stereotypeDisplay` values that show the «keyword» text.
+fn shows_keyword(display: &str) -> bool {
+    matches!(display, "label" | "icon-label" | "decoration-label")
+}
+
+fn shape_of(view: &Element) -> Shape {
+    let display = view.str("stereotypeDisplay").unwrap_or("label");
+    match view.type_name.as_str() {
+        "UMLModelView" | "UMLSubsystemView" | "UMLProfileView" => Shape::Package {
+            tab: Rect::default(),
+        },
+        t if t.ends_with("PackageView") => Shape::Package {
+            tab: Rect::default(),
+        },
+        "UMLNodeView" | "UMLNodeInstanceView" => Shape::Node3D,
+        "UMLCollaborationView" | "UMLCollaborationUseView" => Shape::Ellipse,
+        "UMLNoteView" => Shape::Note,
+        "UMLTextView" => Shape::Text,
+        "UMLPortView" => Shape::Port,
+        "UMLInterfaceView" if matches!(display, "icon" | "icon-label") => Shape::Lollipop {
+            circle: Rect::default(),
+        },
+        _ => Shape::Box,
+    }
+}
+
+fn icon_of(view: &Element) -> Option<Icon> {
+    let display = view.str("stereotypeDisplay").unwrap_or("label");
+    if !shows_icon(display) {
+        return None;
+    }
+    match view.type_name.as_str() {
+        "UMLComponentView" | "UMLComponentInstanceView" => Some(Icon::Component),
+        "UMLArtifactView" | "UMLArtifactInstanceView" => Some(Icon::Artifact),
+        _ => None,
+    }
+}
+
+/// The heading text of a node, and whether it is underlined (instances).
+fn heading(doc: &Document, view: &Element, m: &Element) -> (String, bool) {
+    match view.type_name.as_str() {
+        "UMLObjectView"
+        | "UMLArtifactInstanceView"
+        | "UMLComponentInstanceView"
+        | "UMLNodeInstanceView" => (uml::instance_text(doc, m), true),
+        "UMLPartView" => (uml::part_text(doc, m), false),
+        "UMLCollaborationUseView" => (
+            uml::typed_name(m.name(), uml::var_text(doc, m, "type")),
+            false,
+        ),
+        _ => (m.name().to_owned(), false),
+    }
+}
+
 /// Alignment of each row of a list compartment, keyed by the row's model id.
 /// A row view without the field is centred, as StarUML loads it (the
 /// metamodel default). A feature with no row view at all is left-aligned,
@@ -86,51 +242,27 @@ fn row_alignments<'a>(
         .collect()
 }
 
-#[derive(Debug, Clone, PartialEq)]
-pub struct Compartment {
-    pub lines: Vec<TextLine>,
-    pub rect: Rect,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub enum Shape {
-    Box,
-    /// A folder: the tab sits at the top-left, the body below it.
-    Package {
-        tab: Rect,
-    },
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct NodeLayout {
-    /// Final rectangle: the stored size, grown if the content needs more.
-    pub rect: Rect,
-    pub min_w: f64,
-    pub min_h: f64,
-    pub shape: Shape,
-    pub compartments: Vec<Compartment>,
-    pub font_size: f64,
-    pub fill: Color,
-    pub line: Color,
-    pub text: Color,
-    /// An active class (`isActive`): drawn with double side borders.
-    pub active: bool,
-}
-
-/// Default «keyword» shown for a model type when it has no explicit stereotype.
-fn keyword(model_type: &str) -> Option<&'static str> {
-    Some(match model_type {
-        "UMLInterface" => "«interface»",
-        "UMLEnumeration" => "«enumeration»",
-        "UMLDataType" => "«dataType»",
-        "UMLPrimitiveType" => "«primitiveType»",
-        "UMLSignal" => "«signal»",
-        "UMLMetaClass" => "«metaclass»",
-        "UMLStereotype" => "«stereotype»",
-        "UMLArtifact" => "«artifact»",
-        "UMLComponent" => "«component»",
-        _ => return None,
-    })
+/// Greedy word wrap of `text` to `width`, keeping explicit line breaks.
+fn wrap(text: &str, width: f64, fonts: &Fonts, size: f64) -> Vec<String> {
+    let mut out = Vec::new();
+    for para in text.split('\n') {
+        let mut line = String::new();
+        for word in para.split(' ') {
+            let candidate = if line.is_empty() {
+                word.to_owned()
+            } else {
+                format!("{line} {word}")
+            };
+            if !line.is_empty() && fonts.width(&candidate, size, false, false) > width {
+                out.push(std::mem::take(&mut line));
+                line = word.to_owned();
+            } else {
+                line = candidate;
+            }
+        }
+        out.push(line);
+    }
+    out
 }
 
 /// Layout of a top-level node view, or `None` if `view` is not a node
@@ -152,24 +284,132 @@ pub fn node_layout(doc: &Document, view: &Element, fonts: &Fonts) -> Option<Node
     } else {
         13.0
     };
+    let line_h = fonts.line_height(size);
     let model = view.ref_id("model").and_then(|m| doc.get(m));
+    let mut shape = shape_of(view);
+    let icon = icon_of(view);
+    let display = view.str("stereotypeDisplay").unwrap_or("label");
+    let colour =
+        |key: &str, default: Color| view.str(key).and_then(Color::parse).unwrap_or(default);
+    let (fill, line, text) = (
+        colour("fillColor", Color::WHITE),
+        colour("lineColor", Color::BLACK),
+        colour("fontColor", Color::BLACK),
+    );
+
+    // Ports: a small square; the name is drawn outside.
+    if shape == Shape::Port {
+        let rect = Rect::new(
+            stored.x,
+            stored.y,
+            stored.w.max(PORT_SIZE),
+            stored.h.max(PORT_SIZE),
+        );
+        let mut outside = Vec::new();
+        if let Some(m) = model {
+            let ty = uml::var_text(doc, m, "type");
+            let label = if view.bool("showType", true) {
+                uml::typed_name(m.name(), ty)
+            } else {
+                m.name().to_owned()
+            };
+            let host = view.ref_id("nameLabel").and_then(|l| doc.get(l));
+            let alpha = host.map_or(absent::ALPHA, |l| l.num("alpha", absent::ALPHA));
+            let distance = host.map_or(absent::DISTANCE, |l| l.num("distance", absent::DISTANCE));
+            let c = rect.center();
+            // StarUML measures label angles opposite to screen angles (see docs/evidence.md §3).
+            let center = Point::new(c.x + distance * alpha.cos(), c.y - distance * alpha.sin());
+            if !label.is_empty() {
+                outside.push(OutsideLabel {
+                    line: TextLine::centered(label),
+                    center,
+                });
+            }
+        }
+        return Some(NodeLayout {
+            rect,
+            min_w: PORT_SIZE,
+            min_h: PORT_SIZE,
+            shape,
+            compartments: Vec::new(),
+            separators: false,
+            font_size: size,
+            fill,
+            line,
+            text,
+            active: false,
+            dashed: false,
+            icon: None,
+            outside,
+        });
+    }
+
+    // Notes and free text: their own `text`, wrapped to the box.
+    if matches!(shape, Shape::Note | Shape::Text) {
+        let body = view.str("text").unwrap_or("");
+        let fold = if shape == Shape::Note { NOTE_FOLD } else { 0.0 };
+        let wrap_w = (stored.w - 2.0 * PAD_X - fold).max(20.0);
+        let lines: Vec<String> = if view.bool("wordWrap", true) {
+            wrap(body, wrap_w, fonts, size)
+        } else {
+            body.split('\n').map(str::to_owned).collect()
+        };
+        let widest = lines
+            .iter()
+            .map(|l| fonts.width(l, size, false, false))
+            .fold(0.0, f64::max);
+        let min_w = if view.bool("wordWrap", true) {
+            30.0
+        } else {
+            (widest + 2.0 * PAD_X + fold).ceil()
+        };
+        let min_h = (lines.len() as f64 * line_h + 2.0 * PAD_Y).ceil();
+        let rect = Rect::new(stored.x, stored.y, stored.w.max(min_w), stored.h.max(min_h));
+        return Some(NodeLayout {
+            rect,
+            min_w,
+            min_h,
+            shape,
+            compartments: vec![Compartment {
+                lines: lines
+                    .into_iter()
+                    .map(|l| TextLine::aligned(l, HAlign::Left))
+                    .collect(),
+                rect,
+            }],
+            separators: false,
+            font_size: size,
+            fill,
+            line,
+            text,
+            active: false,
+            dashed: false,
+            icon: None,
+            outside: Vec::new(),
+        });
+    }
 
     let mut groups: Vec<Vec<TextLine>> = Vec::new();
     let mut name_lines = Vec::new();
     let structured = view.ref_id("nameCompartment").is_some();
     match model {
         Some(m) if structured => {
-            if view.str("stereotypeDisplay") != Some("none") {
-                let st = uml::stereotype_text(doc, m)
-                    .or_else(|| keyword(&m.type_name).map(str::to_owned));
+            if display != "none" {
+                let st = uml::stereotype_text(doc, m).or_else(|| {
+                    keyword(&m.type_name)
+                        .filter(|_| shows_keyword(display) || icon.is_none())
+                        .map(str::to_owned)
+                });
                 if let Some(st) = st {
                     name_lines.push(TextLine::centered(st));
                 }
             }
+            let (title, underline) = heading(doc, view, m);
             name_lines.push(TextLine {
                 bold: true,
                 italic: m.bool("isAbstract", false),
-                ..TextLine::centered(m.name().to_owned())
+                underline,
+                ..TextLine::centered(title)
             });
             if view.bool("showNamespace", false)
                 && let Some(owner) = m.parent.as_deref().and_then(|p| doc.get(p))
@@ -203,6 +443,11 @@ pub fn node_layout(doc: &Document, view: &Element, fonts: &Fonts) -> Option<Node
                 TextLine::aligned(l.name().to_owned(), HAlign::Left)
             }));
         }
+        if view.ref_id("slotCompartment").is_some() {
+            groups.push(rows("slots", "slotCompartment", &|s| {
+                TextLine::aligned(uml::slot_text(doc, s), HAlign::Left)
+            }));
+        }
         if view.ref_id("attributeCompartment").is_some() && !view.bool("suppressAttributes", false)
         {
             groups.push(rows("attributes", "attributeCompartment", &|a| TextLine {
@@ -231,8 +476,11 @@ pub fn node_layout(doc: &Document, view: &Element, fonts: &Fonts) -> Option<Node
             }));
         }
     }
+    // Ellipses and lollipops show only their heading.
+    if matches!(shape, Shape::Ellipse | Shape::Lollipop { .. }) {
+        groups.truncate(1);
+    }
 
-    let line_h = fonts.line_height(size);
     let mut min_w = MIN_WIDTH;
     let mut heights = Vec::with_capacity(groups.len());
     for g in &groups {
@@ -245,58 +493,99 @@ pub fn node_layout(doc: &Document, view: &Element, fonts: &Fonts) -> Option<Node
             g.len() as f64 * line_h + 2.0 * PAD_Y
         });
     }
+    let content_h: f64 = heights.iter().sum();
     let active = structured && model.is_some_and(|m| m.bool("isActive", false));
     if active {
         min_w += 2.0 * ACTIVE_INSET;
     }
-    let is_package = view.type_name.ends_with("PackageView")
-        || view.type_name == "UMLModelView"
-        || view.type_name == "UMLSubsystemView";
-    let tab_h = if is_package { PACKAGE_TAB_H } else { 0.0 };
-    let mut min_h: f64 = heights.iter().sum::<f64>() + tab_h;
-    if is_package {
-        min_w = min_w.max(60.0);
-        min_h = min_h.max(50.0);
+    if icon.is_some() {
+        min_w += ICON_SPACE;
     }
-    min_w = min_w.ceil();
-    min_h = min_h.ceil();
 
+    // Where the compartments go inside the outline, and the outline's minimum size.
+    let (min_w, min_h) = match shape {
+        Shape::Package { .. } => (min_w.max(60.0), (content_h + PACKAGE_TAB_H).max(50.0)),
+        Shape::Node3D => (min_w + NODE_DEPTH, content_h + NODE_DEPTH),
+        Shape::Ellipse => (min_w * 1.3, (content_h * 1.6).max(40.0)),
+        Shape::Lollipop { .. } => (min_w.max(LOLLIPOP), content_h + LOLLIPOP + 2.0),
+        _ => (min_w, content_h),
+    };
+    let (min_w, min_h) = (min_w.ceil(), min_h.ceil());
     let rect = Rect::new(stored.x, stored.y, stored.w.max(min_w), stored.h.max(min_h));
+    let body = match shape {
+        Shape::Package { .. } => Rect::new(
+            rect.x,
+            rect.y + PACKAGE_TAB_H,
+            rect.w,
+            rect.h - PACKAGE_TAB_H,
+        ),
+        Shape::Node3D => Rect::new(
+            rect.x,
+            rect.y + NODE_DEPTH,
+            rect.w - NODE_DEPTH,
+            rect.h - NODE_DEPTH,
+        ),
+        Shape::Ellipse => {
+            let y = rect.y + (rect.h - content_h) / 2.0;
+            Rect::new(rect.x, y, rect.w, content_h)
+        }
+        Shape::Lollipop { .. } => Rect::new(
+            rect.x,
+            rect.y + LOLLIPOP + 2.0,
+            rect.w,
+            rect.h - LOLLIPOP - 2.0,
+        ),
+        _ => rect,
+    };
+    shape = match shape {
+        Shape::Package { .. } => {
+            let tab_w = (rect.w * 0.4).clamp(30.0, 80.0);
+            Shape::Package {
+                tab: Rect::new(rect.x, rect.y, tab_w, PACKAGE_TAB_H),
+            }
+        }
+        Shape::Lollipop { .. } => Shape::Lollipop {
+            circle: Rect::new(rect.center().x - LOLLIPOP / 2.0, rect.y, LOLLIPOP, LOLLIPOP),
+        },
+        other => other,
+    };
 
-    // Stack compartments; the last one takes any spare height.
+    // Stack compartments; the last one takes any spare height (box-like shapes).
+    let stretch = matches!(shape, Shape::Box | Shape::Package { .. } | Shape::Node3D);
     let mut compartments = Vec::with_capacity(groups.len());
-    let mut y = rect.y + tab_h;
+    let mut y = body.y;
     let count = groups.len();
     for (i, (lines, h)) in groups.into_iter().zip(heights).enumerate() {
-        let h = if i + 1 == count { rect.bottom() - y } else { h };
+        let h = if stretch && i + 1 == count {
+            body.bottom() - y
+        } else {
+            h
+        };
         compartments.push(Compartment {
             lines,
-            rect: Rect::new(rect.x, y, rect.w, h),
+            rect: Rect::new(body.x, y, body.w, h),
         });
         y += h;
     }
 
-    let shape = if is_package {
-        let tab_w = (rect.w * 0.4).clamp(30.0, 80.0);
-        Shape::Package {
-            tab: Rect::new(rect.x, rect.y, tab_w, tab_h),
-        }
-    } else {
-        Shape::Box
-    };
-    let colour =
-        |key: &str, default: Color| view.str(key).and_then(Color::parse).unwrap_or(default);
+    let dashed = shape == Shape::Ellipse
+        || (view.type_name == "UMLPartView"
+            && model.is_some_and(|m| m.str("aggregation").unwrap_or("none") != "composite"));
     Some(NodeLayout {
         rect,
         min_w,
         min_h,
         shape,
         compartments,
+        separators: stretch,
         font_size: size,
-        fill: colour("fillColor", Color::WHITE),
-        line: colour("lineColor", Color::BLACK),
-        text: colour("fontColor", Color::BLACK),
+        fill,
+        line,
+        text,
         active,
+        dashed,
+        icon,
+        outside: Vec::new(),
     })
 }
 
@@ -305,24 +594,37 @@ pub(crate) const TEXT_PAD_Y: f64 = PAD_Y;
 
 #[cfg(test)]
 mod tests {
-    use mdj::Field;
+    use mdj::{Field, Id};
 
     use super::*;
+
+    fn setup() -> (Document, Id) {
+        let doc = Document::new_project();
+        let model = doc.get(doc.root()).unwrap().children("ownedElements")[0].clone();
+        let dgm = doc.get(&model).unwrap().children("ownedElements")[0].clone();
+        (doc, dgm)
+    }
+
+    fn place(doc: &mut Document, dgm: &str, tool: &str, container: Option<&str>) -> (Id, Id) {
+        let spec = uml::node_spec(tool).unwrap();
+        let (m, v) = doc
+            .try_edit(|e| uml::create_node(e, dgm, spec, 100.0, 100.0, container))
+            .unwrap();
+        (m.unwrap_or_default(), v)
+    }
+
+    fn layout(doc: &Document, view: &str) -> NodeLayout {
+        node_layout(doc, doc.get(view).unwrap(), &Fonts::default()).unwrap()
+    }
 
     /// Rows follow their stored alignment the way StarUML loads it: written
     /// LEFT → left, field missing → centred (metamodel default).
     #[test]
     fn rows_follow_stored_alignment_like_staruml() {
-        let mut doc = Document::new_project();
-        let model = doc.get(doc.root()).unwrap().children("ownedElements")[0].clone();
-        let dgm = doc.get(&model).unwrap().children("ownedElements")[0].clone();
-        let (class, view) = doc.edit(|e| uml::create_node(e, &dgm, uml::NodeKind::Class, 0.0, 0.0));
+        let (mut doc, dgm) = setup();
+        let (class, view) = place(&mut doc, &dgm, "UMLClass", None);
         doc.edit(|e| uml::add_feature(e, &class, uml::FeatureKind::Attribute));
-        let fonts = Fonts::default();
-        let rows = |doc: &Document| {
-            let l = node_layout(doc, doc.get(&view).unwrap(), &fonts).unwrap();
-            l.compartments[1].lines[0].align
-        };
+        let rows = |doc: &Document| layout(doc, &view).compartments[1].lines[0].align;
         assert_eq!(rows(&doc), HAlign::Left, "rust-uml writes LEFT");
 
         // A file written without the field (like rust-uml 0.1.0) shows centred, as in StarUML.
@@ -341,15 +643,91 @@ mod tests {
 
     #[test]
     fn active_class_is_wider_and_flagged() {
-        let mut doc = Document::new_project();
-        let model = doc.get(doc.root()).unwrap().children("ownedElements")[0].clone();
-        let dgm = doc.get(&model).unwrap().children("ownedElements")[0].clone();
-        let (class, view) = doc.edit(|e| uml::create_node(e, &dgm, uml::NodeKind::Class, 0.0, 0.0));
-        let fonts = Fonts::default();
-        let plain = node_layout(&doc, doc.get(&view).unwrap(), &fonts).unwrap();
+        let (mut doc, dgm) = setup();
+        let (class, view) = place(&mut doc, &dgm, "UMLClass", None);
+        let plain = layout(&doc, &view);
         doc.edit(|e| e.set(&class, "isActive", Field::bool(true)));
-        let active = node_layout(&doc, doc.get(&view).unwrap(), &fonts).unwrap();
+        let active = layout(&doc, &view);
         assert!(!plain.active && active.active);
         assert_eq!(active.min_w, plain.min_w + 2.0 * ACTIVE_INSET);
+    }
+
+    #[test]
+    fn shapes_by_view_type() {
+        let (mut doc, dgm) = setup();
+        let cases = [
+            ("UMLNode", "Node3D"),
+            ("UMLCollaboration", "Ellipse"),
+            ("Note", "Note"),
+            ("Text", "Text"),
+            ("UMLPackage", "Package"),
+            ("UMLSubsystem", "Package"),
+            ("UMLComponent", "Box"),
+        ];
+        for (tool, want) in cases {
+            let (_, v) = place(&mut doc, &dgm, tool, None);
+            let got = format!("{:?}", layout(&doc, &v).shape);
+            assert!(got.starts_with(want), "{tool}: {got}");
+        }
+        // Artifacts are created with the icon display, as StarUML does.
+        let (_, artifact) = place(&mut doc, &dgm, "UMLArtifact", None);
+        assert_eq!(layout(&doc, &artifact).icon, Some(Icon::Artifact));
+    }
+
+    #[test]
+    fn objects_are_underlined_and_list_slots() {
+        let (mut doc, dgm) = setup();
+        let (obj, view) = place(&mut doc, &dgm, "UMLObject", None);
+        doc.edit(|e| {
+            e.set(&obj, "classifier", Field::str("Order"));
+            uml::add_feature(e, &obj, uml::FeatureKind::Slot);
+        });
+        let l = layout(&doc, &view);
+        let title = &l.compartments[0].lines[0];
+        assert_eq!(title.text, "Object1 : Order");
+        assert!(title.underline);
+        assert_eq!(l.compartments[1].lines[0].text, "slot1");
+    }
+
+    #[test]
+    fn port_name_sits_outside_its_square() {
+        let (mut doc, dgm) = setup();
+        let (_, comp) = place(&mut doc, &dgm, "UMLComponent", None);
+        let (_, port) = place(&mut doc, &dgm, "UMLPort", Some(&comp));
+        let l = layout(&doc, &port);
+        assert_eq!((l.rect.w, l.rect.h), (14.0, 14.0));
+        let label = &l.outside[0];
+        assert_eq!(label.line.text, "Port1");
+        assert!(!l.rect.contains(label.center), "{label:?} vs {:?}", l.rect);
+    }
+
+    #[test]
+    fn shared_parts_are_dashed() {
+        let (mut doc, dgm) = setup();
+        let (_, class) = place(&mut doc, &dgm, "UMLClass", None);
+        let (part, view) = place(&mut doc, &dgm, "UMLPart", Some(&class));
+        assert!(!layout(&doc, &view).dashed, "composite part: solid");
+        doc.edit(|e| e.set(&part, "aggregation", Field::str("shared")));
+        assert!(layout(&doc, &view).dashed);
+    }
+
+    #[test]
+    fn notes_wrap_their_text() {
+        let (mut doc, dgm) = setup();
+        let (_, note) = place(&mut doc, &dgm, "Note", None);
+        doc.edit(|e| {
+            e.set(
+                &note,
+                "text",
+                Field::str("one two three four five six seven eight nine ten"),
+            )
+        });
+        let l = layout(&doc, &note);
+        assert!(
+            l.compartments[0].lines.len() > 1,
+            "wrapped: {:?}",
+            l.compartments[0].lines
+        );
+        assert!(l.rect.h > 50.0, "grew to fit");
     }
 }
