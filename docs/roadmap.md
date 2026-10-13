@@ -1,11 +1,11 @@
 # Roadmap and handoff
 
-**Read this to pick up the work.** Status as of 2026-10-12, after v0.4.0 and agent milestone parts 1–3 (not yet released).
+**Read this to pick up the work.** Status as of 2026-10-13, after v0.5.0 (agent milestone parts 1–3).
 Order of reading for a new agent/session: `AGENTS.md` → this file → `docs/parity.md` → `log/devlog.md`.
 
 ## 1. Where things stand
 
-- **Released:** v0.1.1 (pre-release) — https://github.com/rats4final/rust-uml/releases
+- **Released:** v0.5.0 (pre-release) — https://github.com/rats4final/rust-uml/releases
   Linux x64, Windows x64, macOS arm64 + x64, web zip. Web app live at
   https://rats4final.github.io/rust-uml/ (redeploys on every push to `main`).
 - **Works:** class diagrams, all six UML structural diagram types, and use case, statechart,
@@ -106,7 +106,7 @@ release when it's user-visible.
 - Left: found/lost messages, gates/endpoints, state invariants, continuations, interaction uses,
   time/duration constraints; dragging a message vertically (today: delete and redraw).
 
-### A — Agent-ready, PhotoCraft-style (in progress; the owner put it before M3b part 2)
+### A — Agent-ready, PhotoCraft-style (parts 1–3 in v0.5.0; the owner put it before M3b part 2)
 
 The owner asked for PhotoCraft-style CLI and AI integrations ahead of more diagram families, and
 said **no built-in AI assistant panel**: AI stays outside the app, through the CLI and MCP (no API

@@ -1,6 +1,6 @@
 # Parity with StarUML 7.1.1
 
-Status line: **Agent milestone (A), parts 1–3: scriptable CLI, MCP server, Mermaid import.** Updated 2026-10-12.
+Status line: **v0.5.0 — agent milestone (A), parts 1–3: scriptable CLI, MCP server, Mermaid import.** Updated 2026-10-13.
 
 Each row comes from the evidence in [`evidence.md`](evidence.md). "Paid" marks features StarUML
 locks behind a licence (see evidence §4: only exports are locked, by watermark).

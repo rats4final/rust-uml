@@ -2,6 +2,13 @@
 
 Newest first. Terse: what landed, numbers, what's still open.
 
+## 2026-10-13 — v0.5.0: agent milestone parts 1–3 released
+
+- Release notes for the scriptable CLI, MCP server and Mermaid import.
+- Release archives now include `examples/mermaid/` and `examples/scripts/`, so the README's
+  commands work from an unpacked download.
+- Open: agent milestone part 4 (live app control); check imported models in StarUML.
+
 ## 2026-10-12 — agent milestone, part 3: Mermaid import
 
 - New crate `mermaid` (L0): class, sequence and state diagram text → data; styling skipped,

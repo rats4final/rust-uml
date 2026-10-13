@@ -2,10 +2,14 @@ Preview of **rust-uml**: an independent, open-source UML modeler written in Rust
 saves StarUML `.mdj` files. Not affiliated with MKLabs/StarUML. What changed in each version:
 `log/devlog.md`.
 
-**New in v0.4.0:** sequence diagrams — an "sd" frame, lifelines, synchronous/asynchronous/
-reply/create/delete messages with activation bars, and combined fragments (alt, loop, opt, …) with
-guarded operands. Drag from one lifeline to another to send a message at that height; moving a
-lifeline keeps its messages in place. See the "Checkout" diagram in `behaviour.mdj`.
+**New in v0.5.0:** built for scripts and AI agents.
+- **Mermaid import:** File ▸ Import Mermaid… (or `rust-uml-cli import`) turns Mermaid class,
+  sequence and state diagrams into editable UML diagrams, laid out automatically, in one undo step.
+- **MCP server:** `rust-uml-cli mcp --root <folder>` lets Claude or any MCP client create, edit,
+  inspect and preview models in that folder. Try `claude mcp add rust-uml -- rust-uml-cli mcp --root ~/models`.
+- **Scriptable CLI:** `rust-uml-cli run` chains commands or runs a JSON script (all-or-nothing),
+  `batch` runs one script over a folder, `help <sub>` and `--json` listings.
+- Samples in `examples/mermaid/` and `examples/scripts/`; guide in `docs/agents.md`.
 
 **What works:** class, structural, use case, statechart, activity and sequence diagrams end to
 end — 54 element and 30 relationship tools,
@@ -23,9 +27,9 @@ Full checklist: `docs/parity.md`.
 | Linux (x64) | `…-linux-x86_64.tar.gz` | `tar xzf …` then `./rust-uml`. |
 | Browser | `…-web.zip`, or the hosted copy on GitHub Pages | Serve the folder with any static web server. |
 
-Each archive also contains `rust-uml-cli` and three example models: `shapes.mdj`,
+Each archive also contains `rust-uml-cli`, three example models: `shapes.mdj`,
 `structures.mdj` and `behaviour.mdj` (try `rust-uml behaviour.mdj`, then pick diagrams in the
-Model Explorer).
+Model Explorer), and Mermaid and script samples under `examples/`.
 
 **macOS note:** the binaries are not signed or notarised. After unpacking, run
 `xattr -d com.apple.quarantine rust-uml rust-uml-cli` once, then `./rust-uml`.
