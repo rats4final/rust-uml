@@ -1017,6 +1017,37 @@ mod tests {
     }
 
     #[test]
+    fn interaction_overview_by_mouse() {
+        let mut h = harness();
+        h.run();
+        h.state_mut().exec(
+            "diagram.add",
+            json!({"type": "UMLInteractionOverviewDiagram"}),
+        );
+        h.run();
+        let mut place = |tool: &str, x: f64, y: f64| {
+            h.get_by_role_and_label(Role::Button, tool).click();
+            h.run();
+            let at = h.state().canvas.to_screen(render::Point::new(x, y));
+            click(&mut h, at);
+            h.state().session.selection[0].clone()
+        };
+        let start = place("Initial", 60.0, 120.0);
+        let call = place("Interaction Use", 160.0, 200.0);
+        let app = h.state();
+        assert_eq!(
+            app.session.doc.get(&call).unwrap().type_name,
+            "UMLInteractionUseView"
+        );
+        h.get_by_role_and_label(Role::Button, "Control Flow")
+            .click();
+        h.run();
+        let (from, to) = (center_of(&h, &start), center_of(&h, &call));
+        drag(&mut h, from, to);
+        assert_eq!(views_of_type(h.state(), "UMLControlFlowView").len(), 1);
+    }
+
+    #[test]
     fn component_diagram_toolbox_places_a_port_on_a_component() {
         let mut h = harness();
         h.run();
