@@ -123,6 +123,13 @@ impl Scene {
 /// plain labelled boxes or lines rather than skipped, so nothing in a
 /// StarUML file silently disappears.
 pub fn build_scene(doc: &Document, diagram: &str, fonts: &Fonts) -> Scene {
+    build_scene_at(doc, diagram, fonts, 0)
+}
+
+/// How deep diagrams drawn inside diagrams (inline interactions) may nest.
+const MAX_NESTING: usize = 2;
+
+fn build_scene_at(doc: &Document, diagram: &str, fonts: &Fonts, depth: usize) -> Scene {
     let mut scene = Scene::default();
     let Some(diagram) = doc.get(diagram) else {
         return scene;
@@ -158,9 +165,24 @@ pub fn build_scene(doc: &Document, diagram: &str, fonts: &Fonts) -> Scene {
     for view in views.iter().copied() {
         if let Some(layout) = layouts.get(view.id.as_str()) {
             draw_node(&mut scene, layout, fonts);
-            // A frame is picked by its tag, so clicks inside reach what it frames.
+            // An inline interaction shows its sequence diagram, shrunk to fit.
+            if view.type_name == "UMLInteractionInlineView"
+                && depth < MAX_NESTING
+                && let Some(target) = view
+                    .ref_id("model")
+                    .and_then(|m| doc.get(m))
+                    .and_then(|action| action.ref_id("target"))
+            {
+                draw_nested(&mut scene, doc, target, layout.rect, fonts, depth + 1);
+            }
+            // A frame is picked by its tag, so clicks inside reach what it
+            // frames; an interaction-overview box frames nothing clickable.
+            let overview_box = matches!(
+                view.type_name.as_str(),
+                "UMLInteractionUseView" | "UMLInteractionInlineView"
+            );
             let hit = match layout.shape {
-                Shape::Frame { tag } => tag,
+                Shape::Frame { tag } if !overview_box => tag,
                 _ => layout.rect,
             };
             scene.hits.push(Hit {
@@ -203,6 +225,102 @@ pub fn build_scene(doc: &Document, diagram: &str, fonts: &Fonts) -> Scene {
     }
     scene.bounds = bounds.unwrap_or_default();
     scene
+}
+
+/// Draw `diagram` scaled into `frame` below its tag (as StarUML: 10 px in
+/// from the sides, 30 from the top, never enlarged). Not clickable.
+fn draw_nested(
+    scene: &mut Scene,
+    doc: &Document,
+    diagram: &str,
+    frame: Rect,
+    fonts: &Fonts,
+    depth: usize,
+) {
+    let inner = build_scene_at(doc, diagram, fonts, depth);
+    let b = inner.bounds;
+    let area = Rect::new(
+        frame.x + 10.0,
+        frame.y + 30.0,
+        frame.w - 20.0,
+        frame.h - 40.0,
+    );
+    if inner.prims.is_empty() || b.w <= 0.0 || b.h <= 0.0 || area.w <= 0.0 || area.h <= 0.0 {
+        return;
+    }
+    let k = (area.w / b.w).min(area.h / b.h).min(1.0);
+    let (dx, dy) = (area.x - b.x * k, area.y - b.y * k);
+    let pt = |p: Point| Point::new(p.x * k + dx, p.y * k + dy);
+    let rect = |r: Rect| Rect::new(r.x * k + dx, r.y * k + dy, r.w * k, r.h * k);
+    for prim in inner.prims {
+        scene.prims.push(match prim {
+            Prim::Rect {
+                rect: r,
+                fill,
+                stroke,
+                dashed,
+            } => Prim::Rect {
+                rect: rect(r),
+                fill,
+                stroke,
+                dashed,
+            },
+            Prim::RoundRect {
+                rect: r,
+                radius,
+                fill,
+                stroke,
+            } => Prim::RoundRect {
+                rect: rect(r),
+                radius: radius * k,
+                fill,
+                stroke,
+            },
+            Prim::Ellipse {
+                rect: r,
+                fill,
+                stroke,
+                dashed,
+            } => Prim::Ellipse {
+                rect: rect(r),
+                fill,
+                stroke,
+                dashed,
+            },
+            Prim::Line {
+                points,
+                stroke,
+                dashed,
+            } => Prim::Line {
+                points: points.into_iter().map(pt).collect(),
+                stroke,
+                dashed,
+            },
+            Prim::Polygon {
+                points,
+                fill,
+                stroke,
+            } => Prim::Polygon {
+                points: points.into_iter().map(pt).collect(),
+                fill,
+                stroke,
+            },
+            Prim::Text {
+                rect: r,
+                baseline,
+                text,
+                style,
+            } => Prim::Text {
+                rect: rect(r),
+                baseline: baseline * k,
+                text,
+                style: TextStyle {
+                    size: style.size * k,
+                    ..style
+                },
+            },
+        });
+    }
 }
 
 /// How many boxes `view` sits inside (`containerView` chain), capped.
@@ -676,7 +794,9 @@ fn edge_style(doc: &Document, view: &Element) -> (bool, EndMark, EndMark) {
         };
         return (false, mark("end1"), mark("end2"));
     }
-    let (dashed, head) = if t.contains("Generalization") {
+    let (dashed, head) = if t == "UMLInformationFlowView" {
+        (true, EndMark::OpenArrow)
+    } else if t.contains("Generalization") {
         (false, EndMark::HollowTriangle)
     } else if t.contains("Realization") {
         (true, EndMark::HollowTriangle)
@@ -956,6 +1076,22 @@ fn draw_edge(
                     "UMLTransition" => uml::transition_text(doc, m),
                     "UMLControlFlow" | "UMLObjectFlow" => uml::flow_text(m),
                     "UMLMessage" => uml::message_text(m),
+                    // An information flow names what it conveys, if anything.
+                    "UMLInformationFlow" => {
+                        let conveyed: Vec<&str> = m
+                            .get("conveyed")
+                            .map(|f| f.refs())
+                            .unwrap_or_default()
+                            .iter()
+                            .filter_map(|id| doc.get(id))
+                            .map(Element::name)
+                            .collect();
+                        if conveyed.is_empty() {
+                            m.name().to_owned()
+                        } else {
+                            conveyed.join(", ")
+                        }
+                    }
                     _ => m.name().to_owned(),
                 })
                 .unwrap_or_default(),
@@ -1045,6 +1181,7 @@ fn edge_keyword(view_type: &str) -> Option<&'static str> {
         "UMLDeploymentView" => Some("«deploy»"),
         "UMLIncludeView" => Some("«include»"),
         "UMLExtendView" => Some("«extend»"),
+        "UMLInformationFlowView" => Some("«flow»"),
         _ => None,
     }
 }
@@ -1291,6 +1428,105 @@ mod tests {
                 .prims
                 .iter()
                 .any(|p| matches!(p, Prim::Text { text, .. } if text == "Message1"))
+        );
+    }
+
+    fn texts(scene: &Scene) -> Vec<(String, f64)> {
+        scene
+            .prims
+            .iter()
+            .filter_map(|p| match p {
+                Prim::Text { text, style, .. } => Some((text.clone(), style.size)),
+                _ => None,
+            })
+            .collect()
+    }
+
+    #[test]
+    fn interaction_overview_frames() {
+        let mut doc = Document::new_project();
+        let model = doc.get(doc.root()).unwrap().children("ownedElements")[0].clone();
+        let on = "UMLInteractionOverviewDiagram";
+        let dgm = doc
+            .try_edit(|e| uml::create_diagram(e, &model, on))
+            .unwrap();
+        let place = |doc: &mut Document, tool: &str, x: f64| {
+            let spec = uml::node_spec_on(tool, on).unwrap();
+            doc.try_edit(|e| uml::create_node(e, &dgm, spec, x, 80.0, None))
+                .unwrap()
+        };
+        let (_, use_view) = place(&mut doc, "UMLInteractionUseInOverview", 40.0);
+        let (inline, _) = place(&mut doc, "UMLInteractionInOverview", 300.0);
+        // Something to see inside the inline frame.
+        let seq = doc
+            .get(&inline.unwrap())
+            .unwrap()
+            .ref_id("target")
+            .unwrap()
+            .to_owned();
+        let lifeline = uml::node_spec_on("UMLLifeline", "UMLSequenceDiagram").unwrap();
+        doc.try_edit(|e| uml::create_node(e, &seq, lifeline, 20.0, 20.0, None))
+            .unwrap();
+
+        let scene = build_scene(&doc, &dgm, &Fonts::default());
+        let t = texts(&scene);
+        let has = |s: &str| t.iter().any(|(x, _)| x == s);
+        assert!(has("ref") && has("Interaction2"), "{t:?}");
+        assert!(has("sd SequenceDiagram1"), "{t:?}");
+        let nested = t
+            .iter()
+            .find(|(x, _)| x == "Lifeline1")
+            .expect("nested lifeline");
+        assert!(nested.1 < 13.0, "drawn shrunk: {nested:?}");
+        // The whole box is clickable, not just its tag.
+        let r = scene.node_rect(&use_view).unwrap();
+        assert_eq!(
+            scene.hit_test(Point::new(r.center().x, r.bottom() - 5.0), 1.0),
+            Some(use_view.as_str())
+        );
+    }
+
+    #[test]
+    fn information_flow_notation() {
+        let mut doc = Document::new_project();
+        let model = doc.get(doc.root()).unwrap().children("ownedElements")[0].clone();
+        let on = "UMLInformationFlowDiagram";
+        let dgm = doc
+            .try_edit(|e| uml::create_diagram(e, &model, on))
+            .unwrap();
+        let place = |doc: &mut Document, tool: &str, x: f64| {
+            let spec = uml::node_spec_on(tool, on).unwrap();
+            doc.try_edit(|e| uml::create_node(e, &dgm, spec, x, 80.0, None))
+                .unwrap()
+        };
+        let (item, iv) = place(&mut doc, "UMLInformationItem", 40.0);
+        let (_, cv) = place(&mut doc, "UMLClass", 400.0);
+        let spec = uml::edge_spec_on("UMLInformationFlow", on).unwrap();
+        let (flow, _) = doc
+            .try_edit(|e| uml::create_edge(e, &dgm, spec, &iv, &cv))
+            .unwrap();
+        doc.edit(|e| {
+            e.set(
+                &flow.unwrap(),
+                "conveyed",
+                mdj::Field::Refs(vec![item.unwrap()]),
+            )
+        });
+        let scene = build_scene(&doc, &dgm, &Fonts::default());
+        let t = texts(&scene);
+        let has = |s: &str| t.iter().any(|(x, _)| x == s);
+        assert!(has("«information»") && has("«flow»"), "{t:?}");
+        let named = t.iter().filter(|(x, _)| x == "InformationItem1").count();
+        assert_eq!(
+            named, 2,
+            "the box, and the flow naming what it conveys: {t:?}"
+        );
+        assert!(
+            scene
+                .prims
+                .iter()
+                .any(|p| matches!(p, Prim::Line { dashed: true, .. })),
+            "drawn dotted"
         );
     }
 

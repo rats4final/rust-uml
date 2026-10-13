@@ -203,6 +203,7 @@ fn keyword(model_type: &str) -> Option<&'static str> {
         "UMLDataType" => "«dataType»",
         "UMLPrimitiveType" => "«primitiveType»",
         "UMLSignal" => "«signal»",
+        "UMLInformationItem" => "«information»",
         "UMLMetaClass" => "«metaclass»",
         "UMLStereotype" => "«stereotype»",
         "UMLArtifact" => "«artifact»",
@@ -269,7 +270,10 @@ fn shape_of(view: &Element, model: Option<&Element>) -> Shape {
         "UMLSeqLifelineView" => Shape::Lifeline {
             head: Rect::default(),
         },
-        "UMLFrameView" | "UMLCombinedFragmentView" => Shape::Frame {
+        "UMLFrameView"
+        | "UMLCombinedFragmentView"
+        | "UMLInteractionUseView"
+        | "UMLInteractionInlineView" => Shape::Frame {
             tag: Rect::default(),
         },
         "UMLSwimlaneView" => Shape::Swimlane {
@@ -295,6 +299,30 @@ fn icon_of(view: &Element) -> Option<Icon> {
         "UMLComponentView" | "UMLComponentInstanceView" => Some(Icon::Component),
         "UMLArtifactView" | "UMLArtifactInstanceView" => Some(Icon::Artifact),
         _ => None,
+    }
+}
+
+/// The keyword in a frame's tag for the diagram or element it frames, as
+/// StarUML chooses it; empty when there is none.
+fn frame_kind(type_name: &str) -> &'static str {
+    match type_name {
+        "UMLClass" | "UMLClassDiagram" => "class",
+        "UMLComponent" | "UMLComponentDiagram" => "cmp",
+        "UMLDeploymentDiagram" => "dep",
+        "UMLInteraction"
+        | "UMLSequenceDiagram"
+        | "UMLCommunicationDiagram"
+        | "UMLTimingDiagram"
+        | "UMLInteractionOverviewDiagram" => "sd",
+        "UMLStateMachine" | "UMLStatechartDiagram" => "stm",
+        "UMLActivity" | "UMLActivityDiagram" => "act",
+        "UMLUseCase" | "UMLUseCaseDiagram" => "uc",
+        "UMLPackage" | "UMLPackageDiagram" => "pkg",
+        "SysMLRequirementDiagram" => "req",
+        "SysMLBlockDefinitionDiagram" => "bdd",
+        "SysMLParametricDiagram" => "par",
+        "SysMLInternalBlockDiagram" => "ibd",
+        _ => "",
     }
 }
 
@@ -448,21 +476,21 @@ pub fn node_layout(doc: &Document, view: &Element, fonts: &Fonts) -> Option<Node
     // Frames and combined fragments: a tag with the kind and name, then (for
     // fragments) one area per operand with its guard.
     if matches!(shape, Shape::Frame { .. }) {
-        let tag_text = match model {
+        // An interaction-overview action frames what it calls.
+        let framed = match model {
+            Some(m) if m.type_name == "UMLAction" => m.ref_id("target").and_then(|t| doc.get(t)),
+            other => other,
+        };
+        let is_ref = view.type_name == "UMLInteractionUseView";
+        let tag_text = match framed {
+            _ if is_ref => "ref".to_owned(),
             Some(m) if m.type_name == "UMLCombinedFragment" => {
                 m.str("interactionOperator").unwrap_or("alt").to_owned()
             }
-            Some(m) => {
-                let kind = match m.type_name.as_str() {
-                    "UMLSequenceDiagram" | "UMLCommunicationDiagram" | "UMLTimingDiagram" => "sd",
-                    "UMLActivityDiagram" => "act",
-                    "UMLStatechartDiagram" => "stm",
-                    "UMLComponentDiagram" => "cmp",
-                    "UMLUseCaseDiagram" => "uc",
-                    _ => "pkg",
-                };
-                format!("{kind} {}", m.name())
-            }
+            Some(m) => match frame_kind(&m.type_name) {
+                "" => m.name().to_owned(),
+                kind => format!("{kind} {}", m.name()),
+            },
             None => String::new(),
         };
         let tag_w = fonts.width(&tag_text, size, true, false) + 2.0 * PAD_X + 8.0;
@@ -477,8 +505,34 @@ pub fn node_layout(doc: &Document, view: &Element, fonts: &Fonts) -> Option<Node
             }],
             rect: tag,
         }];
+        if is_ref && let Some(usage) = framed {
+            // StarUML puts the call beside the tag: `x = Called(args): result`.
+            let named = |key: &str| {
+                usage
+                    .ref_id(key)
+                    .and_then(|r| doc.get(r))
+                    .map_or("", |e| e.name())
+            };
+            let mut call = String::new();
+            if !named("returnValueRecipient").is_empty() {
+                call += &format!("{} = ", named("returnValueRecipient"));
+            }
+            call += named("refersTo");
+            let field = |k: &str| usage.str(k).unwrap_or("");
+            if !field("arguments").is_empty() {
+                call += &format!("({})", field("arguments"));
+            }
+            if !field("returnValue").is_empty() {
+                call += &format!(": {}", field("returnValue"));
+            }
+            let left = tag.right() + PAD_X;
+            compartments.push(Compartment {
+                lines: vec![TextLine::aligned(call, HAlign::Left)],
+                rect: Rect::new(left, tag.y, (rect.right() - left - PAD_X).max(0.0), tag.h),
+            });
+        }
         let mut dividers = Vec::new();
-        let operands: Vec<&Element> = model
+        let operands: Vec<&Element> = framed
             .map(|m| {
                 m.children("operands")
                     .iter()
