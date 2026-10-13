@@ -225,11 +225,47 @@ fn batch_runs_a_script_over_a_folder_and_exports() {
 }
 
 #[test]
+fn import_mermaid_to_a_model_and_an_image() {
+    let dir = temp_dir();
+    std::fs::write(
+        dir.join("zoo.mmd"),
+        "classDiagram\nAnimal <|-- Duck\nDuck : +swim()\nweird line here\n",
+    )
+    .unwrap();
+    let out = cli(
+        &dir,
+        &["import", "zoo.mmd", "-o", "zoo.mdj", "-o", "zoo.svg"],
+    );
+    assert!(
+        out.status.success(),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    assert!(String::from_utf8_lossy(&out.stderr).contains("warning: line 4"));
+    assert!(
+        std::fs::read_to_string(dir.join("zoo.svg"))
+            .unwrap()
+            .contains("Duck")
+    );
+    // Into an existing model, as a second diagram.
+    ok(
+        &dir,
+        &[
+            "import", "zoo.mmd", "--into", "zoo.mdj", "--name", "Again", "-o", "zoo.mdj",
+        ],
+    );
+    let info = ok(&dir, &["info", "zoo.mdj"]);
+    assert!(info.contains("Again"));
+    assert!(!cli(&dir, &["import", "missing.mmd"]).status.success());
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
 fn help_explains_every_subcommand() {
     let dir = temp_dir();
     let all = ok(&dir, &["help"]);
     for sub in [
-        "new", "info", "image", "run", "batch", "commands", "tools", "mcp",
+        "new", "info", "image", "run", "import", "batch", "commands", "tools", "mcp",
     ] {
         assert!(all.contains(&format!("rust-uml-cli {sub}")), "{sub}");
         assert!(ok(&dir, &[sub, "--help"]).starts_with("usage:"), "{sub}");

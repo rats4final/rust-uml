@@ -59,6 +59,16 @@ Example:
     -o shop.mdj -o shop.png",
     ),
     (
+        "import",
+        "import <diagram.mmd>|- [--into model.mdj] [--name name] [-o out.mdj|out.svg|out.png]...",
+        "Turn Mermaid text (classDiagram, sequenceDiagram, stateDiagram) into a new diagram, laid out
+automatically, in a new model or added to --into. Lines that can't be imported are listed as
+warnings. -o works as in `run`; without -o the result is printed.
+
+Example:
+  rust-uml-cli import shop.mmd -o shop.mdj -o shop.png",
+    ),
+    (
         "batch",
         "batch --in <dir> --out <dir> [--script <steps.json>] [--image png|svg] [-s scale]",
         "Apply a script to every .mdj file in a folder and save the results in another folder,
@@ -111,7 +121,7 @@ fn help(name: &str) -> anyhow::Result<String> {
 /// Flags that take a value.
 const VALUE_FLAGS: &[&str] = &[
     "-o", "-f", "-s", "-d", "--cmd", "--params", "--as", "--script", "--in", "--out", "--image",
-    "--root",
+    "--root", "--into", "--name",
 ];
 /// Flags that stand alone.
 const SWITCHES: &[&str] = &["--new", "--json", "--help", "-h"];
@@ -255,6 +265,7 @@ fn run(words: Vec<String>) -> anyhow::Result<()> {
         }
         ("run", rest) => run_steps(&reg, &args, rest),
         ("batch", []) => batch(&reg, &args),
+        ("import", [source]) => import(&reg, &args, source),
         ("mcp", []) => mcp(&args),
         (sub, _) if SUBCOMMANDS.iter().any(|(n, _, _)| *n == sub) => {
             bail!("{}", help(sub)?)
@@ -488,6 +499,42 @@ fn export_all(
         written.push(path);
     }
     Ok(written)
+}
+
+fn import(reg: &Registry, args: &Args, source: &str) -> anyhow::Result<()> {
+    let text = if source == "-" {
+        std::io::read_to_string(std::io::stdin()).context("reading stdin")?
+    } else {
+        std::fs::read_to_string(source).with_context(|| format!("reading {source}"))?
+    };
+    let outputs: Vec<&str> = args.values("-o").collect();
+    for out in &outputs {
+        output_kind(out)?;
+    }
+    let mut s = match args.value("--into") {
+        Some(model) => load(model)?,
+        None => Session::default(),
+    };
+    let mut params = json!({ "text": text });
+    if let Some(n) = args.value("--name") {
+        params["name"] = json!(n);
+    }
+    let result = reg.run(&mut s, "import.mermaid", &params)?;
+    for w in result["warnings"].as_array().into_iter().flatten() {
+        eprintln!("warning: {}", w.as_str().unwrap_or_default());
+    }
+    if outputs.is_empty() {
+        return print_json(&result);
+    }
+    for out in outputs {
+        let bytes = match output_kind(out)? {
+            "model" => s.to_json()?.into_bytes(),
+            format => diagram_bytes(reg, &mut s, None, format, 2.0)?,
+        };
+        std::fs::write(out, bytes).with_context(|| format!("writing {out}"))?;
+        eprintln!("wrote {out}");
+    }
+    Ok(())
 }
 
 fn batch(reg: &Registry, args: &Args) -> anyhow::Result<()> {

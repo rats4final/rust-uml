@@ -125,8 +125,9 @@ impl std::fmt::Display for Failure {
 /// Run `steps` in order and return one result per step.
 ///
 /// With `atomic`, a failing step puts the whole session back as it was
-/// before the script (document, undo history, open diagram, selection);
-/// otherwise the steps before it stay applied.
+/// before the script (document, undo history, open diagram, selection), and
+/// a successful script is one undo step; otherwise each step is its own undo
+/// step and the steps before a failure stay applied.
 pub fn run(
     reg: &Registry,
     session: &mut Session,
@@ -140,6 +141,7 @@ pub fn run(
             session.selection.clone(),
         )
     });
+    let depth = session.doc.undo_depth();
     let mut bindings: HashMap<String, Value> = HashMap::new();
     let mut results = Vec::with_capacity(steps.len());
     for (i, step) in steps.iter().enumerate() {
@@ -172,6 +174,9 @@ pub fn run(
                 });
             }
         }
+    }
+    if atomic {
+        session.doc.squash_undo_since(depth);
     }
     Ok(results)
 }
@@ -291,6 +296,9 @@ mod tests {
         assert_eq!(d["lines"][0]["modelType"], "UMLAssociation");
         let total = s.doc.get(results[4]["id"].as_str().unwrap()).unwrap();
         assert_eq!(total.str("type"), Some("double"));
+        // The whole script is one undo step.
+        assert!(s.doc.undo());
+        assert!(!s.doc.can_undo());
     }
 
     #[test]

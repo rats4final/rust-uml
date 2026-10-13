@@ -181,12 +181,26 @@ fn an_agent_builds_looks_at_and_saves_a_diagram() {
         2
     );
 
+    // Mermaid in, a laid-out diagram out.
+    let imported = c.ok(
+        "mermaid_import",
+        json!({"text": "classDiagram\nAnimal <|-- Duck\nAnimal : +int age", "name": "Zoo"}),
+    );
+    assert!(imported["warnings"].as_array().unwrap().is_empty());
+    let zoo = c.ok("diagram_inspect", json!({"diagram": "Zoo"}));
+    assert_eq!(zoo["boxes"].as_array().unwrap().len(), 2);
+    let (msg, err) = c.call("mermaid_import", json!({"text": "pie\n\"a\": 1"}));
+    assert!(err && msg.as_str().unwrap().contains("Mermaid"));
+
     // Unsaved work is protected.
     let (msg, err) = c.call("model_new", json!({}));
     assert!(err && msg.as_str().unwrap().contains("unsaved"));
 
     c.ok("model_save", json!({"path": "shop.mdj"}));
-    c.ok("diagram_export", json!({"path": "shop.svg"}));
+    c.ok(
+        "diagram_export",
+        json!({"path": "shop.svg", "diagram": "Shop"}),
+    );
     assert!(
         std::fs::read_to_string(dir.join("shop.svg"))
             .unwrap()

@@ -35,6 +35,9 @@ element.set {id, values: {...}} sets fields such as type, visibility, multiplici
 toolbox lists the kinds each diagram type offers. Lay boxes out on a grid with room for lines \
 (classes are about 150×80; leave 100+ px between them).
 
+From Mermaid: mermaid_import turns classDiagram, sequenceDiagram or stateDiagram text into a \
+laid-out diagram in one step; often the quickest way to draw a whole diagram.
+
 To look: model_info lists diagrams, diagram_inspect lists boxes and lines with their ids and \
 positions, render_preview shows the diagram as an image. Check your work with render_preview.
 
@@ -456,6 +459,33 @@ const TOOLS: &[Tool] = &[
             Ok(Reply::Json(
                 json!({ "written": written.display().to_string() }),
             ))
+        },
+    },
+    Tool {
+        name: "mermaid_import",
+        title: "Import Mermaid",
+        description: "Add a diagram written in Mermaid (classDiagram, sequenceDiagram or stateDiagram) to the open model, laid out automatically. Returns the new diagram's id and any lines that were skipped. One undo step.",
+        args: &[
+            req(
+                "text",
+                r#"{"type": "string", "description": "Mermaid text, starting with classDiagram, sequenceDiagram or stateDiagram"}"#,
+            ),
+            arg(
+                "name",
+                r#"{"type": "string", "description": "Diagram name (default: the Mermaid title)"}"#,
+            ),
+        ],
+        read_only: false,
+        destructive: false,
+        run: |s, a| {
+            let mut p = json!({ "text": str_arg(a, "text")? });
+            if let Some(n) = a.get("name").filter(|n| !n.is_null()) {
+                p["name"] = n.clone();
+            }
+            s.reg
+                .run(&mut s.session, "import.mermaid", &p)
+                .map(Reply::Json)
+                .map_err(|e| e.to_string())
         },
     },
     Tool {
