@@ -1,11 +1,11 @@
 # Roadmap and handoff
 
-**Read this to pick up the work.** Status as of 2026-10-12, after v0.1.0.
+**Read this to pick up the work.** Status as of 2026-10-12, after v0.1.1.
 Order of reading for a new agent/session: `AGENTS.md` → this file → `docs/parity.md` → `log/devlog.md`.
 
 ## 1. Where things stand
 
-- **Released:** v0.1.0 (pre-release) — https://github.com/rats4final/rust-uml/releases/tag/v0.1.0
+- **Released:** v0.1.1 (pre-release) — https://github.com/rats4final/rust-uml/releases
   Linux x64, Windows x64, macOS arm64 + x64, web zip. Web app live at
   https://rats4final.github.io/rust-uml/ (redeploys on every push to `main`).
 - **Works:** class diagrams end to end (5 element kinds, 7 relationship kinds, properties panel,
@@ -13,9 +13,8 @@ Order of reading for a new agent/session: `AGENTS.md` → this file → `docs/pa
   non-class diagrams draw in a simplified generic way and cannot be edited with tools yet.
 - **Verified:** 33 tests (incl. mouse-driven UI tests and a real-file round trip of all 14 model files
   shipped with StarUML); CI green on Linux, Windows, macOS; Windows exe launched natively; web build
-  screenshotted in Chromium; rust-uml's example file opens correctly in StarUML 7.1.1.
-  **Not verified:** macOS app actually launching (no Mac); a
-  StarUML-edited file reopened in rust-uml (rust-uml → StarUML was verified 2026-10-12).
+  screenshotted in Chromium; StarUML interop proven both ways for class diagrams (M1.5).
+  **Not verified:** macOS app actually launching (no Mac); other diagram families with StarUML.
 
 ## 2. Setting up a machine to continue
 
@@ -49,22 +48,17 @@ driving it. Details in `AGENTS.md`. The product name is **rust-uml**; never call
 Each milestone ends with: tests, `docs/parity.md` rows updated, a `log/devlog.md` entry, a tag for a
 release when it's user-visible.
 
-### M1.5 — Prove StarUML interoperability (small, do first)
+### M1.5 — Prove StarUML interoperability ✅ done 2026-10-12
 
-**Step 1 done 2026-10-12:** the owner opened `examples/shapes.mdj` in StarUML 7.1.1 — no errors,
-everything drawn. It exposed one bug, fixed: association end labels were on the wrong side
-(StarUML measures label `alpha` opposite to screen angles; test `head_labels_match_staruml_sides`).
-Open question from the same comparison: StarUML showed attribute/literal rows **centred**; we
-left-align. Find out whether that is StarUML's normal style or caused by missing sub-view geometry
-(make a fresh class in StarUML and compare).
-
-1. ~~Open `examples/shapes.mdj` (made only by rust-uml) in real StarUML 7.1.1. Expected risk: StarUML
-   may need sub-view geometry (`left/top/width/height` of compartments and labels) or fields we omit.
-   If it fails or looks wrong, compare with a file StarUML saves for the same diagram:
-   `rust-uml-cli run x.mdj model.get '{"id":"…"}'` vs the StarUML file, field by field.~~ Done, see above.
-2. **Next:** the reverse: build a class diagram in StarUML, save, open in rust-uml, edit, save, reopen in StarUML.
-3. Turn both into a test fixture **we** author (never commit StarUML-made files: they contain
-   StarUML's generated content; describe differences in tests instead).
+- rust-uml → StarUML: the owner opened `examples/shapes.mdj` in StarUML 7.1.1; no errors.
+- StarUML → rust-uml: the owner edited it in StarUML (added an abstract, active class; renamed a
+  literal) and saved; rust-uml reopens it and saves it back with identical content and key order.
+- Bugs it exposed, all fixed with tests: end labels mirrored (alpha sign); rows centred in StarUML
+  (missing `horizontalAlignment` = metamodel default centre → now written as left); labels without
+  `edgePosition` drawn mid-line and lines without `lineStyle` assumed oblique (now metamodel
+  defaults, `mdj::values::absent`); active classes drawn (double side borders).
+- Lesson for every later family: see `AGENTS.md` rule 4 (defaults) and `docs/evidence.md` §3.
+- `examples/build-shapes.sh` regenerates the example from CLI commands only.
 
 ### M2 — UML structural diagrams (tools, not just generic drawing)
 
@@ -130,7 +124,8 @@ Linux AppImage/Flatpak; auto-update; smaller wasm (7.3 MB now; fonts are embedde
 |---|---|
 | `render` | Edges whose end is another edge (association classes, constraints on links) are skipped. |
 | `render` | Interface lollipop/socket notation not drawn; interfaces we create pin `stereotypeDisplay: label`. |
-| `render`/`uml` | Sub-view geometry (compartment/label `left/top/width/height`) is never recomputed; only shifted on move. StarUML may expect it (see M1.5). |
+| `render`/`uml` | Sub-view geometry (compartment/label `left/top/width/height`) is never recomputed; only shifted on move. StarUML recomputes it, so this is cosmetic in the file only. |
+| `uml` | Audit the other view types we create for fields whose intended value ≠ metamodel default (only rows and `propertyLabel` were checked). |
 | `render` | Curve and rounded line styles draw as straight/right-angle. |
 | `mdj` | Undoing removal of a single-child (`obj`) field re-inserts the key at the end (key order changes). |
 | `ui` | Toolbox is class-diagram only regardless of diagram type. No marquee select, no clipboard. |

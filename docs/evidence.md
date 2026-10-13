@@ -72,7 +72,75 @@ An `.mdj` file is one JSON tree (shape observed in StarUML's default template an
 `Reader`/`Writer` classes of `src/core/repository.js`). This example was written by rust-uml
 (`rust-uml-cli new`); ids are shortened:
 
-Described in our words (StarUML's code is not reproduced here):
+```json
+{ "_type": "Project", "_id": "P1", "name": "Untitled",
+  "ownedElements": [
+    { "_type": "UMLModel", "_id": "M1", "_parent": { "$ref": "P1" }, "name": "Model",
+      "ownedElements": [
+        { "_type": "UMLClassDiagram", "_id": "D1", "_parent": { "$ref": "M1" },
+          "name": "Main", "defaultDiagram": true } ] } ] }
+```
+
+Rules, all observed:
+
+- Every element has `_type` (its metamodel type name) and `_id`.
+- **Owned children are nested inline**, and each child points back with `"_parent": {"$ref": id}`.
+- **Pointers are `{"$ref": "<id>"}`** objects; pointer lists are arrays of those.
+- **Missing field = metamodel default.** When loading, StarUML gives a field that is absent from
+  the file the `default` declared in `metamodel.json`, *not* the value its own code would set for a
+  new element. When saving, it leaves out every field equal to that default
+  (`Element.load`/`Element.save` in `src/core/core.js`). Consequences, confirmed by opening
+  rust-uml files in StarUML 7.1.1 on 2026-10-12:
+  - attribute/operation/literal rows are created *left*-aligned by StarUML's code, but the metamodel
+    default for `horizontalAlignment` is centre, so a row without the field shows centred. StarUML's
+    own files store `"horizontalAlignment": 0`; rust-uml now does too;
+  - `edgePosition` 0 (label follows the *head* end) and `lineStyle` 0 (rectilinear) are the
+    defaults, so StarUML omits them; a reader must not assume "middle" or "oblique".
+  rust-uml keeps these defaults in `mdj::values::absent`.
+- **Diagrams own their views.** A diagram's `ownedViews` holds view elements. A view says which model
+  element it shows (`model: {$ref}`), plus its position and size (`left`, `top`, `width`, `height`) for
+  boxes, or its end views (`head`, `tail`) and bend points for lines.
+- **Sub-view geometry is recomputed by StarUML.** Files rust-uml writes without positions for
+  compartments and labels open fine; StarUML fills in `left/top/width/height` for every compartment
+  and label when it saves (observed 2026-10-12).
+- `custom` text formats (from `src/core/graphics.js`):
+  - `Points`: `"x1:y1;x2:y2;…"`, running from the tail end to the head end.
+  - `Font`: `"face;size;style"` (style bits: 1 bold, 2 italic), where `?` in a slot means "inherit".
+- **Label placement** (`EdgeParasiticView`): `edgePosition` picks the head end (0), middle (1) or
+  tail end (2); the label sits `distance` away at angle `alpha` from the line's direction, with
+  `alpha` measured opposite to screen angles (confirmed against StarUML's drawing).
+- **IDs** (`IdGenerator` in `src/core/core.js`): hex of `timestamp(16 hex digits) + counter(4) + random(4)`,
+  converted to bytes and then base64. So it's 12 bytes, 16 base64 characters. Older files have 20-character
+  ids with an extra prefix. Any unique string loads fine, because ids are only compared, never decoded.
+- Profiles use the same format with the `.mfj` extension (`resources/profiles/UMLStandardProfile.mfj`).
+  Their root keeps a `_parent` pointing at the project they were cut from.
+
+### Class-diagram view structure (from `extensions/essential/uml/metamodel.json`)
+
+A class box is not one element. It is a small tree of views:
+
+```
+UMLClassView                 (left/top/width/height, model → UMLClass)
+├─ UMLNameCompartmentView    (referenced by nameCompartment)
+│   ├─ LabelView  stereotypeLabel
+│   ├─ LabelView  nameLabel
+│   ├─ LabelView  namespaceLabel
+│   └─ LabelView  propertyLabel
+├─ UMLAttributeCompartmentView   (attributeCompartment) → one UMLAttributeView per attribute
+├─ UMLOperationCompartmentView   (operationCompartment) → one UMLOperationView per operation
+├─ UMLReceptionCompartmentView   (receptionCompartment)
+└─ UMLTemplateParameterCompartmentView
+```
+
+A relationship line (`UMLAssociationView`, `UMLGeneralizationView`, …) is an `EdgeView` with
+`head`/`tail` → the two box views, `points`, `lineStyle`, and **EdgeLabelView** children for
+name/stereotype/property and, for associations, role-name/multiplicity/property labels at each end.
+Each label points back with `hostEdge` and to the relationship with `model`.
+
+## 4. Free vs. paid — exactly what is locked
+
+The only place the license is checked for features is **`src/engine/diagram-export.js`**, in the
+three export paths (PNG/JPEG, SVG, PDF). Described in our words (StarUML's code is not reproduced here):
 
 - a list of eight diagram type names counts as "Pro": `SysMLRequirementDiagram`,
   `SysMLBlockDefinitionDiagram`, `SysMLInternalBlockDiagram`, `SysMLParametricDiagram`,
@@ -113,12 +181,14 @@ scope for "the installed app".
 
 ## 6. Unknowns / limits of this evidence
 
-- Everything here is static reading. **No runtime behaviour was observed.** Things like "StarUML
-  re-lays out a class box when it opens a file" are inferred from the code shape, not watched.
+- Most of this is static reading. Runtime behaviour observed so far comes only from the owner
+  opening rust-uml files in StarUML 7.1.1 and saving them (2026-10-12), noted where it applies.
 - REA's analysis of the whole archive hit its size budget on 3,676 bundled-library files (Mermaid
   parser, Kendo cultures); their static facts are kept on file nodes, but cross-file relationships
   there are incomplete. None of these are StarUML's own `src/` or diagram-family code.
 - The exact drawing rules (fonts, padding, arrow sizes) were **not** copied. The Rust renderer uses
   UML-standard notation with its own measurements, so pixel output will differ.
-- The real proof of file compatibility is opening a file saved by the Rust app in StarUML, and
-  the other way round. That needs a sample `.mdj` saved from StarUML with a real class diagram.
+- File compatibility was proven both ways on 2026-10-12 for class diagrams: StarUML 7.1.1 opened
+  `examples/shapes.mdj`; the owner edited and saved it there (added an abstract, active class,
+  renamed a literal) and rust-uml reopened it and saved it back unchanged. Other diagram families
+  are untested.

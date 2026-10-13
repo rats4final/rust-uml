@@ -1,5 +1,10 @@
-First preview of **rust-uml**: an independent, open-source UML modeler written in Rust that opens and
-saves StarUML `.mdj` files. Not affiliated with MKLabs/StarUML.
+Preview of **rust-uml**: an independent, open-source UML modeler written in Rust that opens and
+saves StarUML `.mdj` files. Not affiliated with MKLabs/StarUML. What changed in each version:
+`log/devlog.md`.
+
+**Since v0.1.0:** files made here now look the same in StarUML (rows left-aligned, end labels on the
+right side), StarUML-saved files draw their labels and line styles as StarUML does, and active
+classes get double side borders. Round trips with StarUML 7.1.1 verified in both directions.
 
 **What works:** class diagrams end to end — classes, interfaces, enumerations, data types, packages,
 7 relationship kinds, properties panel, undo/redo, lossless save, SVG/PNG export with no watermarks.

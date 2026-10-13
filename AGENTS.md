@@ -51,6 +51,10 @@ below `ui` may use egui, eframe, winit or rfd. Register new crates in `xtask/src
 4. **Files stay lossless.** Loading then saving any StarUML file must not change it. Run the
    real-file test (`crates/mdj/tests/staruml_files.rs`) against a local StarUML install when you
    touch `mdj`. Never commit StarUML's files.
+   **Defaults:** StarUML loads a missing field as the *metamodel* default and omits fields equal to
+   it when saving. So when writing, store every field whose intended value differs from the
+   metamodel default (e.g. row `horizontalAlignment: 0`); when reading, fall back to the metamodel
+   default (`mdj::values::absent`), never to "what a new element would get". See `docs/evidence.md` §3.
 5. **Never break wasm.** `cargo xtask wasm` must pass. File-system and dialog code lives in
    `apps/*`, behind `ui::FileService`.
 6. **Verify the UI by driving it.** Add `egui_kittest` tests in `crates/ui` that click and drag

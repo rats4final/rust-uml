@@ -1,6 +1,6 @@
 # Parity with StarUML 7.1.1
 
-Status line: **milestone 1 (core) — class diagrams.** Updated 2026-10-12.
+Status line: **milestone 1 (core) — class diagrams; StarUML interop proven both ways.** Updated 2026-10-12.
 
 Each row comes from the evidence in [`evidence.md`](evidence.md). "Paid" marks features StarUML
 locks behind a licence (see evidence §4: only exports are locked, by watermark).
@@ -15,7 +15,7 @@ Legend: ✅ done · 🟡 partial · ⬜ not started
 | Save `.mdj` | ✅ | Same content and key order as StarUML's own files (14/14 shipped files) |
 | Open/save `.mfj` profile fragments | ✅ | Root `_parent` outside the file is preserved |
 | Files saved here open in StarUML | ✅ | `examples/shapes.mdj` opened in StarUML 7.1.1 (2026-10-12): all boxes, rows, keywords, arrows and labels correct |
-| StarUML-edited files reopen here | ⬜ | Next check: edit + save in StarUML, reopen in rust-uml |
+| StarUML-edited files reopen here | ✅ | Owner edited `shapes.mdj` in StarUML (new abstract/active class, renamed literal); reopens and round-trips unchanged |
 | StarUML v1 (`.uml`) import | ⬜ | `extensions/default/staruml-v1` |
 | Mermaid import | ⬜ | `extensions/default/mermaid`; also behind the local API |
 

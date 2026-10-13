@@ -2,6 +2,16 @@
 
 Newest first. Terse: what landed, numbers, what's still open.
 
+## 2026-10-12 — v0.1.1: interop proven both ways
+
+- Owner edited `shapes.mdj` in StarUML and reopened it here: works; round-trips unchanged.
+- Found the defaults rule: StarUML loads missing fields as metamodel defaults and omits fields equal
+  to them. Fixed: rows now store left alignment; `edgePosition`/`lineStyle`/`alpha`/`distance`
+  fallbacks now match StarUML (`mdj::values::absent`). Active classes drawn.
+- Restored `docs/evidence.md` §3–§4: the publishing-day cleanup script had deleted the file-format
+  rules (its "```js" search matched "```json").
+- `examples/build-shapes.sh` rebuilds the example from CLI commands. 37 tests.
+
 ## 2026-10-12 — StarUML opens our files
 
 - Owner opened `examples/shapes.mdj` in StarUML 7.1.1: loads cleanly, all elements drawn.
