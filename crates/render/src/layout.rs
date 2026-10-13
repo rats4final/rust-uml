@@ -307,7 +307,7 @@ fn heading(doc: &Document, view: &Element, m: &Element) -> (String, bool) {
         | "UMLNodeInstanceView" => (uml::instance_text(doc, m), true),
         "UMLPartView" => (uml::part_text(doc, m), false),
         // `name : Type`, the type coming from the role the lifeline represents.
-        "UMLSeqLifelineView" => {
+        "UMLSeqLifelineView" | "UMLCommLifelineView" => {
             let ty = m
                 .ref_id("represent")
                 .and_then(|r| doc.get(r))
@@ -372,7 +372,8 @@ fn wrap(text: &str, width: f64, fonts: &Fonts, size: f64) -> Vec<String> {
 /// (no position fields).
 pub fn node_layout(doc: &Document, view: &Element, fonts: &Fonts) -> Option<NodeLayout> {
     let has_geometry = view.get("left").is_some() || view.get("width").is_some();
-    if !has_geometry || view.get("head").is_some() {
+    // Edges, and views riding on an edge (communication messages), aren't boxes.
+    if !has_geometry || view.get("head").is_some() || view.get("hostEdge").is_some() {
         return None;
     }
     let stored = Rect::new(

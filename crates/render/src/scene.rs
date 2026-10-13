@@ -152,8 +152,10 @@ pub fn build_scene(doc: &Document, diagram: &str, fonts: &Fonts) -> Scene {
 
     let mut bounds: Option<Rect> = None;
     let mut grow = |r: Rect| bounds = Some(bounds.map_or(r, |b| b.union(&r)));
+    // Edge geometry, for views that ride on an edge (drawn after the edges).
+    let mut edge_pts: HashMap<&str, Vec<Point>> = HashMap::new();
 
-    for view in views {
+    for view in views.iter().copied() {
         if let Some(layout) = layouts.get(view.id.as_str()) {
             draw_node(&mut scene, layout, fonts);
             // A frame is picked by its tag, so clicks inside reach what it frames.
@@ -174,9 +176,28 @@ pub fn build_scene(doc: &Document, diagram: &str, fonts: &Fonts) -> Scene {
             for p in &points {
                 grow(Rect::new(p.x, p.y, 0.0, 0.0));
             }
+            edge_pts.insert(view.id.as_str(), points.clone());
             scene.hits.push(Hit {
                 view: view.id.clone(),
                 shape: HitShape::Polyline(points),
+            });
+        }
+    }
+    for view in views {
+        if view.type_name != "UMLCommMessageView" {
+            continue;
+        }
+        let Some(host) = view.ref_id("hostEdge").and_then(|h| edge_pts.get(h)) else {
+            continue;
+        };
+        if let Some((arrow, boxes)) = draw_comm_message(&mut scene, doc, view, host, fonts) {
+            for r in boxes {
+                grow(r);
+            }
+            grow(arrow);
+            scene.hits.push(Hit {
+                view: view.id.clone(),
+                shape: HitShape::Rect(arrow.expand(6.0)),
             });
         }
     }
@@ -639,16 +660,8 @@ fn edge_style(doc: &Document, view: &Element) -> (bool, EndMark, EndMark) {
     let t = view.type_name.as_str();
     let model = view.ref_id("model").and_then(|m| doc.get(m));
     if t == "UMLSeqMessageView" {
-        // UML message notation by sort.
-        let sort = model
-            .and_then(|m| m.str("messageSort"))
-            .unwrap_or("synchCall");
-        return match sort {
-            "synchCall" => (false, EndMark::None, EndMark::FilledTriangle),
-            "reply" | "createMessage" => (true, EndMark::None, EndMark::OpenArrow),
-            "deleteMessage" => (false, EndMark::None, EndMark::Destroy),
-            _ => (false, EndMark::None, EndMark::OpenArrow),
-        };
+        let (dashed, head) = message_style(model);
+        return (dashed, EndMark::None, head);
     }
     if let Some(m) = model.filter(|m| m.get("end1").is_some()) {
         let end = |k: &str| m.children(k).first().and_then(|id| doc.get(id));
@@ -692,6 +705,179 @@ fn edge_style(doc: &Document, view: &Element) -> (bool, EndMark, EndMark) {
         (false, EndMark::None)
     };
     (dashed, EndMark::None, head)
+}
+
+/// UML message notation by `messageSort`: dashed line, and the arrowhead.
+fn message_style(message: Option<&Element>) -> (bool, EndMark) {
+    match message
+        .and_then(|m| m.str("messageSort"))
+        .unwrap_or("synchCall")
+    {
+        "synchCall" => (false, EndMark::FilledTriangle),
+        "reply" | "createMessage" => (true, EndMark::OpenArrow),
+        "deleteMessage" => (false, EndMark::Destroy),
+        _ => (false, EndMark::OpenArrow),
+    }
+}
+
+/// Half the length of a communication message's arrow (StarUML: 40 px).
+const COMM_ARROW_HALF: f64 = 20.0;
+
+/// A communication message: an arrow beside the middle of its connector,
+/// pointing the way the message goes, and its label `n : name` beyond it
+/// (`n` its place among the interaction's messages, when the diagram shows
+/// sequence numbers). Returns the arrow's box and the labels' boxes.
+fn draw_comm_message(
+    scene: &mut Scene,
+    doc: &Document,
+    view: &Element,
+    host: &[Point],
+    fonts: &Fonts,
+) -> Option<(Rect, Vec<Rect>)> {
+    if host.len() < 2 {
+        return None;
+    }
+    let model = view.ref_id("model").and_then(|m| doc.get(m));
+    let i = (host.len() - 1) / 2;
+    let (a, b) = (host[i], host[i + 1]);
+    let len = (b.x - a.x).hypot(b.y - a.y);
+    let (ux, uy) = if len > 1e-9 {
+        ((b.x - a.x) / len, (b.y - a.y) / len)
+    } else {
+        (1.0, 0.0)
+    };
+    let centre = label_point(
+        host,
+        edge_position::MIDDLE,
+        view.num("alpha", PI / 2.0),
+        view.num("distance", 10.0),
+    );
+    let back = Point::new(
+        centre.x - ux * COMM_ARROW_HALF,
+        centre.y - uy * COMM_ARROW_HALF,
+    );
+    let ahead = Point::new(
+        centre.x + ux * COMM_ARROW_HALF,
+        centre.y + uy * COMM_ARROW_HALF,
+    );
+    // The connector runs from its tail lifeline to its head; a message whose
+    // source isn't the tail's lifeline points back.
+    let host_tail_model = view
+        .ref_id("hostEdge")
+        .and_then(|h| doc.get(h))
+        .and_then(|h| h.ref_id("tail"))
+        .and_then(|t| doc.get(t))
+        .and_then(|t| t.ref_id("model"));
+    let reverse = matches!(
+        (model.and_then(|m| m.ref_id("source")), host_tail_model),
+        (Some(s), Some(t)) if s != t
+    );
+    let (from, to) = if reverse {
+        (ahead, back)
+    } else {
+        (back, ahead)
+    };
+    let stroke = view
+        .str("lineColor")
+        .and_then(Color::parse)
+        .unwrap_or(Color::BLACK);
+    let (dashed, head) = message_style(model);
+    scene.prims.push(Prim::Line {
+        points: vec![from, to],
+        stroke,
+        dashed,
+    });
+    draw_mark(scene, to, from, head, stroke);
+
+    let font = Font::parse(view.str("font").unwrap_or(DEFAULT_FONT));
+    let size = if font.size > 0.0 && font.size.is_finite() {
+        font.size
+    } else {
+        13.0
+    };
+    let color = view
+        .str("fontColor")
+        .and_then(Color::parse)
+        .unwrap_or(Color::BLACK);
+    let name = model
+        .map(|m| comm_message_text(doc, view, m))
+        .unwrap_or_default();
+    let stereotype = model
+        .and_then(|m| match m.str("messageSort") {
+            Some("createMessage") => Some("«create»".to_owned()),
+            Some("deleteMessage") => Some("«destroy»".to_owned()),
+            _ => uml::stereotype_text(doc, m),
+        })
+        .unwrap_or_default();
+    let line_h = fonts.line_height(size);
+    let ascent = fonts.ascent(size);
+    let mut boxes = Vec::new();
+    for (key, text, default_distance) in [
+        ("nameLabel", name, 10.0),
+        ("stereotypeLabel", stereotype, 25.0),
+    ] {
+        if text.is_empty() {
+            continue;
+        }
+        let label = view.ref_id(key).and_then(|id| doc.get(id));
+        let alpha = label.map_or(PI / 2.0, |l| l.num("alpha", PI / 2.0));
+        let distance = label.map_or(default_distance, |l| l.num("distance", default_distance));
+        // Measured along the connector's direction, so a reverse message's
+        // label stays on the same side; then pushed out by the text's half
+        // extent in that direction, so it clears the arrow.
+        let w = fonts.width(&text, size, false, false);
+        let near = label_point(&[back, ahead], edge_position::MIDDLE, alpha, distance);
+        let (ox, oy) = (near.x - centre.x, near.y - centre.y);
+        let off = ox.hypot(oy);
+        let anchor = if off > 1e-9 {
+            let (dx, dy) = (ox / off, oy / off);
+            let clear = dx.abs() * w / 2.0 + dy.abs() * line_h / 2.0;
+            Point::new(near.x + dx * clear, near.y + dy * clear)
+        } else {
+            near
+        };
+        let rect = Rect::new(anchor.x - w / 2.0, anchor.y - line_h / 2.0, w, line_h);
+        scene.prims.push(Prim::Text {
+            rect,
+            baseline: ascent,
+            text,
+            style: TextStyle {
+                size,
+                bold: false,
+                italic: false,
+                underline: false,
+                color,
+            },
+        });
+        boxes.push(rect);
+    }
+    let arrow = Rect::new(
+        from.x.min(to.x),
+        from.y.min(to.y),
+        (from.x - to.x).abs(),
+        (from.y - to.y).abs(),
+    );
+    Some((arrow, boxes))
+}
+
+/// A communication message's label: `n : name`, `n` its place among the
+/// interaction's messages, or its own `sequenceNumber` when the diagram
+/// numbers by hand; no number when the diagram hides them.
+fn comm_message_text(doc: &Document, view: &Element, message: &Element) -> String {
+    let diagram = view.parent.as_deref().and_then(|d| doc.get(d));
+    let shown = diagram.is_none_or(|d| d.bool("showSequenceNumber", true));
+    let custom = diagram.is_some_and(|d| d.str("sequenceNumbering") == Some("custom"));
+    let number = match (shown, custom) {
+        (false, _) => None,
+        (true, true) => message.str("sequenceNumber").map(str::to_owned),
+        (true, false) => message
+            .parent
+            .as_deref()
+            .and_then(|p| doc.get(p))
+            .and_then(|p| p.children("messages").iter().position(|m| *m == message.id))
+            .map(|i| (i + 1).to_string()),
+    };
+    uml::numbered_message_text(message, number.as_deref())
 }
 
 /// Draw an edge; returns the boxes of the labels it placed.
@@ -1030,6 +1216,81 @@ mod tests {
         assert!(
             role.center().y > 20.0,
             "below the line, as StarUML draws it: {role:?}"
+        );
+    }
+
+    #[test]
+    fn communication_messages_ride_beside_their_connector() {
+        let mut doc = Document::new_project();
+        let model = doc.get(doc.root()).unwrap().children("ownedElements")[0].clone();
+        let dgm = doc
+            .try_edit(|e| uml::create_diagram(e, &model, "UMLCommunicationDiagram"))
+            .unwrap();
+        let on = "UMLCommunicationDiagram";
+        let lifeline = uml::node_spec_on("UMLLifeline", on).unwrap();
+        let (_, a) = doc
+            .try_edit(|e| uml::create_node(e, &dgm, lifeline, 40.0, 100.0, None))
+            .unwrap();
+        let (_, b) = doc
+            .try_edit(|e| uml::create_node(e, &dgm, lifeline, 400.0, 100.0, None))
+            .unwrap();
+        let forward = uml::edge_spec_on("UMLForwardMessage", on).unwrap();
+        let (_, fwd) = doc
+            .try_edit(|e| uml::create_edge(e, &dgm, forward, &a, &b))
+            .unwrap();
+        let connector = doc
+            .get(&fwd)
+            .unwrap()
+            .ref_id("hostEdge")
+            .unwrap()
+            .to_owned();
+        let reverse = uml::edge_spec_on("UMLReverseMessage", on).unwrap();
+        let (_, rev) = doc
+            .try_edit(|e| uml::create_edge(e, &dgm, reverse, &b, &connector))
+            .unwrap();
+
+        let scene = build_scene(&doc, &dgm, &Fonts::default());
+        let texts: Vec<&str> = scene
+            .prims
+            .iter()
+            .filter_map(|p| match p {
+                Prim::Text { text, .. } => Some(text.as_str()),
+                _ => None,
+            })
+            .collect();
+        assert!(texts.contains(&"1 : Message1"), "{texts:?}");
+        assert!(texts.contains(&"2 : Message2"), "{texts:?}");
+        // The two 40 px arrows, above the left-to-right connector, pointing
+        // opposite ways (forward first, as drawn).
+        let arrows: Vec<(Point, Point)> = scene
+            .prims
+            .iter()
+            .filter_map(|p| match p {
+                Prim::Line { points, .. } if points.len() == 2 => {
+                    let (f, t) = (points[0], points[1]);
+                    ((f.dist(t) - 40.0).abs() < 1e-6).then_some((f, t))
+                }
+                _ => None,
+            })
+            .collect();
+        assert_eq!(arrows.len(), 2, "{arrows:?}");
+        assert!(arrows[0].1.x > arrows[0].0.x, "forward points to the head");
+        assert!(arrows[1].1.x < arrows[1].0.x, "reverse points back");
+        assert!(
+            arrows[0].0.y < 115.0,
+            "beside the line, above it: {arrows:?}"
+        );
+        for v in [&fwd, &rev] {
+            assert!(scene.hits.iter().any(|h| &h.view == v), "{v} is clickable");
+        }
+
+        doc.edit(|e| e.set(&dgm, "showSequenceNumber", mdj::Field::bool(false)));
+        let scene = build_scene(&doc, &dgm, &Fonts::default());
+        assert!(
+            scene
+                .prims
+                .iter()
+                .any(|p| matches!(p, Prim::Text { text, .. } if text == "Message1"))
         );
     }
 
