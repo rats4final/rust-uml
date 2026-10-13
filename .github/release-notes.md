@@ -2,16 +2,15 @@ Preview of **rust-uml**: an independent, open-source UML modeler written in Rust
 saves StarUML `.mdj` files. Not affiliated with MKLabs/StarUML. What changed in each version:
 `log/devlog.md`.
 
-**New in v0.3.0:** use case, statechart and activity diagrams with StarUML's tool sets —
-actors, use cases and system boundaries; states, composite and orthogonal states, history, choice,
-fork/join and final states, transitions labelled `trigger [guard] / effect`; actions, decisions,
-forks/joins, swimlanes and guarded flows. Statechart and activity diagrams get their state machine
-or activity automatically, as in StarUML. Try `behaviour.mdj`.
+**New in v0.4.0:** sequence diagrams — an "sd" frame, lifelines, synchronous/asynchronous/
+reply/create/delete messages with activation bars, and combined fragments (alt, loop, opt, …) with
+guarded operands. Drag from one lifeline to another to send a message at that height; moving a
+lifeline keeps its messages in place. See the "Checkout" diagram in `behaviour.mdj`.
 
-**What works:** class, structural, use case, statechart and activity diagrams end to end — 52
-element and 23 relationship tools,
+**What works:** class, structural, use case, statechart, activity and sequence diagrams end to
+end — 54 element and 30 relationship tools,
 properties panel, undo/redo, lossless save (verified both ways with StarUML 7.1.1 for class diagrams),
-SVG/PNG export with no watermarks. Sequence-family diagrams open and are drawn in a simplified way.
+SVG/PNG export with no watermarks. Communication, timing and interaction-overview diagrams open and are drawn in a simplified way.
 Full checklist: `docs/parity.md`.
 
 ## Downloads

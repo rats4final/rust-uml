@@ -2,6 +2,17 @@
 
 Newest first. Terse: what landed, numbers, what's still open.
 
+## 2026-10-12 — v0.4.0: sequence diagrams
+
+- Sequence diagrams as StarUML builds them: collaboration → interaction → diagram + frame;
+  lifelines with role attributes and line parts; 7 message kinds attached to line parts at the
+  drag height; activations; combined fragments with operands and guards.
+- Reflow keeps message heights and moves activations when lifelines move.
+- Message labels always above the arrow (the generic angle rule put right-to-left ones below).
+- Found while doing it: an M3a edit (region views as boxes, not rows) had silently not applied;
+  its test only checked the view type. Fixed, and the test now checks the field too.
+- 70 tests; 54 box / 30 line tools. Open: communication, timing, interaction overview, info flow.
+
 ## 2026-10-12 — v0.3.0: M3a use case, statechart, activity
 
 - Catalog now offers 52 box and 23 line tools across all toolbox groups (counted with `rust-uml-cli tools`).

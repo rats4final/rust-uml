@@ -1,6 +1,6 @@
 # Roadmap and handoff
 
-**Read this to pick up the work.** Status as of 2026-10-12, after v0.3.0.
+**Read this to pick up the work.** Status as of 2026-10-12, after v0.4.0.
 Order of reading for a new agent/session: `AGENTS.md` → this file → `docs/parity.md` → `log/devlog.md`.
 
 ## 1. Where things stand
@@ -8,11 +8,10 @@ Order of reading for a new agent/session: `AGENTS.md` → this file → `docs/pa
 - **Released:** v0.1.1 (pre-release) — https://github.com/rats4final/rust-uml/releases
   Linux x64, Windows x64, macOS arm64 + x64, web zip. Web app live at
   https://rats4final.github.io/rust-uml/ (redeploys on every push to `main`).
-- **Works:** class diagrams, all six UML structural diagram types and three behavioural ones
-  (use case, statechart, activity) with StarUML's toolbox groups: 52 box tools and 23 line tools
-  in `crates/uml/src/catalog.rs`; nesting, ports, parts, objects, notes, state machines with
-  regions, activities with swimlanes; properties panel, undo/redo, lossless `.mdj` save, SVG/PNG
-  export without watermarks. Sequence, communication, timing, interaction-overview and
+- **Works:** class diagrams, all six UML structural diagram types, and use case, statechart,
+  activity and sequence diagrams, with StarUML's toolbox groups: 54 box tools and 30 line tools
+  (`rust-uml-cli tools`) in `crates/uml/src/catalog.rs`. Properties panel, undo/redo, lossless
+  `.mdj` save, SVG/PNG export without watermarks. Communication, timing, interaction-overview and
   information-flow diagrams open and draw generically but have no tools yet.
 - **Verified:** 33 tests (incl. mouse-driven UI tests and a real-file round trip of all 14 model files
   shipped with StarUML); CI green on Linux, Windows, macOS; Windows exe launched natively; web build
@@ -95,12 +94,24 @@ release when it's user-visible.
   triggers/effects editing in the properties panel (labels already show them), frames.
 - **Not yet checked in StarUML:** open `examples/behaviour.mdj` and `structures.mdj` in StarUML.
 
-### M3b — Sequence, communication, timing, interaction overview, information flow (next)
+### M3b part 1 — Sequence diagrams ✅ done 2026-10-12 (v0.4.0)
 
-The hard part is the sequence diagram: lifelines laid out horizontally, messages ordered by
-vertical position, activations, combined fragments. Gather evidence first: `sequenceDiagramFn`,
-`viewForSequenceDiagramFn` in `uml-factory.js` (diagrams live in a `UMLCollaboration` →
-`UMLInteraction`?), and `UMLLifeline`, `UMLMessage`, `UMLCombinedFragment` in `metamodel.json`.
+- `create_diagram` wraps a sequence diagram as StarUML does (collaboration → interaction →
+  diagram) and adds the "sd" frame; lifelines create a role attribute (`represent`).
+- Lifeline views get a `linePart`; messages attach to line parts (`create_edge_at` takes the
+  drag's height); calls get activation bars; `render::reflow` keeps message heights and moves
+  activations when lifelines move. Frames and fragments are picked by their tag only.
+- Message notation by `messageSort`; combined fragments with operands (`feature.add` kind
+  `operand`) and guards. Example: the "Checkout" diagram in `examples/behaviour.mdj`.
+- Left: found/lost messages, gates/endpoints, state invariants, continuations, interaction uses,
+  time/duration constraints; dragging a message vertically (today: delete and redraw).
+
+### M3b part 2 — Communication, timing, interaction overview, information flow (next)
+
+Evidence pointers: `communicationDiagramFn`, `timingDiagramFn`, `interactionOverviewDiagramFn` and
+their `viewFor…DiagramFn` in `uml-factory.js` (communication messages create a connector between
+lifelines plus a message; see `messageFn`). Toolbox groups `uml.communication`, `uml.timing`,
+`uml.interaction-overview`, `uml.information-flow` in `toolbox/uml.json`.
 
 ### M4 — The families StarUML sells ("Pro")
 
