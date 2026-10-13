@@ -24,6 +24,29 @@ enum PathPrompt {
     Save(String),
 }
 
+/// File ▸ Import Mermaid…: the text being edited and the last error.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+struct MermaidPrompt {
+    text: String,
+    error: Option<String>,
+}
+
+/// Examples offered in the Mermaid dialog (our own, one per supported kind).
+const MERMAID_EXAMPLES: &[(&str, &str)] = &[
+    (
+        "Class",
+        "classDiagram\n    direction LR\n    class Order {\n        +String id\n        +total() Money\n    }\n    Customer \"1\" --> \"*\" Order : places\n    Order *-- OrderLine\n    OrderLine --> Product\n    <<interface>> Payable\n    Order ..|> Payable",
+    ),
+    (
+        "Sequence",
+        "sequenceDiagram\n    actor C as Customer\n    participant S as Shop\n    C->>S: checkout(cart)\n    alt in stock\n        S--)C: confirmation\n    else out of stock\n        S--)C: apology\n    end",
+    ),
+    (
+        "State",
+        "stateDiagram-v2\n    [*] --> Draft\n    Draft --> Review : submit\n    Review --> Draft : changes\n    Review --> Published : approve\n    Published --> [*]",
+    ),
+];
+
 /// Developer aid: capture the window after a few frames, then close.
 struct Screenshot {
     frames_left: u32,
@@ -41,6 +64,7 @@ pub struct UmlApp {
     status: String,
     confirm: Option<Discard>,
     path_prompt: Option<PathPrompt>,
+    mermaid: Option<MermaidPrompt>,
     /// Scene of the active diagram, keyed by document revision.
     scene: Option<(u64, String, Scene)>,
     title: String,
@@ -60,6 +84,7 @@ impl UmlApp {
             status: String::new(),
             confirm: None,
             path_prompt: None,
+            mermaid: None,
             scene: None,
             title: String::new(),
             screenshot: None,
@@ -286,6 +311,10 @@ impl UmlApp {
                     }
                 }
                 ui.separator();
+                if ui.button("Import Mermaid…").clicked() {
+                    self.mermaid = Some(MermaidPrompt::default());
+                }
+                ui.separator();
                 if ui.button("Export Diagram as SVG…").clicked() {
                     self.export(FileKind::Svg);
                 }
@@ -422,6 +451,80 @@ impl UmlApp {
         }
     }
 
+    fn mermaid_dialog(&mut self, ctx: &egui::Context) {
+        let Some(prompt) = &mut self.mermaid else {
+            return;
+        };
+        let mut action = None;
+        egui::Modal::new(egui::Id::new("mermaid")).show(ctx, |ui| {
+            ui.strong("Import Mermaid");
+            ui.label(
+                "Paste a classDiagram, sequenceDiagram or stateDiagram. It becomes a new diagram.",
+            );
+            ui.horizontal(|ui| {
+                for (label, text) in MERMAID_EXAMPLES {
+                    if ui.button(format!("{label} example")).clicked() {
+                        prompt.text = (*text).to_owned();
+                        prompt.error = None;
+                    }
+                }
+            });
+            egui::ScrollArea::vertical()
+                .max_height(320.0)
+                .show(ui, |ui| {
+                    ui.add(
+                        egui::TextEdit::multiline(&mut prompt.text)
+                            .code_editor()
+                            .desired_rows(14)
+                            .desired_width(520.0)
+                            .hint_text("classDiagram\n    Animal <|-- Duck"),
+                    );
+                });
+            if let Some(e) = &prompt.error {
+                ui.colored_label(ui.visuals().error_fg_color, e);
+            }
+            ui.horizontal(|ui| {
+                let ready = !prompt.text.trim().is_empty();
+                if ui.add_enabled(ready, egui::Button::new("Import")).clicked() {
+                    action = Some(true);
+                }
+                if ui.button("Cancel").clicked() {
+                    action = Some(false);
+                }
+            });
+        });
+        match action {
+            Some(true) => {
+                let text = prompt.text.clone();
+                match self.registry.run(
+                    &mut self.session,
+                    "import.mermaid",
+                    &json!({ "text": text }),
+                ) {
+                    Ok(r) => {
+                        let skipped = r["warnings"].as_array().map_or(0, Vec::len);
+                        self.status = if skipped == 0 {
+                            "Imported the Mermaid diagram".into()
+                        } else {
+                            format!(
+                                "Imported the Mermaid diagram; skipped {skipped}: {}",
+                                r["warnings"][0].as_str().unwrap_or_default()
+                            )
+                        };
+                        self.mermaid = None;
+                    }
+                    Err(e) => {
+                        if let Some(p) = &mut self.mermaid {
+                            p.error = Some(e.to_string());
+                        }
+                    }
+                }
+            }
+            Some(false) => self.mermaid = None,
+            None => {}
+        }
+    }
+
     fn confirm_dialog(&mut self, ctx: &egui::Context) {
         let Some(action) = self.confirm.clone() else {
             return;
@@ -534,11 +637,12 @@ impl eframe::App for UmlApp {
         for (id, params) in commands {
             self.exec(id, params);
         }
+        self.confirm_dialog(&ctx);
+        self.path_dialog(&ctx);
+        self.mermaid_dialog(&ctx);
         if self.session.active_diagram != diagram_before {
             self.canvas.request_fit();
         }
-        self.confirm_dialog(&ctx);
-        self.path_dialog(&ctx);
         self.drive_screenshot(&ctx);
     }
 }
@@ -713,6 +817,43 @@ mod tests {
         assert_eq!(port.type_name, "UMLPortView");
         assert_eq!(port.ref_id("containerView"), Some(comp.as_str()));
         assert_eq!(port.num("left", 0.0) + 7.0, 240.0, "snapped to the border");
+    }
+
+    #[test]
+    fn import_mermaid_from_the_file_menu() {
+        let mut h = harness();
+        h.run();
+        h.get_by_role_and_label(Role::Button, "File").click();
+        h.run();
+        h.get_by_role_and_label(Role::Button, "Import Mermaid…")
+            .click();
+        h.run();
+        // A broken text keeps the dialog open with the error.
+        h.get_by_role_and_label(Role::Button, "State example")
+            .click();
+        h.run();
+        h.state_mut().mermaid.as_mut().unwrap().text = "flowchart TD\nA-->B".into();
+        h.run();
+        h.get_by_role_and_label(Role::Button, "Import").click();
+        h.run();
+        let error = h.state().mermaid.as_ref().and_then(|m| m.error.clone());
+        assert!(error.is_some_and(|e| e.contains("flowchart")));
+
+        h.get_by_role_and_label(Role::Button, "Class example")
+            .click();
+        h.run();
+        h.get_by_role_and_label(Role::Button, "Import").click();
+        h.run();
+        assert!(h.state().mermaid.is_none(), "{:?}", h.state().status);
+        assert_eq!(views_of_type(h.state(), "UMLClass").len(), 4);
+        assert_eq!(views_of_type(h.state(), "UMLInterface").len(), 1);
+        let active = h.state().session.active_diagram.clone().unwrap();
+        let d = h.state().session.doc.get(&active).unwrap();
+        assert_eq!(d.type_name, "UMLClassDiagram");
+        // One undo step takes the whole import away.
+        h.key_press_modifiers(Modifiers::COMMAND, Key::Z);
+        h.run();
+        assert!(views_of_type(h.state(), "UMLClass").is_empty());
     }
 
     #[test]
