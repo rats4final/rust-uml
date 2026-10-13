@@ -60,6 +60,19 @@ impl History {
         self.undo.push(ops);
         self.modified = true;
     }
+    pub(crate) fn undo_depth(&self) -> usize {
+        self.undo.len()
+    }
+    /// Merge every undo step above `depth` into one.
+    pub(crate) fn squash_since(&mut self, depth: usize) {
+        if self.undo.len() <= depth + 1 {
+            return;
+        }
+        // Undo applies the newest step first, so the merged step lists the
+        // newest step's ops first.
+        let merged: Vec<Op> = self.undo.drain(depth..).rev().flatten().collect();
+        self.undo.push(merged);
+    }
     pub(crate) fn can_undo(&self) -> bool {
         !self.undo.is_empty()
     }

@@ -309,6 +309,17 @@ impl Document {
         self.history.can_undo()
     }
 
+    /// How many steps can be undone; pass it to [`Document::squash_undo_since`].
+    pub fn undo_depth(&self) -> usize {
+        self.history.undo_depth()
+    }
+
+    /// Merge every undo step recorded since the history had `depth` steps
+    /// into one, so a group of edits (an import, a script) undoes at once.
+    pub fn squash_undo_since(&mut self, depth: usize) {
+        self.history.squash_since(depth);
+    }
+
     pub fn can_redo(&self) -> bool {
         self.history.can_redo()
     }
@@ -427,6 +438,34 @@ mod tests {
             ]
         }]
     }"#;
+
+    #[test]
+    fn squashed_steps_undo_and_redo_together() {
+        let mut doc = Document::from_json_str(SAMPLE).unwrap();
+        let before = doc.to_json_string().unwrap();
+        doc.edit(|e| e.set("C", "name", Field::str("B")));
+        let depth = doc.undo_depth();
+        doc.edit(|e| e.set("C", "name", Field::str("Cc")));
+        doc.edit(|e| e.set("A1", "name", Field::str("y")));
+        doc.edit(|e| e.set("C", "isAbstract", Field::Value(serde_json::json!(true))));
+        doc.squash_undo_since(depth);
+        assert_eq!(doc.undo_depth(), depth + 1);
+        let after = doc.to_json_string().unwrap();
+
+        assert!(doc.undo());
+        assert_eq!(doc.get("C").unwrap().name(), "B");
+        assert_eq!(doc.get("A1").unwrap().name(), "x");
+        assert!(doc.get("C").unwrap().get("isAbstract").is_none());
+        assert!(doc.redo());
+        assert_eq!(doc.to_json_string().unwrap(), after);
+        assert!(doc.undo());
+        assert!(doc.undo());
+        assert_eq!(doc.to_json_string().unwrap(), before);
+
+        // Nothing or one step to merge: unchanged.
+        doc.squash_undo_since(doc.undo_depth());
+        assert!(!doc.can_undo());
+    }
 
     #[test]
     fn round_trip_is_lossless() {
