@@ -136,7 +136,11 @@ mod tests {
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap()
             .as_nanos();
-        let d = std::env::temp_dir().join(format!("rust-uml-ws-{}-{n}", std::process::id()));
+        // Clocks may tick in microseconds (macOS): tests started together
+        // would share a folder without the counter.
+        static NEXT: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+        let k = NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        let d = std::env::temp_dir().join(format!("rust-uml-ws-{}-{n}-{k}", std::process::id()));
         std::fs::create_dir_all(d.join("sub")).unwrap();
         d
     }
