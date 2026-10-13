@@ -166,7 +166,7 @@ fn specs() -> Vec<CommandSpec> {
             label: "Add Diagram",
             menu: Some("Model"),
             shortcut: None,
-            params: r#"{"type": "UMLClassDiagram"|"UMLPackageDiagram"|"UMLObjectDiagram"|"UMLComponentDiagram"|"UMLDeploymentDiagram"|"UMLCompositeStructureDiagram"|"UMLProfileDiagram", "parent"?: model or package id}"#,
+            params: r#"{"type": diagram type or label (UMLClassDiagram, "Sequence Diagram", … see `rust-uml-cli tools`), "parent"?: model or package id, "name"?: text} → {"id"}"#,
             enabled: always,
             run: add_diagram,
         },
@@ -188,7 +188,7 @@ fn specs() -> Vec<CommandSpec> {
             label: "Create Element",
             menu: None,
             shortcut: None,
-            params: r#"{"kind": toolbox id or label (UMLClass, "Port", "Note", … see `rust-uml-cli tools`), "x": n, "y": n, "container"?: box view id to create it inside}"#,
+            params: r#"{"kind": toolbox id or label (UMLClass, "Port", "Note", … see `rust-uml-cli tools`), "x": n, "y": n, "container"?: box view id to create it inside, "name"?: text} → {"model", "view"}"#,
             enabled: has_diagram,
             run: create_node,
         },
@@ -197,7 +197,7 @@ fn specs() -> Vec<CommandSpec> {
             label: "Create Relationship",
             menu: None,
             shortcut: None,
-            params: r#"{"kind": toolbox id or label (UMLAssociation, "Composition", "Containment", "Note Link", …), "tail": view id, "head": view id, "y"?: height for sequence messages}"#,
+            params: r#"{"kind": toolbox id or label (UMLAssociation, "Composition", "Containment", "Note Link", …), "tail": view id, "head": view id, "y"?: height for sequence messages, "name"?: text} → {"model", "view"}"#,
             enabled: has_diagram,
             run: create_edge,
         },
@@ -224,7 +224,7 @@ fn specs() -> Vec<CommandSpec> {
             label: "Set Property",
             menu: None,
             shortcut: None,
-            params: r#"{"id": element id, "key": field name, "value": string|bool|number|null}"#,
+            params: r#"{"id": element id, "key": field name, "value": string|bool|number|null} or {"id", "values": {field: value, …}} (one undo step)"#,
             enabled: always,
             run: set_property,
         },
@@ -233,7 +233,7 @@ fn specs() -> Vec<CommandSpec> {
             label: "Add Feature",
             menu: None,
             shortcut: None,
-            params: r#"{"classifier": id, "kind": "attribute"|"operation"|"literal"|"slot"|"operand"}"#,
+            params: r#"{"classifier": id, "kind": "attribute"|"operation"|"literal"|"slot"|"operand", "name"?: text} → {"id"}"#,
             enabled: always,
             run: add_feature,
         },
@@ -272,6 +272,24 @@ fn specs() -> Vec<CommandSpec> {
             params: r#"{"id": element id}"#,
             enabled: always,
             run: get_element,
+        },
+        CommandSpec {
+            id: "diagram.inspect",
+            label: "Inspect Diagram",
+            menu: None,
+            shortcut: None,
+            params: r#"{"diagram"?: id} → {"id", "name", "type", "boxes": [{"view", "type", "model", "name", "x", "y", "width", "height", "container"}], "lines": [{"view", "type", "model", "name", "tail", "head"}]}"#,
+            enabled: |s| s.active_diagram.is_some(),
+            run: inspect_diagram,
+        },
+        CommandSpec {
+            id: "model.tree",
+            label: "Model Tree",
+            menu: None,
+            shortcut: None,
+            params: r#"{"id"?: element id (default: the project), "depth"?: 1–64 (default 8)} → {"id", "type", "name", "children": […]}; diagrams are leaves"#,
+            enabled: always,
+            run: model_tree,
         },
         CommandSpec {
             id: "export.svg",
@@ -348,6 +366,15 @@ fn scene_for(s: &Session, p: &Value) -> Result<render::Scene, CommandError> {
         return Err(CommandError::Param(format!("`{diagram}` is not a diagram")));
     }
     Ok(render::build_scene(&s.doc, &diagram, s.fonts()))
+}
+
+/// The optional `name` parameter of the create commands.
+fn opt_name(p: &Value) -> Result<Option<String>, CommandError> {
+    match p.get("name") {
+        None | Some(Value::Null) => Ok(None),
+        Some(Value::String(n)) => Ok(Some(n.clone())),
+        Some(_) => Err(CommandError::Param("`name` must be text".into())),
+    }
 }
 
 fn select(s: &mut Session, p: &Value) -> Result<Value, CommandError> {
@@ -488,8 +515,14 @@ fn add_diagram(s: &mut Session, p: &Value) -> Result<Value, CommandError> {
     };
     // Statechart/activity/profile diagrams get their state machine, activity
     // or profile, as in StarUML.
-    let id =
-        s.edit(|e, _| uml::create_diagram(e, &parent, diagram_type).map_err(CommandError::Failed))?;
+    let name = opt_name(p)?;
+    let id = s.edit(|e, _| {
+        let id = uml::create_diagram(e, &parent, diagram_type).map_err(CommandError::Failed)?;
+        if let Some(n) = name {
+            e.set(&id, "name", Field::Value(json!(n)));
+        }
+        Ok(id)
+    })?;
     s.active_diagram = Some(id.clone());
     s.selection = vec![id.clone()];
     Ok(json!({ "id": id }))
@@ -504,10 +537,20 @@ fn create_node(s: &mut Session, p: &Value) -> Result<Value, CommandError> {
         Some(c) => Some(node_view(s, c)?.id.clone()),
         None => None,
     };
+    let name = opt_name(p)?;
     let diagram = active(s)?;
     let (model, view) = s.edit(|e, c| {
         let (m, v) = uml::create_node(e, &diagram, spec, x, y, container.as_deref())
             .map_err(CommandError::Failed)?;
+        if let Some(n) = name {
+            let Some(m) = &m else {
+                return Err(CommandError::Param(format!(
+                    "a {kind} has no name; set its view's `text` instead"
+                )));
+            };
+            e.set(m, "name", Field::Value(json!(n)));
+            c.model_changed(e.doc(), m);
+        }
         c.touched.insert(v.clone());
         Ok((m, v))
     })?;
@@ -527,8 +570,20 @@ fn create_edge(s: &mut Session, p: &Value) -> Result<Value, CommandError> {
         None | Some(Value::Null) => None,
         Some(_) => Some(params::coord(p, "y")?),
     };
-    let (model, view) = s.edit(|e, _| {
-        uml::create_edge_at(e, &diagram, spec, &tail, &head, at_y).map_err(CommandError::Failed)
+    let name = opt_name(p)?;
+    let (model, view) = s.edit(|e, c| {
+        let (m, v) = uml::create_edge_at(e, &diagram, spec, &tail, &head, at_y)
+            .map_err(CommandError::Failed)?;
+        if let Some(n) = name {
+            let Some(m) = &m else {
+                return Err(CommandError::Param(format!(
+                    "a {kind} has no name; set its view's `text` instead"
+                )));
+            };
+            e.set(m, "name", Field::Value(json!(n)));
+            c.model_changed(e.doc(), m);
+        }
+        Ok((m, v))
     })?;
     s.selection = vec![view.clone()];
     Ok(json!({ "model": model, "view": view }))
@@ -708,45 +763,33 @@ const ENUMS: &[(&str, &str, &[&str])] = &[
 
 fn set_property(s: &mut Session, p: &Value) -> Result<Value, CommandError> {
     let id = params::str(p, "id")?.to_owned();
-    let key = params::str(p, "key")?.to_owned();
-    let value = p.get("value").cloned().unwrap_or(Value::Null);
-    let el = get(&s.doc, &id)?;
-    if key.is_empty() || key.starts_with('_') || PROTECTED.contains(&key.as_str()) {
-        return Err(CommandError::Param(format!(
-            "`{key}` cannot be set directly"
-        )));
-    }
-    let structural = match el.get(&key) {
-        None | Some(Field::Value(_)) => false,
-        Some(Field::Ref(_)) => !TEXT_OR_REF.contains(&key.as_str()),
-        Some(_) => true,
+    let pairs: Vec<(String, Value)> = match p.get("values") {
+        Some(Value::Object(map)) if p.get("key").is_none() => {
+            map.iter().map(|(k, v)| (k.clone(), v.clone())).collect()
+        }
+        Some(_) => {
+            return Err(CommandError::Param(
+                "`values` must be an object, and not given with `key`".into(),
+            ));
+        }
+        None => vec![(
+            params::str(p, "key")?.to_owned(),
+            p.get("value").cloned().unwrap_or(Value::Null),
+        )],
     };
-    if structural {
-        return Err(CommandError::Param(format!(
-            "`{key}` holds structure and cannot be set directly"
-        )));
+    if pairs.is_empty() {
+        return Err(CommandError::Param("`values` is empty".into()));
     }
-    if matches!(value, Value::Array(_) | Value::Object(_)) {
-        return Err(CommandError::Param(
-            "`value` must be a string, bool, number or null".into(),
-        ));
-    }
-    let el_type = el.type_name.clone();
-    if let Some((_, _, allowed)) = ENUMS
-        .iter()
-        .find(|(k, t, _)| *k == key && (t.is_empty() || *t == el_type))
-        && !value.is_null()
-        && !value.as_str().is_some_and(|v| allowed.contains(&v))
-    {
-        return Err(CommandError::Param(format!(
-            "`{key}` must be one of {allowed:?}"
-        )));
+    for (key, value) in &pairs {
+        check_property(&s.doc, &id, key, value)?;
     }
     s.edit(|e, c| {
-        if value.is_null() {
-            e.unset(&id, &key);
-        } else {
-            e.set(&id, &key, Field::Value(value));
+        for (key, value) in pairs {
+            if value.is_null() {
+                e.unset(&id, &key);
+            } else {
+                e.set(&id, &key, Field::Value(value));
+            }
         }
         // The element and its owners may be drawn (a parameter shows inside
         // its operation's text, which shows inside a class box).
@@ -760,6 +803,42 @@ fn set_property(s: &mut Session, p: &Value) -> Result<Value, CommandError> {
     })
 }
 
+/// Whether `element.set` may write `value` to field `key` of element `id`.
+fn check_property(doc: &Document, id: &str, key: &str, value: &Value) -> Result<(), CommandError> {
+    let el = get(doc, id)?;
+    if key.is_empty() || key.starts_with('_') || PROTECTED.contains(&key) {
+        return Err(CommandError::Param(format!(
+            "`{key}` cannot be set directly"
+        )));
+    }
+    let structural = match el.get(key) {
+        None | Some(Field::Value(_)) => false,
+        Some(Field::Ref(_)) => !TEXT_OR_REF.contains(&key),
+        Some(_) => true,
+    };
+    if structural {
+        return Err(CommandError::Param(format!(
+            "`{key}` holds structure and cannot be set directly"
+        )));
+    }
+    if matches!(value, Value::Array(_) | Value::Object(_)) {
+        return Err(CommandError::Param(
+            "`value` must be a string, bool, number or null".into(),
+        ));
+    }
+    if let Some((_, _, allowed)) = ENUMS
+        .iter()
+        .find(|(k, t, _)| *k == key && (t.is_empty() || *t == el.type_name))
+        && !value.is_null()
+        && !value.as_str().is_some_and(|v| allowed.contains(&v))
+    {
+        return Err(CommandError::Param(format!(
+            "`{key}` must be one of {allowed:?}"
+        )));
+    }
+    Ok(())
+}
+
 fn add_feature(s: &mut Session, p: &Value) -> Result<Value, CommandError> {
     let classifier = params::str(p, "classifier")?.to_owned();
     let given = params::str(p, "kind")?;
@@ -771,8 +850,12 @@ fn add_feature(s: &mut Session, p: &Value) -> Result<Value, CommandError> {
             "a {t} cannot have that feature"
         )));
     }
+    let name = opt_name(p)?;
     let id = s.edit(|e, c| {
         let id = uml::add_feature(e, &classifier, kind);
+        if let Some(n) = name {
+            e.set(&id, "name", Field::Value(json!(n)));
+        }
         c.model_changed(e.doc(), &classifier);
         Ok(id)
     })?;
@@ -820,6 +903,123 @@ fn list_diagrams(s: &mut Session, _: &Value) -> Result<Value, CommandError> {
         })
         .collect();
     Ok(Value::Array(list))
+}
+
+fn inspect_diagram(s: &mut Session, p: &Value) -> Result<Value, CommandError> {
+    let diagram = match params::opt_str(p, "diagram") {
+        Some(d) => d.to_owned(),
+        None => active(s)?,
+    };
+    let doc = &s.doc;
+    let d = get(doc, &diagram)?;
+    if !is_diagram(d) {
+        return Err(CommandError::Param(format!("`{diagram}` is not a diagram")));
+    }
+    let name_of = |view: &Element| -> String {
+        match view.ref_id("model").and_then(|m| doc.get(m)) {
+            Some(m) => m.name().to_owned(),
+            None => view.str("text").unwrap_or_default().to_owned(),
+        }
+    };
+    let model_type = |view: &Element| -> Value {
+        json!(
+            view.ref_id("model")
+                .and_then(|m| doc.get(m))
+                .map(|m| m.type_name.clone())
+        )
+    };
+    let mut boxes = Vec::new();
+    let mut lines = Vec::new();
+    for id in doc.subtree_ids(&diagram).iter().skip(1) {
+        let Some(el) = doc.get(id) else { continue };
+        if let (Some(tail), Some(head)) = (el.ref_id("tail"), el.ref_id("head")) {
+            lines.push(json!({
+                "view": el.id,
+                "type": el.type_name,
+                "model": el.ref_id("model"),
+                "modelType": model_type(el),
+                "name": name_of(el),
+                "tail": tail,
+                "head": head,
+            }));
+        } else if let Some(l) = render::node_layout(doc, el, s.fonts()) {
+            let parent = el
+                .ref_id("containerView")
+                .or(el.parent.as_deref())
+                .filter(|p| *p != diagram);
+            boxes.push(json!({
+                "view": el.id,
+                "type": el.type_name,
+                "model": el.ref_id("model"),
+                "modelType": model_type(el),
+                "name": name_of(el),
+                "x": l.rect.x,
+                "y": l.rect.y,
+                "width": l.rect.w,
+                "height": l.rect.h,
+                "container": parent,
+            }));
+        }
+    }
+    Ok(json!({
+        "id": d.id,
+        "name": d.name(),
+        "type": d.type_name,
+        "boxes": boxes,
+        "lines": lines,
+    }))
+}
+
+/// Elements listed by [`model_tree`] before it stops descending.
+const TREE_LIMIT: usize = 5000;
+
+fn model_tree(s: &mut Session, p: &Value) -> Result<Value, CommandError> {
+    let root = match params::opt_str(p, "id") {
+        Some(id) => get(&s.doc, id)?.id.clone(),
+        None => s.doc.root().to_owned(),
+    };
+    let depth = match p.get("depth") {
+        None | Some(Value::Null) => 8,
+        Some(v) => v
+            .as_u64()
+            .filter(|d| (1..=64).contains(d))
+            .ok_or_else(|| CommandError::Param("`depth` must be 1–64".into()))?
+            as usize,
+    };
+    let mut budget = TREE_LIMIT;
+    let tree = tree_node(&s.doc, &root, depth, &mut budget);
+    Ok(json!({ "tree": tree, "truncated": budget == 0 }))
+}
+
+fn tree_node(doc: &Document, id: &str, depth: usize, budget: &mut usize) -> Value {
+    let Some(el) = doc.get(id) else {
+        return Value::Null;
+    };
+    *budget = budget.saturating_sub(1);
+    let mut node = json!({ "id": el.id, "type": el.type_name, "name": el.name() });
+    if is_diagram(el) || depth == 0 {
+        return node;
+    }
+    let mut children = Vec::new();
+    for (_, field) in &el.fields {
+        let ids: &[Id] = match field {
+            Field::Child(c) => std::slice::from_ref(c),
+            Field::Children(cs) => cs,
+            _ => continue,
+        };
+        for c in ids {
+            if *budget == 0 {
+                break;
+            }
+            if doc.get(c).is_some_and(|ch| !is_view(ch)) {
+                children.push(tree_node(doc, c, depth - 1, budget));
+            }
+        }
+    }
+    if !children.is_empty() {
+        node["children"] = Value::Array(children);
+    }
+    node
 }
 
 fn get_element(s: &mut Session, p: &Value) -> Result<Value, CommandError> {
@@ -1192,6 +1392,132 @@ mod tests {
 
     /// Rule: no command panics, whatever the parameters or state.
     #[test]
+    fn create_commands_take_a_name_and_set_takes_many_values() {
+        let reg = Registry::default();
+        let mut s = Session::default();
+        run(
+            &reg,
+            &mut s,
+            "diagram.add",
+            json!({"type": "Class Diagram", "name": "Shop"}),
+        );
+        let cart = run(
+            &reg,
+            &mut s,
+            "node.create",
+            json!({"kind": "Class", "x": 10, "y": 10, "name": "Cart"}),
+        );
+        let item = run(
+            &reg,
+            &mut s,
+            "node.create",
+            json!({"kind": "Class", "x": 300, "y": 10, "name": "Item"}),
+        );
+        let line = run(
+            &reg,
+            &mut s,
+            "edge.create",
+            json!({"kind": "Composition", "tail": cart["view"], "head": item["view"], "name": "holds"}),
+        );
+        let total = run(
+            &reg,
+            &mut s,
+            "feature.add",
+            json!({"classifier": cart["model"], "kind": "attribute", "name": "total"}),
+        );
+        run(
+            &reg,
+            &mut s,
+            "element.set",
+            json!({"id": total["id"], "values": {"type": "double", "visibility": "private"}}),
+        );
+
+        let name = |id: &Value| s.doc.get(id.as_str().unwrap()).unwrap().name().to_owned();
+        assert_eq!(name(&cart["model"]), "Cart");
+        assert_eq!(name(&line["model"]), "holds");
+        assert_eq!(name(&total["id"]), "total");
+        let attr = s.doc.get(total["id"].as_str().unwrap()).unwrap();
+        assert_eq!(attr.str("type"), Some("double"));
+        assert_eq!(attr.str("visibility"), Some("private"));
+
+        // One undo step per command: undoing the set restores both fields.
+        run(&reg, &mut s, "edit.undo", json!({}));
+        let attr = s.doc.get(total["id"].as_str().unwrap()).unwrap();
+        assert_eq!(attr.str("type"), None);
+
+        // A bad value anywhere in `values` changes nothing.
+        let err = reg.run(
+            &mut s,
+            "element.set",
+            &json!({"id": total["id"], "values": {"type": "int", "visibility": "secret"}}),
+        );
+        assert!(err.is_err());
+        let attr = s.doc.get(total["id"].as_str().unwrap()).unwrap();
+        assert_eq!(attr.str("type"), None);
+
+        // Notes have no model to name.
+        let note = reg.run(
+            &mut s,
+            "node.create",
+            &json!({"kind": "Note", "x": 0, "y": 200, "name": "x"}),
+        );
+        assert!(note.is_err());
+    }
+
+    #[test]
+    fn inspect_lists_boxes_and_lines_and_tree_lists_the_model() {
+        let reg = Registry::default();
+        let mut s = Session::default();
+        run(
+            &reg,
+            &mut s,
+            "diagram.add",
+            json!({"type": "UMLClassDiagram", "name": "Shop"}),
+        );
+        let a = run(
+            &reg,
+            &mut s,
+            "node.create",
+            json!({"kind": "Class", "x": 10, "y": 20, "name": "A"}),
+        );
+        let b = run(
+            &reg,
+            &mut s,
+            "node.create",
+            json!({"kind": "Class", "x": 300, "y": 20, "name": "B"}),
+        );
+        run(
+            &reg,
+            &mut s,
+            "edge.create",
+            json!({"kind": "Association", "tail": a["view"], "head": b["view"]}),
+        );
+
+        let d = run(&reg, &mut s, "diagram.inspect", json!({}));
+        assert_eq!(d["name"], "Shop");
+        let boxes = d["boxes"].as_array().unwrap();
+        assert_eq!(boxes.len(), 2);
+        assert_eq!(boxes[0]["name"], "A");
+        assert_eq!(boxes[0]["modelType"], "UMLClass");
+        assert_eq!(boxes[0]["x"], 10.0);
+        let lines = d["lines"].as_array().unwrap();
+        assert_eq!(lines.len(), 1);
+        assert_eq!(lines[0]["tail"], a["view"]);
+        assert_eq!(lines[0]["head"], b["view"]);
+
+        let t = run(&reg, &mut s, "model.tree", json!({}));
+        let text = t["tree"].to_string();
+        assert!(text.contains("\"Shop\"") && text.contains("\"A\"") && text.contains("\"B\""));
+        assert!(
+            !text.contains("UMLClassView"),
+            "views are not model elements"
+        );
+        assert_eq!(t["truncated"], false);
+        let shallow = run(&reg, &mut s, "model.tree", json!({"depth": 1}));
+        assert!(!shallow["tree"].to_string().contains("\"A\""));
+    }
+
+    #[test]
     fn no_command_panics_on_hostile_params() {
         let reg = Registry::default();
         let mut s = Session::default();
@@ -1232,6 +1558,14 @@ mod tests {
             json!({"id": real[1], "key": "kind", "value": "sideways"}),
             json!({"kind": "Message", "tail": real[0], "head": real[0], "y": "high"}),
             json!({"kind": "Lifeline", "x": 0, "y": 0}),
+            json!({"kind": "Class", "x": 0, "y": 0, "name": 7}),
+            json!({"kind": "Note", "x": 0, "y": 0, "name": "n"}),
+            json!({"id": real[1], "values": {"name": "a", "isAbstract": [1]}}),
+            json!({"id": real[1], "values": {}}),
+            json!({"id": real[1], "values": 3, "key": "name"}),
+            json!({"diagram": real[0]}),
+            json!({"id": real[0], "depth": 0}),
+            json!({"depth": 1e12}),
         ];
         for spec in reg.specs() {
             if spec.id == "file.new" {
