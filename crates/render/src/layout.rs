@@ -26,6 +26,12 @@ pub(crate) const LOLLIPOP: f64 = 20.0;
 pub(crate) const ICON_SPACE: f64 = 22.0;
 /// A port is a small square (StarUML: 14 × 14).
 const PORT_SIZE: f64 = 14.0;
+/// Corner radius of states and actions (StarUML: 10).
+pub(crate) const ROUND: f64 = 10.0;
+/// Width of a swimlane's name band.
+pub(crate) const LANE_HEADER: f64 = 24.0;
+/// Height of an actor's stick figure (StarUML: 55).
+pub(crate) const ACTOR_FIGURE_H: f64 = 55.0;
 
 /// Horizontal placement of a line inside its compartment.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -102,6 +108,42 @@ pub enum Shape {
     Lollipop {
         circle: Rect,
     },
+    /// States and actions: a rectangle with rounded corners.
+    RoundRect,
+    /// A stick figure in `figure`, name below.
+    Actor {
+        figure: Rect,
+    },
+    /// A small UML symbol (initial dot, final bull's-eye, bar, diamond, …).
+    Symbol(Symbol),
+    /// An activity partition: a lane with a name band.
+    Swimlane {
+        vertical: bool,
+        header: Rect,
+    },
+}
+
+/// The small symbols of state machines and activities.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Symbol {
+    /// Filled circle: initial state/node.
+    Dot,
+    /// Ring with a filled centre: final state, activity final.
+    BullsEye,
+    /// Ring with an X: flow final, exit point.
+    CircleX,
+    /// Filled bar: fork, join.
+    Bar,
+    /// Hollow diamond: choice, merge, decision.
+    Diamond,
+    /// Small filled circle: junction.
+    SmallDot,
+    /// Ring with "H" or "H*": shallow / deep history.
+    History { deep: bool },
+    /// Hollow ring: entry point.
+    Ring,
+    /// An X: terminate.
+    Cross,
 }
 
 /// A small symbol in the top-right corner.
@@ -138,6 +180,8 @@ pub struct NodeLayout {
     pub dashed: bool,
     pub icon: Option<Icon>,
     pub outside: Vec<OutsideLabel>,
+    /// Extra lines `(from, to, dashed)`: region dividers in composite states.
+    pub dividers: Vec<(Point, Point, bool)>,
 }
 
 /// Default «keyword» shown for a model type when it has no explicit stereotype.
@@ -171,8 +215,33 @@ fn shows_keyword(display: &str) -> bool {
     matches!(display, "label" | "icon-label" | "decoration-label")
 }
 
-fn shape_of(view: &Element) -> Shape {
+/// The symbol a control node or pseudostate draws as, from its model.
+fn symbol_of(model: Option<&Element>) -> Option<Symbol> {
+    let m = model?;
+    Some(match (m.type_name.as_str(), m.str("kind").unwrap_or("")) {
+        ("UMLInitialNode", _) | ("UMLPseudostate", "initial") => Symbol::Dot,
+        ("UMLActivityFinalNode", _) | ("UMLFinalState", _) => Symbol::BullsEye,
+        ("UMLFlowFinalNode", _) | ("UMLPseudostate", "exitPoint") => Symbol::CircleX,
+        ("UMLForkNode" | "UMLJoinNode", _) | ("UMLPseudostate", "fork" | "join") => Symbol::Bar,
+        ("UMLMergeNode" | "UMLDecisionNode", _) | ("UMLPseudostate", "choice") => Symbol::Diamond,
+        ("UMLPseudostate", "junction") => Symbol::SmallDot,
+        ("UMLPseudostate", "shallowHistory") => Symbol::History { deep: false },
+        ("UMLPseudostate", "deepHistory") => Symbol::History { deep: true },
+        ("UMLPseudostate", "entryPoint") => Symbol::Ring,
+        ("UMLPseudostate", "terminate") => Symbol::Cross,
+        _ => return None,
+    })
+}
+
+fn shape_of(view: &Element, model: Option<&Element>) -> Shape {
     let display = view.str("stereotypeDisplay").unwrap_or("label");
+    if matches!(
+        view.type_name.as_str(),
+        "UMLControlNodeView" | "UMLPseudostateView" | "UMLFinalStateView"
+    ) && let Some(symbol) = symbol_of(model)
+    {
+        return Shape::Symbol(symbol);
+    }
     match view.type_name.as_str() {
         "UMLModelView" | "UMLSubsystemView" | "UMLProfileView" => Shape::Package {
             tab: Rect::default(),
@@ -181,7 +250,15 @@ fn shape_of(view: &Element) -> Shape {
             tab: Rect::default(),
         },
         "UMLNodeView" | "UMLNodeInstanceView" => Shape::Node3D,
-        "UMLCollaborationView" | "UMLCollaborationUseView" => Shape::Ellipse,
+        "UMLCollaborationView" | "UMLCollaborationUseView" | "UMLUseCaseView" => Shape::Ellipse,
+        "UMLStateView" | "UMLActionView" => Shape::RoundRect,
+        "UMLActorView" => Shape::Actor {
+            figure: Rect::default(),
+        },
+        "UMLSwimlaneView" => Shape::Swimlane {
+            vertical: view.bool("isVertical", true),
+            header: Rect::default(),
+        },
         "UMLNoteView" => Shape::Note,
         "UMLTextView" => Shape::Text,
         "UMLPortView" => Shape::Port,
@@ -286,7 +363,7 @@ pub fn node_layout(doc: &Document, view: &Element, fonts: &Fonts) -> Option<Node
     };
     let line_h = fonts.line_height(size);
     let model = view.ref_id("model").and_then(|m| doc.get(m));
-    let mut shape = shape_of(view);
+    let mut shape = shape_of(view, model);
     let icon = icon_of(view);
     let display = view.str("stereotypeDisplay").unwrap_or("label");
     let colour =
@@ -297,18 +374,14 @@ pub fn node_layout(doc: &Document, view: &Element, fonts: &Fonts) -> Option<Node
         colour("fontColor", Color::BLACK),
     );
 
-    // Ports: a small square; the name is drawn outside.
-    if shape == Shape::Port {
-        let rect = Rect::new(
-            stored.x,
-            stored.y,
-            stored.w.max(PORT_SIZE),
-            stored.h.max(PORT_SIZE),
-        );
+    // Ports and symbols: fixed small shapes; any name is drawn outside.
+    if matches!(shape, Shape::Port | Shape::Symbol(_)) {
+        let min = if shape == Shape::Port { PORT_SIZE } else { 4.0 };
+        let rect = Rect::new(stored.x, stored.y, stored.w.max(min), stored.h.max(min));
         let mut outside = Vec::new();
         if let Some(m) = model {
             let ty = uml::var_text(doc, m, "type");
-            let label = if view.bool("showType", true) {
+            let label = if shape == Shape::Port && view.bool("showType", true) {
                 uml::typed_name(m.name(), ty)
             } else {
                 m.name().to_owned()
@@ -328,8 +401,8 @@ pub fn node_layout(doc: &Document, view: &Element, fonts: &Fonts) -> Option<Node
         }
         return Some(NodeLayout {
             rect,
-            min_w: PORT_SIZE,
-            min_h: PORT_SIZE,
+            min_w: min,
+            min_h: min,
             shape,
             compartments: Vec::new(),
             separators: false,
@@ -341,6 +414,7 @@ pub fn node_layout(doc: &Document, view: &Element, fonts: &Fonts) -> Option<Node
             dashed: false,
             icon: None,
             outside,
+            dividers: Vec::new(),
         });
     }
 
@@ -386,6 +460,7 @@ pub fn node_layout(doc: &Document, view: &Element, fonts: &Fonts) -> Option<Node
             dashed: false,
             icon: None,
             outside: Vec::new(),
+            dividers: Vec::new(),
         });
     }
 
@@ -476,8 +551,23 @@ pub fn node_layout(doc: &Document, view: &Element, fonts: &Fonts) -> Option<Node
             }));
         }
     }
-    // Ellipses and lollipops show only their heading.
-    if matches!(shape, Shape::Ellipse | Shape::Lollipop { .. }) {
+    // Ellipses, lollipops, actors and lanes show only their heading; actions
+    // too (an action's "compartments" are its pins, drawn elsewhere).
+    if matches!(
+        shape,
+        Shape::Ellipse | Shape::Lollipop { .. } | Shape::Actor { .. } | Shape::Swimlane { .. }
+    ) || view.type_name == "UMLActionView"
+    {
+        groups.truncate(1);
+    }
+    // States: name, then their regions (if composite); internal activities
+    // are not listed yet.
+    let regions = if view.type_name == "UMLStateView" {
+        model.map_or(0, |m| m.children("regions").len())
+    } else {
+        0
+    };
+    if view.type_name == "UMLStateView" {
         groups.truncate(1);
     }
 
@@ -504,6 +594,15 @@ pub fn node_layout(doc: &Document, view: &Element, fonts: &Fonts) -> Option<Node
 
     // Where the compartments go inside the outline, and the outline's minimum size.
     let (min_w, min_h) = match shape {
+        Shape::Actor { .. } => (min_w.max(26.0), content_h + ACTOR_FIGURE_H),
+        Shape::Swimlane { vertical: true, .. } => {
+            (min_w.max(60.0), (content_h + 40.0).max(LANE_HEADER + 40.0))
+        }
+        Shape::Swimlane {
+            vertical: false, ..
+        } => ((min_w + LANE_HEADER).max(100.0), content_h.max(60.0)),
+        Shape::RoundRect if regions > 0 => (min_w.max(60.0), content_h + 30.0 * regions as f64),
+        Shape::RoundRect => (min_w.max(60.0), content_h.max(40.0)),
         Shape::Package { .. } => (min_w.max(60.0), (content_h + PACKAGE_TAB_H).max(50.0)),
         Shape::Node3D => (min_w + NODE_DEPTH, content_h + NODE_DEPTH),
         Shape::Ellipse => (min_w * 1.3, (content_h * 1.6).max(40.0)),
@@ -535,6 +634,25 @@ pub fn node_layout(doc: &Document, view: &Element, fonts: &Fonts) -> Option<Node
             rect.w,
             rect.h - LOLLIPOP - 2.0,
         ),
+        // Name below the figure.
+        Shape::Actor { .. } => Rect::new(rect.x, rect.bottom() - content_h, rect.w, content_h),
+        // Name in the band (top for vertical lanes; top-left of the lane otherwise).
+        Shape::Swimlane { vertical: true, .. } => Rect::new(rect.x, rect.y, rect.w, LANE_HEADER),
+        Shape::Swimlane {
+            vertical: false, ..
+        } => Rect::new(
+            rect.x + LANE_HEADER,
+            rect.y,
+            rect.w - LANE_HEADER,
+            content_h,
+        ),
+        // A simple state or action: name centred vertically.
+        Shape::RoundRect if regions == 0 => Rect::new(
+            rect.x,
+            rect.y + (rect.h - content_h) / 2.0,
+            rect.w,
+            content_h,
+        ),
         _ => rect,
     };
     shape = match shape {
@@ -546,6 +664,17 @@ pub fn node_layout(doc: &Document, view: &Element, fonts: &Fonts) -> Option<Node
         }
         Shape::Lollipop { .. } => Shape::Lollipop {
             circle: Rect::new(rect.center().x - LOLLIPOP / 2.0, rect.y, LOLLIPOP, LOLLIPOP),
+        },
+        Shape::Actor { .. } => Shape::Actor {
+            figure: Rect::new(rect.x, rect.y, rect.w, rect.h - content_h),
+        },
+        Shape::Swimlane { vertical, .. } => Shape::Swimlane {
+            vertical,
+            header: if vertical {
+                Rect::new(rect.x, rect.y, rect.w, LANE_HEADER)
+            } else {
+                Rect::new(rect.x, rect.y, LANE_HEADER, rect.h)
+            },
         },
         other => other,
     };
@@ -568,7 +697,24 @@ pub fn node_layout(doc: &Document, view: &Element, fonts: &Fonts) -> Option<Node
         y += h;
     }
 
-    let dashed = shape == Shape::Ellipse
+    // A composite state: a line under the name, dashed lines between regions.
+    let mut dividers = Vec::new();
+    if regions > 0
+        && let Some(name) = compartments.first()
+    {
+        let top = name.rect.bottom();
+        dividers.push((
+            Point::new(rect.x, top),
+            Point::new(rect.right(), top),
+            false,
+        ));
+        let each = (rect.bottom() - top) / regions as f64;
+        for i in 1..regions {
+            let y = top + each * i as f64;
+            dividers.push((Point::new(rect.x, y), Point::new(rect.right(), y), true));
+        }
+    }
+    let dashed = (shape == Shape::Ellipse && view.type_name != "UMLUseCaseView")
         || (view.type_name == "UMLPartView"
             && model.is_some_and(|m| m.str("aggregation").unwrap_or("none") != "composite"));
     Some(NodeLayout {
@@ -586,6 +732,7 @@ pub fn node_layout(doc: &Document, view: &Element, fonts: &Fonts) -> Option<Node
         dashed,
         icon,
         outside: Vec::new(),
+        dividers,
     })
 }
 
@@ -709,6 +856,86 @@ mod tests {
         assert!(!layout(&doc, &view).dashed, "composite part: solid");
         doc.edit(|e| e.set(&part, "aggregation", Field::str("shared")));
         assert!(layout(&doc, &view).dashed);
+    }
+
+    /// A diagram of `ty` created the way the UI does (with its state machine
+    /// or activity).
+    fn diagram_of_type(doc: &mut Document, ty: &str) -> Id {
+        let model = doc.get(doc.root()).unwrap().children("ownedElements")[0].clone();
+        doc.try_edit(|e| uml::create_diagram(e, &model, ty))
+            .unwrap()
+    }
+
+    #[test]
+    fn behaviour_symbols_follow_their_model() {
+        let mut doc = Document::new_project();
+        let sm = diagram_of_type(&mut doc, "UMLStatechartDiagram");
+        let act = diagram_of_type(&mut doc, "UMLActivityDiagram");
+        let cases = [
+            (&sm, "UMLInitialState", Shape::Symbol(Symbol::Dot)),
+            (&sm, "UMLFinalState", Shape::Symbol(Symbol::BullsEye)),
+            (&sm, "UMLChoice", Shape::Symbol(Symbol::Diamond)),
+            (&sm, "UMLFork", Shape::Symbol(Symbol::Bar)),
+            (
+                &sm,
+                "UMLDeepHistory",
+                Shape::Symbol(Symbol::History { deep: true }),
+            ),
+            (&sm, "UMLTerminate", Shape::Symbol(Symbol::Cross)),
+            (&act, "UMLInitialNode", Shape::Symbol(Symbol::Dot)),
+            (&act, "UMLFlowFinalNode", Shape::Symbol(Symbol::CircleX)),
+            (&act, "UMLDecisionNode", Shape::Symbol(Symbol::Diamond)),
+            (&act, "UMLAction", Shape::RoundRect),
+        ];
+        for (dgm, tool, want) in cases {
+            let (_, v) = place(&mut doc, dgm, tool, None);
+            assert_eq!(layout(&doc, &v).shape, want, "{tool}");
+        }
+    }
+
+    #[test]
+    fn composite_states_divide_their_regions() {
+        let mut doc = Document::new_project();
+        let sm = diagram_of_type(&mut doc, "UMLStatechartDiagram");
+        let (_, simple) = place(&mut doc, &sm, "UMLState", None);
+        let (_, ortho) = place(&mut doc, &sm, "UMLOrthogonalState", None);
+        assert!(layout(&doc, &simple).dividers.is_empty());
+        let d = layout(&doc, &ortho).dividers;
+        assert_eq!(
+            d.len(),
+            2,
+            "a line under the name and one dashed line between two regions"
+        );
+        assert!(!d[0].2 && d[1].2);
+    }
+
+    #[test]
+    fn actors_lanes_and_use_cases() {
+        let mut doc = Document::new_project();
+        let uc = diagram_of_type(&mut doc, "UMLUseCaseDiagram");
+        let (_, actor) = place(&mut doc, &uc, "UMLActor", None);
+        let l = layout(&doc, &actor);
+        let Shape::Actor { figure } = l.shape else {
+            panic!("{:?}", l.shape)
+        };
+        assert!(
+            figure.bottom() <= l.compartments[0].rect.y + 0.01,
+            "name below the figure"
+        );
+        let (_, case) = place(&mut doc, &uc, "UMLUseCase", None);
+        let l = layout(&doc, &case);
+        assert_eq!(l.shape, Shape::Ellipse);
+        assert!(
+            !l.dashed,
+            "use cases are solid; only collaborations are dashed"
+        );
+
+        let act = diagram_of_type(&mut doc, "UMLActivityDiagram");
+        let (_, lane) = place(&mut doc, &act, "UMLSwimlaneHorz", None);
+        let Shape::Swimlane { vertical, header } = layout(&doc, &lane).shape else {
+            panic!()
+        };
+        assert!(!vertical && header.w == LANE_HEADER);
     }
 
     #[test]

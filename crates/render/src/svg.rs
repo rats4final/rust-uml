@@ -47,6 +47,24 @@ pub fn to_svg(scene: &Scene) -> String {
                     dash(*dashed)
                 );
             }
+            Prim::RoundRect {
+                rect,
+                radius,
+                fill,
+                stroke,
+            } => {
+                let _ = writeln!(
+                    s,
+                    r#"<rect x="{}" y="{}" width="{}" height="{}" rx="{}" fill="{}" stroke="{}"/>"#,
+                    fmt(rect.x),
+                    fmt(rect.y),
+                    fmt(rect.w),
+                    fmt(rect.h),
+                    fmt(*radius),
+                    paint(*fill),
+                    stroke.to_hex()
+                );
+            }
             Prim::Ellipse {
                 rect,
                 fill,

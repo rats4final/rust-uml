@@ -6,8 +6,8 @@ use mdj::{Document, Element, Id};
 
 use crate::geom::{Color, Point, Rect};
 use crate::layout::{
-    ACTIVE_INSET, HAlign, ICON_SPACE, Icon, NODE_DEPTH, NOTE_FOLD, NodeLayout, Shape, TEXT_PAD_X,
-    TEXT_PAD_Y, node_layout,
+    ACTIVE_INSET, HAlign, ICON_SPACE, Icon, NODE_DEPTH, NOTE_FOLD, NodeLayout, ROUND, Shape,
+    Symbol, TEXT_PAD_X, TEXT_PAD_Y, node_layout,
 };
 use crate::route;
 use crate::text::Fonts;
@@ -35,6 +35,13 @@ pub enum Prim {
         fill: Option<Color>,
         stroke: Color,
         dashed: bool,
+    },
+    /// A rectangle with rounded corners.
+    RoundRect {
+        rect: Rect,
+        radius: f64,
+        fill: Option<Color>,
+        stroke: Color,
     },
     /// The ellipse inscribed in `rect`.
     Ellipse {
@@ -266,6 +273,18 @@ fn draw_node(scene: &mut Scene, l: &NodeLayout, fonts: &Fonts) {
             );
         }
         Shape::Text => {}
+        Shape::RoundRect => scene.prims.push(Prim::RoundRect {
+            rect: r,
+            radius: ROUND,
+            fill,
+            stroke,
+        }),
+        Shape::Actor { figure } => draw_actor(scene, figure, stroke),
+        Shape::Symbol(symbol) => draw_symbol(scene, symbol, r, stroke, l.fill, fonts),
+        Shape::Swimlane { header, .. } => {
+            rect(scene, r);
+            rect(scene, header);
+        }
         Shape::Lollipop { circle } => {
             scene.prims.push(Prim::Ellipse {
                 rect: circle,
@@ -280,6 +299,13 @@ fn draw_node(scene: &mut Scene, l: &NodeLayout, fonts: &Fonts) {
         for x in [r.x + ACTIVE_INSET, r.right() - ACTIVE_INSET] {
             line(scene, vec![Point::new(x, r.y), Point::new(x, r.bottom())]);
         }
+    }
+    for (from, to, dashed) in &l.dividers {
+        scene.prims.push(Prim::Line {
+            points: vec![*from, *to],
+            stroke,
+            dashed: *dashed,
+        });
     }
     if let Some(icon) = l.icon {
         draw_icon(scene, icon, r, stroke, l.fill);
@@ -330,6 +356,144 @@ fn draw_node(scene: &mut Scene, l: &NodeLayout, fonts: &Fonts) {
             text: label.line.text.clone(),
             style: s,
         });
+    }
+}
+
+/// A stick figure filling `f` (UML actor).
+fn draw_actor(scene: &mut Scene, f: Rect, stroke: Color) {
+    let cx = f.center().x;
+    let unit = (f.h / 5.0).min(f.w / 2.2);
+    let head = Rect::new(cx - unit / 2.0, f.y + 2.0, unit, unit);
+    let (neck, hip) = (head.bottom(), head.bottom() + unit * 1.6);
+    let line = |scene: &mut Scene, a: Point, b: Point| {
+        scene.prims.push(Prim::Line {
+            points: vec![a, b],
+            stroke,
+            dashed: false,
+        });
+    };
+    scene.prims.push(Prim::Ellipse {
+        rect: head,
+        fill: Some(Color::WHITE),
+        stroke,
+        dashed: false,
+    });
+    line(scene, Point::new(cx, neck), Point::new(cx, hip));
+    let arms = neck + unit * 0.6;
+    line(
+        scene,
+        Point::new(cx - unit, arms),
+        Point::new(cx + unit, arms),
+    );
+    let foot = (hip + unit * 1.4).min(f.bottom() - 2.0);
+    line(
+        scene,
+        Point::new(cx, hip),
+        Point::new(cx - unit * 0.9, foot),
+    );
+    line(
+        scene,
+        Point::new(cx, hip),
+        Point::new(cx + unit * 0.9, foot),
+    );
+}
+
+/// The small state-machine and activity symbols, fitted to `r`.
+fn draw_symbol(
+    scene: &mut Scene,
+    symbol: Symbol,
+    r: Rect,
+    stroke: Color,
+    fill: Color,
+    fonts: &Fonts,
+) {
+    // Round symbols use the largest circle that fits.
+    let d = r.w.min(r.h);
+    let circle = Rect::new(r.center().x - d / 2.0, r.center().y - d / 2.0, d, d);
+    let ellipse = |scene: &mut Scene, rect: Rect, fill: Option<Color>| {
+        scene.prims.push(Prim::Ellipse {
+            rect,
+            fill,
+            stroke,
+            dashed: false,
+        });
+    };
+    let line = |scene: &mut Scene, a: Point, b: Point| {
+        scene.prims.push(Prim::Line {
+            points: vec![a, b],
+            stroke,
+            dashed: false,
+        });
+    };
+    let cross = |scene: &mut Scene, c: Rect| {
+        let k = c.w * 0.35;
+        let m = c.center();
+        line(
+            scene,
+            Point::new(m.x - k, m.y - k),
+            Point::new(m.x + k, m.y + k),
+        );
+        line(
+            scene,
+            Point::new(m.x - k, m.y + k),
+            Point::new(m.x + k, m.y - k),
+        );
+    };
+    match symbol {
+        Symbol::Dot | Symbol::SmallDot => ellipse(scene, circle, Some(stroke)),
+        Symbol::BullsEye => {
+            ellipse(scene, circle, Some(fill));
+            ellipse(scene, circle.expand(-d * 0.22), Some(stroke));
+        }
+        Symbol::CircleX => {
+            ellipse(scene, circle, Some(fill));
+            cross(scene, circle);
+        }
+        Symbol::Ring => ellipse(scene, circle, Some(fill)),
+        Symbol::Cross => cross(scene, Rect::new(r.x, r.y, r.w.max(r.h), r.w.max(r.h))),
+        Symbol::Bar => scene.prims.push(Prim::Rect {
+            rect: r,
+            fill: Some(stroke),
+            stroke,
+            dashed: false,
+        }),
+        Symbol::Diamond => {
+            let c = r.center();
+            scene.prims.push(Prim::Polygon {
+                points: vec![
+                    Point::new(c.x, r.y),
+                    Point::new(r.right(), c.y),
+                    Point::new(c.x, r.bottom()),
+                    Point::new(r.x, c.y),
+                ],
+                fill: Some(fill),
+                stroke,
+            });
+        }
+        Symbol::History { deep } => {
+            ellipse(scene, circle, Some(fill));
+            let text = if deep { "H*" } else { "H" };
+            let size = (d * 0.55).max(6.0);
+            let w = fonts.width(text, size, true, false);
+            let h = fonts.line_height(size);
+            scene.prims.push(Prim::Text {
+                rect: Rect::new(
+                    circle.center().x - w / 2.0,
+                    circle.center().y - h / 2.0,
+                    w,
+                    h,
+                ),
+                baseline: fonts.ascent(size),
+                text: text.to_owned(),
+                style: TextStyle {
+                    size,
+                    bold: true,
+                    italic: false,
+                    underline: false,
+                    color: stroke,
+                },
+            });
+        }
     }
 }
 
@@ -445,6 +609,8 @@ fn edge_style(doc: &Document, view: &Element) -> (bool, EndMark, EndMark) {
     .any(|k| t.contains(k))
     {
         (true, EndMark::OpenArrow)
+    } else if t.contains("Transition") || t.ends_with("FlowView") {
+        (false, EndMark::OpenArrow)
     } else if t.contains("Containment") {
         (false, EndMark::CirclePlus)
     } else if t.contains("NoteLink") || t.contains("ConstraintLink") {
@@ -498,7 +664,13 @@ fn draw_edge(
     let texts: Vec<(&str, String)> = vec![
         (
             "nameLabel",
-            model.map(|m| m.name().to_owned()).unwrap_or_default(),
+            model
+                .map(|m| match m.type_name.as_str() {
+                    "UMLTransition" => uml::transition_text(doc, m),
+                    "UMLControlFlow" | "UMLObjectFlow" => uml::flow_text(m),
+                    _ => m.name().to_owned(),
+                })
+                .unwrap_or_default(),
         ),
         (
             "stereotypeLabel",
@@ -573,6 +745,8 @@ fn draw_edge(
 fn edge_keyword(view_type: &str) -> Option<&'static str> {
     match view_type {
         "UMLDeploymentView" => Some("«deploy»"),
+        "UMLIncludeView" => Some("«include»"),
+        "UMLExtendView" => Some("«extend»"),
         _ => None,
     }
 }
