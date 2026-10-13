@@ -16,7 +16,10 @@ workspace = true
 
 [dependencies]
 anyhow.workspace = true
+automation.workspace = true
 render.workspace = true
 eframe = { workspace = true, features = ["default_fonts", "glow", "wayland", "x11"] }
+engine.workspace = true
 rfd.workspace = true
+serde_json.workspace = true
 ui.workspace = true

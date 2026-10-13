@@ -733,9 +733,12 @@ name = "desktop"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "automation",
  "eframe",
+ "engine",
  "render",
  "rfd",
+ "serde_json",
  "ui",
 ]
 

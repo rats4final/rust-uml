@@ -87,11 +87,18 @@ and reported; the others still run.",
     ),
     (
         "mcp",
-        "mcp [--root <dir>]",
+        "mcp [--root <dir>] | mcp --bridge 127.0.0.1:<port> --control-token-file <path>",
         "Serve the Model Context Protocol on stdin/stdout so AI agents (Claude Code, Claude Desktop,
 ...) can build and read models. Files are read and written only inside --root (default: the
 current folder). Example for Claude Code:
-  claude mcp add rust-uml -- rust-uml-cli mcp --root /path/to/models",
+  claude mcp add rust-uml -- rust-uml-cli mcp --root /path/to/models
+
+With --bridge the tools drive a running window instead, so you watch the agent work. Start the
+app with the same port and token file (the app creates the file if it is missing; agent file
+access is confined to --control-root):
+  rust-uml --control 7878 --control-token-file ~/.rust-uml-token --control-root ~/models
+  claude mcp add rust-uml-live -- rust-uml-cli mcp --bridge 127.0.0.1:7878 \\
+    --control-token-file ~/.rust-uml-token",
     ),
     (
         "help",
@@ -120,8 +127,22 @@ fn help(name: &str) -> anyhow::Result<String> {
 
 /// Flags that take a value.
 const VALUE_FLAGS: &[&str] = &[
-    "-o", "-f", "-s", "-d", "--cmd", "--params", "--as", "--script", "--in", "--out", "--image",
-    "--root", "--into", "--name",
+    "-o",
+    "-f",
+    "-s",
+    "-d",
+    "--cmd",
+    "--params",
+    "--as",
+    "--script",
+    "--in",
+    "--out",
+    "--image",
+    "--root",
+    "--into",
+    "--name",
+    "--bridge",
+    "--control-token-file",
 ];
 /// Flags that stand alone.
 const SWITCHES: &[&str] = &["--new", "--json", "--help", "-h"];
@@ -608,10 +629,35 @@ fn batch(reg: &Registry, args: &Args) -> anyhow::Result<()> {
 }
 
 fn mcp(args: &Args) -> anyhow::Result<()> {
-    let root = args.value("--root").unwrap_or(".");
-    let ws = Workspace::new(root).map_err(|e| anyhow!(e))?;
-    eprintln!("rust-uml MCP server; workspace {}", ws.root().display());
-    let mut server = automation::mcp::Server::new(Some(ws));
+    let mut server = match args.value("--bridge") {
+        Some(addr) => {
+            if args.has("--root") {
+                bail!("--root does not apply with --bridge: the app's --control-root decides");
+            }
+            let addr: std::net::SocketAddr = addr
+                .parse()
+                .map_err(|_| anyhow!("--bridge takes 127.0.0.1:<port>, not `{addr}`"))?;
+            let path = args
+                .value("--control-token-file")
+                .context("--bridge needs --control-token-file <path> (the app's token file)")?;
+            let text = std::fs::read_to_string(path).with_context(|| format!("reading {path}"))?;
+            let token =
+                automation::control::Token::parse(&text).map_err(|e| anyhow!("{path}: {e}"))?;
+            let client =
+                automation::bridge::BridgeClient::new(addr, token).map_err(|e| anyhow!(e))?;
+            eprintln!("rust-uml MCP server; driving the window at {addr}");
+            automation::mcp::Server::bridge(client)
+        }
+        None => {
+            if args.has("--control-token-file") {
+                bail!("--control-token-file only applies with --bridge");
+            }
+            let root = args.value("--root").unwrap_or(".");
+            let ws = Workspace::new(root).map_err(|e| anyhow!(e))?;
+            eprintln!("rust-uml MCP server; workspace {}", ws.root().display());
+            automation::mcp::Server::new(Some(ws))
+        }
+    };
     let stdin = std::io::stdin();
     let mut stdout = std::io::stdout().lock();
     for line in stdin.lock().lines() {

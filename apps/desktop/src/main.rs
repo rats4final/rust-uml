@@ -1,30 +1,87 @@
 //! Desktop app for Linux, Windows and macOS.
 //!
-//! Usage: `rust-uml [model.mdj] [--screenshot out.png]`
+//! Usage: `rust-uml [model.mdj] [--screenshot out.png]
+//!         [--control <port> --control-token-file <path> [--control-root <dir>]]`
 //!
 //! `--screenshot` captures the window once it has settled, writes a PNG and
 //! exits: a way to check the UI without someone watching the screen.
+//!
+//! `--control` lets agents drive the window over a loopback channel guarded by
+//! the token in `--control-token-file` (created if missing); agent file access
+//! is confined to `--control-root`. See `docs/agents.md`.
 
 // Release builds on Windows are GUI apps: no console window behind them.
 #![cfg_attr(all(windows, not(debug_assertions)), windows_subsystem = "windows")]
 
-use std::path::Path;
+mod control;
 
-use anyhow::anyhow;
+use std::path::{Path, PathBuf};
+
+use anyhow::{anyhow, bail};
+use control::{Control, ControlArgs};
 use eframe::egui;
 use ui::{FileEvent, FileKind, FileService, UmlApp};
 
-fn main() -> anyhow::Result<()> {
-    let mut initial = None;
-    let mut screenshot = None;
-    let mut args = std::env::args().skip(1);
-    while let Some(a) = args.next() {
-        if a == "--screenshot" {
-            screenshot = args.next();
-        } else {
-            initial = Some(a);
+const USAGE: &str = "usage: rust-uml [model.mdj] [--screenshot out.png] \
+[--control <port> --control-token-file <path> [--control-root <dir>]]";
+
+#[derive(Debug, Default, PartialEq, Eq)]
+struct Args {
+    initial: Option<String>,
+    screenshot: Option<String>,
+    control: Option<ControlArgs>,
+}
+
+fn parse_args(words: impl IntoIterator<Item = String>) -> anyhow::Result<Args> {
+    let mut args = Args::default();
+    let (mut port, mut token_file, mut root) = (None, None, None);
+    let mut words = words.into_iter();
+    while let Some(w) = words.next() {
+        let mut value = || {
+            words
+                .next()
+                .ok_or_else(|| anyhow!("{w} needs a value\n{USAGE}"))
+        };
+        match w.as_str() {
+            "--screenshot" => args.screenshot = Some(value()?),
+            "--control" => {
+                let v = value()?;
+                port = Some(
+                    v.parse::<u16>()
+                        .map_err(|_| anyhow!("--control takes a port number, not `{v}`"))?,
+                );
+            }
+            "--control-token-file" => token_file = Some(PathBuf::from(value()?)),
+            "--control-root" => root = Some(PathBuf::from(value()?)),
+            "-h" | "--help" => bail!("{USAGE}"),
+            flag if flag.starts_with("--") => bail!("unknown option {flag}\n{USAGE}"),
+            _ if args.initial.is_some() => bail!("open one model at a time\n{USAGE}"),
+            _ => args.initial = Some(w),
         }
     }
+    args.control = match (port, token_file) {
+        (Some(port), Some(token_file)) => Some(ControlArgs {
+            port,
+            token_file,
+            root,
+        }),
+        (Some(_), None) => bail!(
+            "--control needs --control-token-file <path> (created with a new token if missing)"
+        ),
+        (None, _) if root.is_some() => bail!("--control-root only applies with --control"),
+        (None, Some(_)) => bail!("--control-token-file only applies with --control"),
+        (None, None) => None,
+    };
+    Ok(args)
+}
+
+fn main() -> anyhow::Result<()> {
+    let Args {
+        initial,
+        screenshot,
+        control,
+    } = parse_args(std::env::args().skip(1))?;
+    let control = control.as_ref().map(Control::bind).transpose()?;
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
             .with_inner_size([1280.0, 800.0])
@@ -40,6 +97,9 @@ fn main() -> anyhow::Result<()> {
                 files.open_path(&path);
             }
             let mut app = UmlApp::new(cc, Box::new(files));
+            if let Some(control) = control {
+                app = app.with_remote(control.serve(cc.egui_ctx.clone())?);
+            }
             if let Some(out) = screenshot {
                 app = app.screenshot_and_exit(10, move |image| {
                     let [w, h] = image.size;
@@ -124,5 +184,52 @@ impl FileService for NativeFiles {
             },
             Err(e) => FileEvent::Failed(format!("Could not read {path}: {e}")),
         });
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn parse(words: &[&str]) -> anyhow::Result<Args> {
+        parse_args(words.iter().map(|w| (*w).to_owned()))
+    }
+
+    #[test]
+    fn arguments() {
+        assert_eq!(parse(&[]).unwrap(), Args::default());
+        let a = parse(&["m.mdj", "--screenshot", "o.png"]).unwrap();
+        assert_eq!(a.initial.as_deref(), Some("m.mdj"));
+        assert_eq!(a.screenshot.as_deref(), Some("o.png"));
+
+        let a = parse(&[
+            "--control",
+            "7878",
+            "--control-token-file",
+            "t",
+            "--control-root",
+            "r",
+        ])
+        .unwrap();
+        assert_eq!(
+            a.control,
+            Some(ControlArgs {
+                port: 7878,
+                token_file: "t".into(),
+                root: Some("r".into()),
+            })
+        );
+
+        for bad in [
+            &["--control", "7878"][..],
+            &["--control", "port", "--control-token-file", "t"],
+            &["--control-token-file", "t"],
+            &["--control-root", "r"],
+            &["--screenshot"],
+            &["--bogus"],
+            &["a.mdj", "b.mdj"],
+        ] {
+            assert!(parse(bad).is_err(), "{bad:?} should be refused");
+        }
     }
 }
