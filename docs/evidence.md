@@ -184,6 +184,27 @@ From the same files (`uml-factory.js` diagram functions, `metamodel.json`, `tool
   `UMLInitialState` = `UMLPseudostate` kind `initial`; `UMLSelfTransition` = a `UMLTransition` from a
   state to itself; `UMLSwimlaneHorz` = a partition whose view has `isVertical: false`.
 
+### Sequence diagrams (observed for M3b, 2026-10-12)
+
+From `sequenceDiagramFn`, `lifelineFn`, `messageFn` (`uml-factory.js`) and `UMLSeqLifelineView`
+(`elements.js`), described in our words:
+
+- **Doubly wrapped.** A new sequence diagram goes in a `UMLInteraction`, which goes in a new
+  `UMLCollaboration` (unless added to a classifier: then only the interaction is created; or to an
+  interaction: then nothing). A `UMLFrameView` whose `model` is the diagram itself is added at
+  (8, 8), 700 × 600.
+- **Lifelines** go in the interaction's `participants`. Creating one also creates a role attribute
+  `RoleN` in the collaboration's `attributes`; the lifeline's `represent` points at it.
+- **Lifeline view** (`UMLSeqLifelineView`): a head box 40 px tall (`SEQ_OBJECT_MINHEIGHT`) at the top
+  of the view (default top 40, `LIFELINE_TOP_POSITION`), and a `linePart` sub-view
+  (`UMLLinePartView`, 1 px wide) from just below the head to the view's bottom, at its centre x.
+- **Messages** go in the interaction's `messages`, with `source`/`target` lifelines and a
+  `messageSort` (synchCall default; asynchCall, asynchSignal, createMessage, deleteMessage, reply).
+  Their views (`UMLSeqMessageView`) connect the two lifelines' **line parts** (`tail`/`head`), not
+  the lifeline views. A message view may own an `activation` (`UMLActivationView`, ≥ 14 × 25).
+- **Combined fragments** (`UMLCombinedFragment`, `interactionOperator` alt/opt/loop/par/…) go in the
+  interaction's `fragments`, with `operands` (`UMLInteractionOperand`, `guard`).
+
 ## 4. Free vs. paid — exactly what is locked
 
 The only place the license is checked for features is **`src/engine/diagram-export.js`**, in the
