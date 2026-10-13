@@ -1,0 +1,136 @@
+//! Text shown for elements (UML notation).
+
+use mdj::{Document, Element, Field};
+
+pub fn visibility_symbol(v: &str) -> &'static str {
+    match v {
+        "private" => "-",
+        "protected" => "#",
+        "package" => "~",
+        _ => "+",
+    }
+}
+
+/// A `var` field: either a reference (show its name) or plain text.
+pub fn var_text<'a>(doc: &'a Document, el: &'a Element, key: &str) -> &'a str {
+    match el.get(key) {
+        Some(Field::Ref(id)) => doc.get(id).map(Element::name).unwrap_or(""),
+        Some(f) => f.as_str().unwrap_or(""),
+        None => "",
+    }
+}
+
+pub fn attribute_text(doc: &Document, attr: &Element) -> String {
+    let mut s = format!(
+        "{}{}",
+        visibility_symbol(attr.str("visibility").unwrap_or("public")),
+        attr.name()
+    );
+    let ty = var_text(doc, attr, "type");
+    if !ty.is_empty() {
+        s += &format!(": {ty}");
+    }
+    let mult = attr.str("multiplicity").unwrap_or("");
+    if !mult.is_empty() {
+        s += &format!("[{mult}]");
+    }
+    let default = attr.str("defaultValue").unwrap_or("");
+    if !default.is_empty() {
+        s += &format!(" = {default}");
+    }
+    s
+}
+
+pub fn operation_text(doc: &Document, op: &Element) -> String {
+    let mut params = Vec::new();
+    let mut ret = String::new();
+    for p in op
+        .children("parameters")
+        .iter()
+        .filter_map(|id| doc.get(id))
+    {
+        let ty = var_text(doc, p, "type");
+        match p.str("direction").unwrap_or("in") {
+            "return" => ret = ty.to_owned(),
+            dir => {
+                let prefix = if dir == "in" {
+                    String::new()
+                } else {
+                    format!("{dir} ")
+                };
+                params.push(if ty.is_empty() {
+                    format!("{prefix}{}", p.name())
+                } else {
+                    format!("{prefix}{}: {ty}", p.name())
+                });
+            }
+        }
+    }
+    let mut s = format!(
+        "{}{}({})",
+        visibility_symbol(op.str("visibility").unwrap_or("public")),
+        op.name(),
+        params.join(", ")
+    );
+    if !ret.is_empty() {
+        s += &format!(": {ret}");
+    }
+    s
+}
+
+/// `«stereotype»` text for an element, or `None`.
+pub fn stereotype_text(doc: &Document, el: &Element) -> Option<String> {
+    let s = var_text(doc, el, "stereotype");
+    (!s.is_empty()).then(|| format!("«{s}»"))
+}
+
+/// `name : Type`, leaving out whichever side is empty (instances, parts,
+/// collaboration uses).
+pub fn typed_name(name: &str, ty: &str) -> String {
+    match (name.is_empty(), ty.is_empty()) {
+        (_, true) => name.to_owned(),
+        (true, false) => format!(": {ty}"),
+        (false, false) => format!("{name} : {ty}"),
+    }
+}
+
+/// Heading of an instance (object, node instance, …): `name : Classifier`.
+pub fn instance_text(doc: &Document, inst: &Element) -> String {
+    typed_name(inst.name(), var_text(doc, inst, "classifier"))
+}
+
+/// A part: `name : Type [multiplicity]`.
+pub fn part_text(doc: &Document, part: &Element) -> String {
+    let mut s = typed_name(part.name(), var_text(doc, part, "type"));
+    let mult = part.str("multiplicity").unwrap_or("");
+    if !mult.is_empty() {
+        s += &format!(" [{mult}]");
+    }
+    s
+}
+
+/// An object's slot: `name = value`, named after its defining feature if set.
+pub fn slot_text(doc: &Document, slot: &Element) -> String {
+    let name = match slot.ref_id("definingFeature").and_then(|f| doc.get(f)) {
+        Some(feature) => feature.name(),
+        None => slot.name(),
+    };
+    let value = slot.str("value").unwrap_or("");
+    if value.is_empty() {
+        name.to_owned()
+    } else {
+        format!("{name} = {value}")
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn typed_names() {
+        assert_eq!(typed_name("o", "Order"), "o : Order");
+        assert_eq!(typed_name("", "Order"), ": Order");
+        assert_eq!(typed_name("o", ""), "o");
+    }
+}
