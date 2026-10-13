@@ -247,6 +247,34 @@ scope for "the installed app".
 - Light/dark themes, a keymap, menus, and preferences are all JSON-driven
   (`resources/default/{menus,keymaps,preferences}`).
 
+### Mermaid import (observed for milestone A, 2026-10-12)
+
+`extensions/default/mermaid` (behaviour only; our parser is written from Mermaid's public docs):
+
+- Dialog with a text editor and examples; command "[Mermaid] Generate Diagram". The kind is read
+  from the first word: `classDiagram`, `sequenceDiagram`, `stateDiagram`, `flowchart`, `erDiagram`,
+  `mindmap`, `requirementDiagram` each go to their own family's diagram.
+- After building, the diagram is laid out with the app's dagre layout in the Mermaid `direction`.
+- **Class:** `<<interface>>` → interface, `<<enumeration>>` → enumeration (members become
+  literals), `<<abstract>>` → abstract class, any other annotation → stereotype; label → name.
+  Solid lines: triangle → generalization, lollipop → interface realization, otherwise an
+  association with `*` → composite and `o` → shared aggregation on that end, arrow → navigable,
+  quoted cardinalities → end multiplicities. Dotted lines: triangle → interface realization,
+  anything else → dependency. `note for X` → note with a note link. Namespaces become package
+  models (not drawn).
+- **Sequence:** collaboration → interaction → diagram, as for a new sequence diagram. Messages are
+  synchronous calls except: the message right after `create participant` → create message, after
+  `destroy` → delete message, `-->>` → **asynchronous signal**, `-)` → asynchronous call,
+  `--)` → **reply**. `loop/alt/opt/par/critical/break` → combined fragments with an operand per
+  section. Notes left of / right of / over. The diagram's `showActivation` is set to whether the
+  text used activations and `showSequenceNumber` to whether it had `autonumber`; both default to
+  **true** in the metamodel, so they are written as `false` otherwise.
+- **State:** one state machine with one region; all states flattened into it (composites are not
+  nested); `<<choice>>`/`<<fork>>`/`<<join>>` pseudostates; transition label → name; notes linked.
+
+rust-uml follows these mappings, except that composite states keep their nesting and namespaces
+are drawn as package boxes. Flowchart, ER, mind map and requirement imports wait for those families.
+
 ## 6. Unknowns / limits of this evidence
 
 - Most of this is static reading. Runtime behaviour observed so far comes only from the owner

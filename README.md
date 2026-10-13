@@ -30,6 +30,9 @@ Every action is a command, so the CLI and AI agents can do anything the UI does:
 # Build a diagram in one go, save it and export it
 rust-uml-cli run --new --script examples/scripts/shop.json -o shop.mdj -o shop.png
 
+# Mermaid in, an editable UML diagram out (also File ▸ Import Mermaid…)
+rust-uml-cli import examples/mermaid/checkout.mmd -o checkout.png
+
 # Let Claude (or any MCP client) build and read your models
 claude mcp add rust-uml -- rust-uml-cli mcp --root ~/models
 ```

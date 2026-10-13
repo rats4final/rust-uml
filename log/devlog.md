@@ -2,6 +2,22 @@
 
 Newest first. Terse: what landed, numbers, what's still open.
 
+## 2026-10-12 — agent milestone, part 3: Mermaid import
+
+- New crate `mermaid` (L0): class, sequence and state diagram text → data; styling skipped,
+  unknown lines become warnings, unclosed blocks are errors. 12 parser tests.
+- `render::autolayout`: layered layout (cycle breaking, longest-path ranks, barycentre ordering,
+  neighbour pull), 4 directions. The importer nests it for packages and composite states.
+- `engine` command `import.mermaid`: builds from ordinary commands, lines drawn after layout
+  (drawn first they kept detours around the piled-up boxes), one undo step via
+  `mdj::Document::squash_undo_since`; failure restores everything. StarUML's arrow mapping
+  (`-->>` async signal, `--)` reply) and `showActivation`/`showSequenceNumber` written as false.
+- Renderer honours `showActivation`. `command_batch`/scripts are now one undo step when atomic.
+- File ▸ Import Mermaid… (examples, inline errors; UI test drives it), `rust-uml-cli import`
+  (`--into`, `--name`, `-o`), MCP `mermaid_import`. `examples/mermaid/*.mmd`. 109 tests.
+- Open: check an imported model in StarUML; flowchart/ER/mindmap/requirement need their families;
+  sequence numbers aren't drawn; Auto Layout menu command.
+
 ## 2026-10-12 — agent milestone, parts 1–2: scriptable CLI and MCP server
 
 - Owner chose agent features (PhotoCraft-style) before M3b part 2; no in-app AI panel.

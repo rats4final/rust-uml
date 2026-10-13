@@ -1,6 +1,6 @@
 # Parity with StarUML 7.1.1
 
-Status line: **Agent milestone (A), parts 1–2: scriptable CLI and MCP server.** Updated 2026-10-12.
+Status line: **Agent milestone (A), parts 1–3: scriptable CLI, MCP server, Mermaid import.** Updated 2026-10-12.
 
 Each row comes from the evidence in [`evidence.md`](evidence.md). "Paid" marks features StarUML
 locks behind a licence (see evidence §4: only exports are locked, by watermark).
@@ -17,7 +17,7 @@ Legend: ✅ done · 🟡 partial · ⬜ not started
 | Files saved here open in StarUML | ✅ | `examples/shapes.mdj` opened in StarUML 7.1.1 (2026-10-12): all boxes, rows, keywords, arrows and labels correct |
 | StarUML-edited files reopen here | ✅ | Owner edited `shapes.mdj` in StarUML (new abstract/active class, renamed literal); reopens and round-trips unchanged |
 | StarUML v1 (`.uml`) import | ⬜ | `extensions/default/staruml-v1` |
-| Mermaid import | ⬜ | `extensions/default/mermaid`; also behind the local API |
+| Mermaid import | 🟡 | ✅ class, sequence and state (File ▸ Import Mermaid…, `rust-uml-cli import`, MCP `mermaid_import`), laid out automatically, one undo step. ⬜ flowchart, ER, mind map, requirement (need those families). Composite states stay nested (StarUML flattens them) |
 
 ## Export (paid in StarUML: watermarks)
 
@@ -37,7 +37,7 @@ Legend: ✅ done · 🟡 partial · ⬜ not started
 | UML class | Class | | ✅ Class, Interface, Enumeration, DataType, Package; 7 relationship kinds |
 | UML structure | Package, Object, Component, Deployment, Composite Structure, Profile | | ✅ all six: StarUML's toolbox groups, nesting, ports, parts, objects/slots, 3-D nodes, icons, containment ⊕, «deploy». Not yet: n-ary associations, association classes, template bindings, frames, role bindings, ball-and-socket |
 | UML behaviour (M3a) | Use Case, Statechart, Activity | | ✅ StarUML's tool sets: actors, use cases, subjects, include/extend; states, composite/orthogonal states, all pseudostate kinds, transitions with `trigger [guard] / effect`; actions, control nodes, swimlanes, object nodes, guarded flows. Not yet: pins, expansion regions, interruptible regions, signals/events as actions, internal activities (entry/do/exit), submachine states, frames |
-| UML sequence | Sequence | | ✅ frame, lifelines (with role attributes), all 7 message kinds, activations, combined fragments with operands/guards; messages keep their height when lifelines move. Not yet: found/lost messages, gates, endpoints, state invariants, continuations, interaction uses, time/duration constraints |
+| UML sequence | Sequence | | ✅ frame, lifelines (with role attributes), all 7 message kinds, activations (hidden when the diagram's `showActivation` is off), combined fragments with operands/guards; messages keep their height when lifelines move. Not yet: automatic sequence numbers (`showSequenceNumber`), found/lost messages, gates, endpoints, state invariants, continuations, interaction uses, time/duration constraints |
 | UML behaviour (rest of M3b) | Communication, Timing, Interaction Overview, Information Flow | | ⬜ (generic drawing only) |
 | SysML | Requirement, Block Definition, Internal Block, Parametric | ✔ | ⬜ |
 | BPMN | BPMN | ✔ | ⬜ |
@@ -67,7 +67,7 @@ Legend: ✅ done · 🟡 partial · ⬜ not started
 | Quick edit (inline text syntax) | ⬜ | StarUML uses PEG grammars in `uml/grammars` |
 | Copy / paste | ⬜ | |
 | Alignment tools | ⬜ | `extensions/default/alignment` |
-| Auto layout | ⬜ | StarUML uses dagre |
+| Auto layout | 🟡 | Layered layout (`render::autolayout`) used by Mermaid import, nested containers included; no menu command for existing diagrams yet |
 | Line styles (rectilinear / oblique / curve / round) | 🟡 | Drawn and routed as straight or right-angle; no UI to switch yet |
 | Colours and fonts per view | 🟡 | Read and drawn; no UI to change yet |
 | Find | ⬜ | |

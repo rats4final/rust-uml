@@ -24,7 +24,7 @@ Any other string is left alone; start one with `$$` for a literal `$`.
 ```
 
 A script is all-or-nothing: if a step fails, the model is left exactly as it was and nothing is
-written. A full example is `examples/scripts/shop.json`.
+written. A script that succeeds is one undo step. A full example is `examples/scripts/shop.json`.
 
 Useful commands for building diagrams:
 
@@ -62,6 +62,9 @@ rust-uml-cli batch --in models --out updated --script steps.json --image png
 rust-uml-cli info model.mdj --json
 rust-uml-cli commands --json
 rust-uml-cli tools "Sequence Diagram" --json
+
+# Mermaid text → a laid-out diagram (or add it to an existing model with --into)
+rust-uml-cli import examples/mermaid/checkout.mmd -o checkout.mdj -o checkout.png
 
 # Every subcommand explains itself
 rust-uml-cli help run
@@ -104,6 +107,7 @@ diagram."*
 | `diagram_inspect {diagram?}` | boxes and lines with view ids, model ids, names and positions |
 | `render_preview {diagram?, max_side?}` | the diagram as a PNG image, so the agent can look at its work |
 | `diagram_export {path, diagram?, scale?}` | write `.svg`/`.png` into the workspace |
+| `mermaid_import {text, name?}` | a Mermaid class, sequence or state diagram → a laid-out diagram |
 | `command_list {filter?, enabled_only?}` | every command and its parameters |
 | `command_run {id, params?}` | run one command |
 | `command_batch {steps, atomic?}` | run a script (all-or-nothing by default) |
@@ -115,6 +119,5 @@ can read and fix, not as protocol failures.
 
 - Driving the **running desktop app** (a loopback control channel, and `mcp --bridge` to it).
 - StarUML's local HTTP API (`/generate_diagram`, …).
-- Mermaid import, so text diagrams an AI writes open as real, editable diagrams.
 
 See `docs/roadmap.md`.

@@ -1,6 +1,6 @@
 # Roadmap and handoff
 
-**Read this to pick up the work.** Status as of 2026-10-12, after v0.4.0 and agent milestone parts 1–2 (not yet released).
+**Read this to pick up the work.** Status as of 2026-10-12, after v0.4.0 and agent milestone parts 1–3 (not yet released).
 Order of reading for a new agent/session: `AGENTS.md` → this file → `docs/parity.md` → `log/devlog.md`.
 
 ## 1. Where things stand
@@ -121,10 +121,15 @@ keys inside rust-uml). Guide for users: `docs/agents.md`.
    dependency), 11 tools incl. `render_preview` (PNG image content) and `command_batch`. Tested by
    an in-process conversation and by spawning the binary. **Not yet tried from a real client** —
    do `claude mcp add rust-uml -- rust-uml-cli mcp --root <dir>` and ask it to build a diagram.
-3. ⬜ **Mermaid import** (parity row): `classDiagram`, `sequenceDiagram`, `stateDiagram-v2`,
-   `flowchart` → activity. Needs a simple layered auto-layout (also M6's auto layout). Evidence:
-   `extensions/default/mermaid` (behaviour only). Expose as a command (`model.import-mermaid
-   {text}`) so CLI, MCP and the UI get it at once.
+3. ✅ **Mermaid import:** crate `mermaid` (L0, no dependencies) parses class, sequence and state
+   text; `render::autolayout` is a layered layout (cycles, nesting, 4 directions); command
+   `import.mermaid {text, name?, parent?}` builds the diagram from ordinary commands, draws the
+   lines only after layout, and squashes it into one undo step (`Document::squash_undo_since`;
+   `command_batch` uses it too). File ▸ Import Mermaid…, `rust-uml-cli import`, MCP
+   `mermaid_import`. Mappings follow StarUML's (`docs/evidence.md`, Mermaid section). Samples in
+   `examples/mermaid/`. Left: flowchart/ER/mind map/requirement (need their families),
+   automatic sequence numbers, Auto Layout as a menu command (the layout exists).
+   **Not yet checked in StarUML:** open an imported model in StarUML 7.1.1.
 4. ⬜ **Live app control:** `rust-uml --control <port>` loopback JSON-lines channel with a token
    file (PhotoCraft's design: `docs/control-protocol.md` there), `ui.inspect`, `ui.screenshot`,
    `engine.execute`; then `rust-uml-cli mcp --bridge`. StarUML's HTTP API (M8) on the same server.

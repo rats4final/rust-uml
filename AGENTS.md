@@ -22,6 +22,7 @@ codebase. Read this file first, then `docs/`.
 ```text
 crates/
   mdj      L0  .mdj/.mfj documents: schema-free load/save, edits with undo (pure data, no I/O)
+  mermaid  L0  Mermaid class/sequence/state text → plain data (no dependencies)
   uml      L1  tool catalog (catalog.rs), factories (StarUML's exact view trees), cascading delete, text
   render   L2  layout, display list (Scene), routing, SVG/PNG export, bundled fonts
   engine   L3  Session + command registry: every action is a command with JSON params
@@ -29,7 +30,7 @@ crates/
   automation L4 scripts with $references, root-scoped file access, MCP server (no egui)
 apps/
   desktop  rust-uml       native app (eframe + rfd dialogs)
-  cli      rust-uml-cli   headless: new / info / image / run / batch / commands / tools / mcp
+  cli      rust-uml-cli   headless: new / info / image / run / import / batch / commands / tools / mcp
   web      rust-uml-web   the same UI in a browser (trunk + wasm-bindgen)
 xtask/     cargo xtask layers | wasm | targets | ci
 ```
