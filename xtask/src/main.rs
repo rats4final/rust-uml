@@ -12,6 +12,7 @@ use std::process::{Command, ExitCode};
 /// Apps sit above every crate.
 const LAYERS: &[(&str, u8)] = &[
     ("mdj", 0),
+    ("mermaid", 0),
     ("uml", 1),
     ("render", 2),
     ("engine", 3),
@@ -23,7 +24,7 @@ const LAYERS: &[(&str, u8)] = &[
 const UI_ONLY: &[&str] = &["egui", "eframe", "winit", "rfd"];
 
 /// Everything that must compile to WebAssembly.
-const WASM_PACKAGES: &[&str] = &["mdj", "uml", "render", "engine", "ui", "web"];
+const WASM_PACKAGES: &[&str] = &["mdj", "mermaid", "uml", "render", "engine", "ui", "web"];
 
 fn main() -> ExitCode {
     let task = std::env::args().nth(1).unwrap_or_default();

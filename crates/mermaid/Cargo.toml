@@ -1,0 +1,10 @@
+[package]
+name = "mermaid"
+description = "L0: reads Mermaid class, sequence and state diagram text into plain data"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[lints]
+workspace = true

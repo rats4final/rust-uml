@@ -13,6 +13,7 @@ rust-version = "1.90"
 [workspace.dependencies]
 # internal, lowest layer first (see AGENTS.md › Layers)
 mdj = { path = "crates/mdj" }
+mermaid = { path = "crates/mermaid" }
 uml = { path = "crates/uml" }
 render = { path = "crates/render" }
 engine = { path = "crates/engine" }
