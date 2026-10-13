@@ -271,6 +271,7 @@ fn shape_of(view: &Element, model: Option<&Element>) -> Shape {
             head: Rect::default(),
         },
         "UMLFrameView"
+        | "UMLTimingFrameView"
         | "UMLCombinedFragmentView"
         | "UMLInteractionUseView"
         | "UMLInteractionInlineView" => Shape::Frame {
@@ -327,7 +328,7 @@ fn frame_kind(type_name: &str) -> &'static str {
 }
 
 /// The heading text of a node, and whether it is underlined (instances).
-fn heading(doc: &Document, view: &Element, m: &Element) -> (String, bool) {
+pub(crate) fn heading(doc: &Document, view: &Element, m: &Element) -> (String, bool) {
     match view.type_name.as_str() {
         "UMLObjectView"
         | "UMLArtifactInstanceView"
@@ -335,7 +336,7 @@ fn heading(doc: &Document, view: &Element, m: &Element) -> (String, bool) {
         | "UMLNodeInstanceView" => (uml::instance_text(doc, m), true),
         "UMLPartView" => (uml::part_text(doc, m), false),
         // `name : Type`, the type coming from the role the lifeline represents.
-        "UMLSeqLifelineView" | "UMLCommLifelineView" => {
+        "UMLSeqLifelineView" | "UMLCommLifelineView" | "UMLTimingLifelineView" => {
             let ty = m
                 .ref_id("represent")
                 .and_then(|r| doc.get(r))
@@ -410,6 +411,27 @@ pub fn node_layout(doc: &Document, view: &Element, fonts: &Fonts) -> Option<Node
         view.num("width", 0.0),
         view.num("height", 0.0),
     );
+    // Laid out by their timing frame (`crate::timing`), not sized by content:
+    // keep the stored box, so nothing grows it.
+    if crate::timing::is_arranged(&view.type_name) {
+        return Some(NodeLayout {
+            rect: stored,
+            min_w: 0.0,
+            min_h: 0.0,
+            shape: Shape::Box,
+            compartments: Vec::new(),
+            separators: false,
+            font_size: 13.0,
+            fill: Color::WHITE,
+            line: Color::BLACK,
+            text: Color::BLACK,
+            active: false,
+            dashed: false,
+            icon: None,
+            outside: Vec::new(),
+            dividers: Vec::new(),
+        });
+    }
     let font = Font::parse(view.str("font").unwrap_or(DEFAULT_FONT));
     let size = if font.size > 0.0 && font.size.is_finite() {
         font.size

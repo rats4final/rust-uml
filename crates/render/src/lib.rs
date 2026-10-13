@@ -13,6 +13,7 @@ mod route;
 mod scene;
 mod svg;
 mod text;
+mod timing;
 
 pub use geom::{Color, Point, Rect};
 pub use layout::{NodeLayout, node_layout};

@@ -11,6 +11,7 @@ use crate::layout::{
 };
 use crate::route;
 use crate::text::Fonts;
+use crate::timing;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct TextStyle {
@@ -19,6 +20,10 @@ pub struct TextStyle {
     pub italic: bool,
     pub underline: bool,
     pub color: Color,
+    /// Reads bottom to top (turned a quarter left). The text's `rect` is then
+    /// the turned box: one line wide, as tall as the text is long; the
+    /// baseline is measured from its left edge.
+    pub vertical: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -147,7 +152,32 @@ fn build_scene_at(doc: &Document, diagram: &str, fonts: &Fonts, depth: usize) ->
         .iter()
         .filter_map(|v| Some((v.id.as_str(), node_layout(doc, v, fonts)?)))
         .collect();
+    // Timing frames arrange what they hold; those boxes go where they say.
+    let arranged: Vec<timing::Item> = views
+        .iter()
+        .filter(|v| v.type_name == "UMLTimingFrameView")
+        .filter_map(|frame| {
+            let l = layouts.get(frame.id.as_str())?;
+            let Shape::Frame { tag } = l.shape else {
+                return None;
+            };
+            Some(timing::arrange(
+                doc,
+                frame,
+                l.rect,
+                tag.bottom(),
+                l.font_size,
+                fonts,
+            ))
+        })
+        .flatten()
+        .collect();
+    let arranged_at: HashMap<&str, &timing::Item> =
+        arranged.iter().map(|i| (i.view.as_str(), i)).collect();
     let mut rects: HashMap<&str, Rect> = layouts.iter().map(|(k, l)| (*k, l.rect)).collect();
+    for item in &arranged {
+        rects.insert(item.view.as_str(), item.rect);
+    }
     // Sequence messages attach to lifelines' line parts (sub-views): give them rects.
     for v in &views {
         if let (Some(layout), Some(line)) = (layouts.get(v.id.as_str()), v.ref_id("linePart"))
@@ -163,6 +193,19 @@ fn build_scene_at(doc: &Document, diagram: &str, fonts: &Fonts, depth: usize) ->
     let mut edge_pts: HashMap<&str, Vec<Point>> = HashMap::new();
 
     for view in views.iter().copied() {
+        if timing::is_arranged(&view.type_name) {
+            if let Some(item) = arranged_at.get(view.id.as_str()) {
+                for text in draw_timing(&mut scene, view, item, fonts) {
+                    grow(text);
+                }
+                scene.hits.push(Hit {
+                    view: view.id.clone(),
+                    shape: HitShape::Rect(item.rect),
+                });
+                grow(item.rect);
+            }
+            continue;
+        }
         if let Some(layout) = layouts.get(view.id.as_str()) {
             draw_node(&mut scene, layout, fonts);
             // An inline interaction shows its sequence diagram, shrunk to fit.
@@ -190,7 +233,11 @@ fn build_scene_at(doc: &Document, diagram: &str, fonts: &Fonts, depth: usize) ->
                 shape: HitShape::Rect(hit),
             });
             grow(layout.rect);
-        } else if let Some(points) = edge_points(view, &rects) {
+        } else if let Some(points) = if view.type_name == "UMLTimingMessageView" {
+            timing_message_points(doc, view, &rects)
+        } else {
+            edge_points(view, &rects)
+        } {
             let label_boxes = draw_edge(&mut scene, doc, view, &points, fonts);
             for r in label_boxes {
                 grow(r);
@@ -323,6 +370,131 @@ fn draw_nested(
     }
 }
 
+/// Draw a box its timing frame arranged: a lifeline's band and turned name,
+/// a state's name, a segment's line (stepping from the previous one), a
+/// tick and its text. Returns the boxes of the texts it placed.
+fn draw_timing(scene: &mut Scene, view: &Element, item: &timing::Item, fonts: &Fonts) -> Vec<Rect> {
+    let stroke = view
+        .str("lineColor")
+        .and_then(Color::parse)
+        .unwrap_or(Color::BLACK);
+    let color = view
+        .str("fontColor")
+        .and_then(Color::parse)
+        .unwrap_or(Color::BLACK);
+    let font = Font::parse(view.str("font").unwrap_or(DEFAULT_FONT));
+    let size = if font.size > 0.0 && font.size.is_finite() {
+        font.size
+    } else {
+        13.0
+    };
+    let line_h = fonts.line_height(size);
+    let ascent = fonts.ascent(size);
+    let line = |scene: &mut Scene, a: Point, b: Point| {
+        scene.prims.push(Prim::Line {
+            points: vec![a, b],
+            stroke,
+            dashed: false,
+        });
+    };
+    let mut texts = Vec::new();
+    let mut text = |scene: &mut Scene, rect: Rect, text: &str, bold: bool, vertical: bool| {
+        texts.push(rect);
+        scene.prims.push(Prim::Text {
+            rect,
+            baseline: ascent,
+            text: text.to_owned(),
+            style: TextStyle {
+                size,
+                bold,
+                italic: false,
+                underline: false,
+                color,
+                vertical,
+            },
+        });
+    };
+    let r = item.rect;
+    match &item.kind {
+        timing::Kind::Lifeline { name, name_rect } => {
+            line(
+                scene,
+                Point::new(r.x, r.bottom()),
+                Point::new(r.right(), r.bottom()),
+            );
+            text(scene, *name_rect, name, true, true);
+        }
+        timing::Kind::State { name, label } => {
+            let w = fonts.width(name, size, false, false);
+            let at = Rect::new(
+                label.right() - w,
+                label.y + (label.h - line_h) / 2.0,
+                w,
+                line_h,
+            );
+            text(scene, at, name, false, false);
+        }
+        timing::Kind::Segment { prev_mid } => {
+            let mid = r.y + (r.h / 2.0).floor();
+            line(
+                scene,
+                Point::new(r.x, mid),
+                Point::new(r.right() + 1.0, mid),
+            );
+            if let Some(prev) = prev_mid {
+                line(scene, Point::new(r.x, mid), Point::new(r.x, *prev));
+            }
+        }
+        timing::Kind::Tick { text: label } => {
+            line(scene, Point::new(r.x, r.y), Point::new(r.x, r.bottom()));
+            if !label.is_empty() {
+                let w = fonts.width(label, size, false, false);
+                text(
+                    scene,
+                    Rect::new(r.x - w / 2.0, r.bottom() + 2.0, w, line_h),
+                    label,
+                    false,
+                    false,
+                );
+            }
+        }
+    }
+    texts
+}
+
+/// A timing message runs from its tail segment's middle height to its head
+/// segment's, at whichever end of each segment its stored points are nearer
+/// (judged against the segment's stored box, since the arranged one may be
+/// elsewhere); by default from the tail's end to the head's start.
+fn timing_message_points(
+    doc: &Document,
+    view: &Element,
+    rects: &HashMap<&str, Rect>,
+) -> Option<Vec<Point>> {
+    let (tail_id, head_id) = (view.ref_id("tail")?, view.ref_id("head")?);
+    let (tail, head) = (rects.get(tail_id)?, rects.get(head_id)?);
+    let stored = parse_points(view.str("points").unwrap_or(""));
+    let at_end = |id: &str, x: Option<f64>, default_end: bool| {
+        let (Some(x), Some(v)) = (x, doc.get(id)) else {
+            return default_end;
+        };
+        let left = v.num("left", 0.0);
+        (x - left).abs() > (x - left - v.num("width", 0.0)).abs()
+    };
+    let x = |r: &Rect, end: bool| if end { r.right() } else { r.x };
+    let mid = |r: &Rect| (r.y + r.h / 2.0).round();
+    Some(vec![
+        Point::new(
+            x(tail, at_end(tail_id, stored.first().map(|p| p.0), true)),
+            mid(tail),
+        ),
+        Point::new(
+            x(head, at_end(head_id, stored.last().map(|p| p.0), false)),
+            mid(head),
+        ),
+    ])
+}
+
 /// How many boxes `view` sits inside (`containerView` chain), capped.
 fn container_depth(doc: &Document, view: &Element) -> usize {
     let mut depth = 0;
@@ -344,6 +516,7 @@ fn draw_node(scene: &mut Scene, l: &NodeLayout, fonts: &Fonts) {
         italic: line.italic,
         underline: line.underline,
         color: l.text,
+        vertical: false,
     };
     let (r, fill, stroke, dashed) = (l.rect, Some(l.fill), l.line, l.dashed);
     let rect = |scene: &mut Scene, rect: Rect| {
@@ -675,6 +848,7 @@ fn draw_symbol(
                     italic: false,
                     underline: false,
                     color: stroke,
+                    vertical: false,
                 },
             });
         }
@@ -777,7 +951,7 @@ enum EndMark {
 fn edge_style(doc: &Document, view: &Element) -> (bool, EndMark, EndMark) {
     let t = view.type_name.as_str();
     let model = view.ref_id("model").and_then(|m| doc.get(m));
-    if t == "UMLSeqMessageView" {
+    if t == "UMLSeqMessageView" || t == "UMLTimingMessageView" {
         let (dashed, head) = message_style(model);
         return (dashed, EndMark::None, head);
     }
@@ -967,6 +1141,7 @@ fn draw_comm_message(
                 italic: false,
                 underline: false,
                 color,
+                vertical: false,
             },
         });
         boxes.push(rect);
@@ -1075,6 +1250,10 @@ fn draw_edge(
                 .map(|m| match m.type_name.as_str() {
                     "UMLTransition" => uml::transition_text(doc, m),
                     "UMLControlFlow" | "UMLObjectFlow" => uml::flow_text(m),
+                    // StarUML labels timing messages without parentheses or numbers.
+                    "UMLMessage" if view.type_name == "UMLTimingMessageView" => {
+                        uml::numbered_message_text(m, None)
+                    }
                     "UMLMessage" => uml::message_text(m),
                     // An information flow names what it conveys, if anything.
                     "UMLInformationFlow" => {
@@ -1168,6 +1347,7 @@ fn draw_edge(
                 italic: false,
                 underline: false,
                 color,
+                vertical: false,
             },
         });
         boxes.push(rect);
@@ -1528,6 +1708,75 @@ mod tests {
                 .any(|p| matches!(p, Prim::Line { dashed: true, .. })),
             "drawn dotted"
         );
+    }
+
+    #[test]
+    fn timing_frames_arrange_what_they_hold() {
+        let mut doc = Document::new_project();
+        let model = doc.get(doc.root()).unwrap().children("ownedElements")[0].clone();
+        let on = "UMLTimingDiagram";
+        let dgm = doc
+            .try_edit(|e| uml::create_diagram(e, &model, on))
+            .unwrap();
+        let add = |doc: &mut Document, tool: &str, container: Option<&str>, name: &str| {
+            let spec = uml::node_spec_on(tool, on).unwrap();
+            let (m, v) = doc
+                .try_edit(|e| uml::create_node(e, &dgm, spec, 0.0, 0.0, container))
+                .unwrap();
+            if let Some(m) = m {
+                doc.edit(|e| e.set(&m, "name", mdj::Field::str(name)));
+            }
+            v
+        };
+        let door = add(&mut doc, "UMLLifeline", None, "door");
+        let open = add(&mut doc, "UMLTimingState", Some(&door), "Open");
+        let closed = add(&mut doc, "UMLTimingState", Some(&door), "Closed");
+        let s1 = add(&mut doc, "UMLTimeSegment", Some(&closed), "");
+        let s2 = add(&mut doc, "UMLTimeSegment", Some(&open), "");
+        let alarm = add(&mut doc, "UMLLifeline", None, "alarm");
+        let ringing = add(&mut doc, "UMLTimingState", Some(&alarm), "Ringing");
+        let a1 = add(&mut doc, "UMLTimeSegment", Some(&ringing), "");
+        let tick = add(&mut doc, "UMLTimeTick", None, "");
+        let spec = uml::edge_spec_on("UMLMessage", on).unwrap();
+        doc.try_edit(|e| uml::create_edge(e, &dgm, spec, &s1, &a1))
+            .unwrap();
+        // Out-of-date stored positions don't matter: the frame arranges.
+        doc.edit(|e| e.set(&s2, "left", mdj::Field::int(900)));
+
+        let scene = build_scene(&doc, &dgm, &Fonts::default());
+        let rect = |v: &str| scene.node_rect(v).unwrap();
+        let (d, a) = (rect(&door), rect(&alarm));
+        assert_eq!(a.y, d.bottom(), "lifelines stack");
+        assert_eq!(rect(&closed).y, rect(&open).bottom(), "states stack");
+        let (r1, r2) = (rect(&s1), rect(&s2));
+        assert_eq!(r2.x, r1.right(), "segments follow one another");
+        assert_eq!(rect(&a1).x, r1.x, "every lifeline's axis starts together");
+        assert_eq!(rect(&tick).x, r1.x, "ticks too");
+        assert!(r1.y > r2.y, "on their state's row (Closed is below Open)");
+        // The step from Closed up to Open, and the message from the end of
+        // the first segment down to the alarm's segment.
+        let has_line = |a: Point, b: Point| {
+            scene.prims.iter().any(|p| {
+                matches!(p, Prim::Line { points, .. }
+                    if points.len() == 2 && points[0] == a && points[1] == b)
+            })
+        };
+        let (m1, m2) = (r1.y + 12.0, r2.y + 12.0);
+        assert!(has_line(Point::new(r2.x, m2), Point::new(r2.x, m1)), "step");
+        assert!(
+            has_line(
+                Point::new(r1.right(), (r1.y + r1.h / 2.0).round()),
+                Point::new(rect(&a1).x, (rect(&a1).y + 12.5).round())
+            ),
+            "message"
+        );
+        // Names: the lifeline's turned, the states' level.
+        let turned = scene.prims.iter().any(
+            |p| matches!(p, Prim::Text { text, style, .. } if text == "door" && style.vertical),
+        );
+        assert!(turned);
+        let svg = crate::to_svg(&scene);
+        assert!(svg.contains("rotate(-90"), "turned in SVG too");
     }
 
     #[test]

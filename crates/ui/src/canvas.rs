@@ -450,7 +450,16 @@ impl Canvas {
                     let mut job = LayoutJob::default();
                     job.append(text, 0.0, format);
                     let galley = painter.layout_job(job);
-                    painter.galley(to_screen(rect.x, rect.y), galley, Color32::BLACK);
+                    if style.vertical {
+                        // Turned a quarter left about its bottom-left corner.
+                        let at = to_screen(rect.x, rect.bottom());
+                        painter.add(
+                            egui::epaint::TextShape::new(at, galley, Color32::BLACK)
+                                .with_angle(-std::f32::consts::FRAC_PI_2),
+                        );
+                    } else {
+                        painter.galley(to_screen(rect.x, rect.y), galley, Color32::BLACK);
+                    }
                 }
             }
         }

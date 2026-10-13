@@ -128,13 +128,23 @@ pub fn to_svg(scene: &Scene) -> String {
                 if style.color != Color::BLACK {
                     attrs += &format!(r#" fill="{}""#, style.color.to_hex());
                 }
-                let _ = writeln!(
-                    s,
-                    r#"<text x="{}" y="{}"{attrs}>{}</text>"#,
-                    fmt(rect.x),
-                    fmt(rect.y + baseline),
-                    escape(text)
-                );
+                if style.vertical {
+                    // Turned a quarter left about the start of the baseline.
+                    let (x, y) = (fmt(rect.x + baseline), fmt(rect.bottom()));
+                    let _ = writeln!(
+                        s,
+                        r#"<text x="{x}" y="{y}" transform="rotate(-90 {x} {y})"{attrs}>{}</text>"#,
+                        escape(text)
+                    );
+                } else {
+                    let _ = writeln!(
+                        s,
+                        r#"<text x="{}" y="{}"{attrs}>{}</text>"#,
+                        fmt(rect.x),
+                        fmt(rect.y + baseline),
+                        escape(text)
+                    );
+                }
             }
         }
     }
