@@ -1,0 +1,29 @@
+[
+  {"cmd": "diagram.add", "params": {"type": "Class Diagram", "name": "Shop"}},
+
+  {"cmd": "node.create", "params": {"kind": "Class", "x": 40, "y": 40, "name": "Customer"}, "as": "customer"},
+  {"cmd": "node.create", "params": {"kind": "Class", "x": 360, "y": 40, "name": "Order"}, "as": "order"},
+  {"cmd": "node.create", "params": {"kind": "Class", "x": 680, "y": 40, "name": "OrderLine"}, "as": "line"},
+  {"cmd": "node.create", "params": {"kind": "Class", "x": 680, "y": 300, "name": "Product"}, "as": "product"},
+  {"cmd": "node.create", "params": {"kind": "Enumeration", "x": 360, "y": 300, "name": "OrderStatus"}, "as": "status"},
+
+  {"cmd": "feature.add", "params": {"classifier": "$customer.model", "kind": "attribute", "name": "email"}},
+  {"cmd": "element.set", "params": {"id": "$prev.id", "values": {"type": "String", "visibility": "private"}}},
+  {"cmd": "feature.add", "params": {"classifier": "$order.model", "kind": "attribute", "name": "status"}},
+  {"cmd": "element.set", "params": {"id": "$prev.id", "values": {"type": "OrderStatus", "visibility": "private"}}},
+  {"cmd": "feature.add", "params": {"classifier": "$order.model", "kind": "operation", "name": "total"}, "as": "total"},
+  {"cmd": "parameter.add", "params": {"operation": "$total.id", "direction": "return"}},
+  {"cmd": "element.set", "params": {"id": "$prev.id", "values": {"type": "Money"}}},
+  {"cmd": "feature.add", "params": {"classifier": "$line.model", "kind": "attribute", "name": "quantity"}},
+  {"cmd": "element.set", "params": {"id": "$prev.id", "values": {"type": "int", "visibility": "private"}}},
+  {"cmd": "feature.add", "params": {"classifier": "$product.model", "kind": "attribute", "name": "price"}},
+  {"cmd": "element.set", "params": {"id": "$prev.id", "values": {"type": "Money", "visibility": "private"}}},
+  {"cmd": "feature.add", "params": {"classifier": "$status.model", "kind": "literal", "name": "OPEN"}},
+  {"cmd": "feature.add", "params": {"classifier": "$status.model", "kind": "literal", "name": "PAID"}},
+  {"cmd": "feature.add", "params": {"classifier": "$status.model", "kind": "literal", "name": "SHIPPED"}},
+
+  {"cmd": "edge.create", "params": {"kind": "Association", "tail": "$customer.view", "head": "$order.view", "name": "places"}},
+  {"cmd": "edge.create", "params": {"kind": "Composition", "tail": "$order.view", "head": "$line.view"}},
+  {"cmd": "edge.create", "params": {"kind": "Association", "tail": "$line.view", "head": "$product.view"}},
+  {"cmd": "edge.create", "params": {"kind": "Dependency", "tail": "$order.view", "head": "$status.view"}}
+]
