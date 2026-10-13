@@ -1,0 +1,18 @@
+sequenceDiagram
+    title Checkout
+    actor C as Customer
+    participant S as Shop
+    participant P as Payments
+    C->>S: checkout(cart)
+    S->>P: charge(total)
+    alt card accepted
+        P--)S: approved
+        S-)C: confirmation
+    else declined
+        P--)S: declined
+        S-)C: please retry
+    end
+    loop every day
+        S->>S: reconcile
+    end
+    Note over S,P: settlement happens overnight
