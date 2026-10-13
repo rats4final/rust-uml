@@ -105,6 +105,8 @@ pub fn reflow(
 
     let mut touched = touched.clone();
     let mut rects: HashMap<Id, Rect> = HashMap::new();
+    // Line part → its lifeline view, so moving a lifeline re-routes its messages.
+    let mut owner_of_line: HashMap<Id, Id> = HashMap::new();
     let mut grow: Vec<(Id, f64, f64)> = Vec::new();
     for id in &views {
         let Some(layout) = doc.get(id).and_then(|v| node_layout(doc, v, fonts)) else {
@@ -115,10 +117,16 @@ pub fn reflow(
             grow.push((id.clone(), layout.rect.w, layout.rect.h));
             touched.insert(id.clone());
         }
+        if let (Some(line), Some(r)) = (v.ref_id("linePart"), crate::scene::line_part_rect(&layout))
+        {
+            rects.insert(line.to_owned(), r);
+            owner_of_line.insert(line.to_owned(), id.clone());
+        }
         rects.insert(id.clone(), layout.rect);
     }
 
     let mut reroute: Vec<(Id, String)> = Vec::new();
+    let mut shift_activation: Vec<(Id, f64)> = Vec::new();
     for id in &views {
         let Some(v) = doc.get(id) else { continue };
         let (Some(tail), Some(head)) = (v.ref_id("tail"), v.ref_id("head")) else {
@@ -127,6 +135,32 @@ pub fn reflow(
         let (Some(tr), Some(hr)) = (rects.get(tail), rects.get(head)) else {
             continue;
         };
+        if v.type_name == "UMLSeqMessageView" {
+            // Messages keep their height and follow their lifelines sideways.
+            let moved = |line: &str| owner_of_line.get(line).is_some_and(|l| touched.contains(l));
+            let stored = parse_points(v.str("points").unwrap_or(""));
+            if keep.contains(id) || (stored.len() >= 2 && !moved(tail) && !moved(head)) {
+                continue;
+            }
+            let y = stored.first().map_or(tr.y + 30.0, |p| p.1);
+            let (x1, x2) = (tr.x, hr.x);
+            let pts = if tail == head {
+                vec![
+                    (x1, y),
+                    (x1 + 40.0, y),
+                    (x1 + 40.0, y + 20.0),
+                    (x1, y + 20.0),
+                ]
+            } else {
+                vec![(x1, y), (x2, y)]
+            };
+            reroute.push((id.clone(), format_points(&pts)));
+            if let Some(act) = v.ref_id("activation").and_then(|a| doc.get(a)) {
+                let w = act.num("width", 14.0);
+                shift_activation.push((act.id.clone(), x2 - w / 2.0));
+            }
+            continue;
+        }
         let stored: Vec<Point> = parse_points(v.str("points").unwrap_or(""))
             .into_iter()
             .map(|(x, y)| Point::new(x, y))
@@ -150,6 +184,9 @@ pub fn reflow(
     }
     for (id, pts) in reroute {
         e.set(&id, "points", Field::str(pts));
+    }
+    for (id, left) in shift_activation {
+        e.set(&id, "left", Field::int(left.round() as i64));
     }
 }
 

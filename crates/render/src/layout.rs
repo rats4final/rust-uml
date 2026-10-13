@@ -32,6 +32,8 @@ pub(crate) const ROUND: f64 = 10.0;
 pub(crate) const LANE_HEADER: f64 = 24.0;
 /// Height of an actor's stick figure (StarUML: 55).
 pub(crate) const ACTOR_FIGURE_H: f64 = 55.0;
+/// Height of a sequence lifeline's head box (StarUML: 40).
+pub(crate) const LIFELINE_HEAD: f64 = 40.0;
 
 /// Horizontal placement of a line inside its compartment.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -120,6 +122,15 @@ pub enum Shape {
     Swimlane {
         vertical: bool,
         header: Rect,
+    },
+    /// A sequence lifeline: a head box with a dashed line down from its centre.
+    Lifeline {
+        head: Rect,
+    },
+    /// A frame (diagram frame, combined fragment): an outline with a
+    /// pentagon name tag at the top-left; transparent inside.
+    Frame {
+        tag: Rect,
     },
 }
 
@@ -255,6 +266,12 @@ fn shape_of(view: &Element, model: Option<&Element>) -> Shape {
         "UMLActorView" => Shape::Actor {
             figure: Rect::default(),
         },
+        "UMLSeqLifelineView" => Shape::Lifeline {
+            head: Rect::default(),
+        },
+        "UMLFrameView" | "UMLCombinedFragmentView" => Shape::Frame {
+            tag: Rect::default(),
+        },
         "UMLSwimlaneView" => Shape::Swimlane {
             vertical: view.bool("isVertical", true),
             header: Rect::default(),
@@ -289,6 +306,15 @@ fn heading(doc: &Document, view: &Element, m: &Element) -> (String, bool) {
         | "UMLComponentInstanceView"
         | "UMLNodeInstanceView" => (uml::instance_text(doc, m), true),
         "UMLPartView" => (uml::part_text(doc, m), false),
+        // `name : Type`, the type coming from the role the lifeline represents.
+        "UMLSeqLifelineView" => {
+            let ty = m
+                .ref_id("represent")
+                .and_then(|r| doc.get(r))
+                .map(|role| uml::var_text(doc, role, "type"))
+                .unwrap_or("");
+            (uml::typed_name(m.name(), ty), false)
+        }
         "UMLCollaborationUseView" => (
             uml::typed_name(m.name(), uml::var_text(doc, m, "type")),
             false,
@@ -415,6 +441,82 @@ pub fn node_layout(doc: &Document, view: &Element, fonts: &Fonts) -> Option<Node
             icon: None,
             outside,
             dividers: Vec::new(),
+        });
+    }
+
+    // Frames and combined fragments: a tag with the kind and name, then (for
+    // fragments) one area per operand with its guard.
+    if matches!(shape, Shape::Frame { .. }) {
+        let tag_text = match model {
+            Some(m) if m.type_name == "UMLCombinedFragment" => {
+                m.str("interactionOperator").unwrap_or("alt").to_owned()
+            }
+            Some(m) => {
+                let kind = match m.type_name.as_str() {
+                    "UMLSequenceDiagram" | "UMLCommunicationDiagram" | "UMLTimingDiagram" => "sd",
+                    "UMLActivityDiagram" => "act",
+                    "UMLStatechartDiagram" => "stm",
+                    "UMLComponentDiagram" => "cmp",
+                    "UMLUseCaseDiagram" => "uc",
+                    _ => "pkg",
+                };
+                format!("{kind} {}", m.name())
+            }
+            None => String::new(),
+        };
+        let tag_w = fonts.width(&tag_text, size, true, false) + 2.0 * PAD_X + 8.0;
+        let tag = Rect::new(stored.x, stored.y, tag_w, line_h + 2.0 * PAD_Y);
+        let min_w = (tag_w + 20.0).ceil();
+        let min_h = (tag.h + 20.0).ceil();
+        let rect = Rect::new(stored.x, stored.y, stored.w.max(min_w), stored.h.max(min_h));
+        let mut compartments = vec![Compartment {
+            lines: vec![TextLine {
+                bold: true,
+                ..TextLine::aligned(tag_text, HAlign::Left)
+            }],
+            rect: tag,
+        }];
+        let mut dividers = Vec::new();
+        let operands: Vec<&Element> = model
+            .map(|m| {
+                m.children("operands")
+                    .iter()
+                    .filter_map(|id| doc.get(id))
+                    .collect()
+            })
+            .unwrap_or_default();
+        if !operands.is_empty() {
+            let each = (rect.bottom() - tag.bottom()) / operands.len() as f64;
+            for (i, op) in operands.iter().enumerate() {
+                let top = tag.bottom() + each * i as f64;
+                if i > 0 {
+                    dividers.push((Point::new(rect.x, top), Point::new(rect.right(), top), true));
+                }
+                let guard = op.str("guard").unwrap_or("");
+                if !guard.is_empty() {
+                    compartments.push(Compartment {
+                        lines: vec![TextLine::aligned(format!("[{guard}]"), HAlign::Left)],
+                        rect: Rect::new(rect.x, top, rect.w, line_h + 2.0 * PAD_Y),
+                    });
+                }
+            }
+        }
+        return Some(NodeLayout {
+            rect,
+            min_w,
+            min_h,
+            shape: Shape::Frame { tag },
+            compartments,
+            separators: false,
+            font_size: size,
+            fill,
+            line,
+            text,
+            active: false,
+            dashed: false,
+            icon: None,
+            outside: Vec::new(),
+            dividers,
         });
     }
 
@@ -567,7 +669,10 @@ pub fn node_layout(doc: &Document, view: &Element, fonts: &Fonts) -> Option<Node
     } else {
         0
     };
-    if view.type_name == "UMLStateView" {
+    if matches!(
+        view.type_name.as_str(),
+        "UMLStateView" | "UMLSeqLifelineView"
+    ) {
         groups.truncate(1);
     }
 
@@ -595,6 +700,7 @@ pub fn node_layout(doc: &Document, view: &Element, fonts: &Fonts) -> Option<Node
     // Where the compartments go inside the outline, and the outline's minimum size.
     let (min_w, min_h) = match shape {
         Shape::Actor { .. } => (min_w.max(26.0), content_h + ACTOR_FIGURE_H),
+        Shape::Lifeline { .. } => (min_w.max(30.0), LIFELINE_HEAD.max(content_h) + 50.0),
         Shape::Swimlane { vertical: true, .. } => {
             (min_w.max(60.0), (content_h + 40.0).max(LANE_HEADER + 40.0))
         }
@@ -636,6 +742,16 @@ pub fn node_layout(doc: &Document, view: &Element, fonts: &Fonts) -> Option<Node
         ),
         // Name below the figure.
         Shape::Actor { .. } => Rect::new(rect.x, rect.bottom() - content_h, rect.w, content_h),
+        // Name centred in the head box.
+        Shape::Lifeline { .. } => {
+            let head_h = LIFELINE_HEAD.max(content_h);
+            Rect::new(
+                rect.x,
+                rect.y + (head_h - content_h) / 2.0,
+                rect.w,
+                content_h,
+            )
+        }
         // Name in the band (top for vertical lanes; top-left of the lane otherwise).
         Shape::Swimlane { vertical: true, .. } => Rect::new(rect.x, rect.y, rect.w, LANE_HEADER),
         Shape::Swimlane {
@@ -667,6 +783,9 @@ pub fn node_layout(doc: &Document, view: &Element, fonts: &Fonts) -> Option<Node
         },
         Shape::Actor { .. } => Shape::Actor {
             figure: Rect::new(rect.x, rect.y, rect.w, rect.h - content_h),
+        },
+        Shape::Lifeline { .. } => Shape::Lifeline {
+            head: Rect::new(rect.x, rect.y, rect.w, LIFELINE_HEAD.max(content_h)),
         },
         Shape::Swimlane { vertical, .. } => Shape::Swimlane {
             vertical,

@@ -140,7 +140,15 @@ pub fn build_scene(doc: &Document, diagram: &str, fonts: &Fonts) -> Scene {
         .iter()
         .filter_map(|v| Some((v.id.as_str(), node_layout(doc, v, fonts)?)))
         .collect();
-    let rects: HashMap<&str, Rect> = layouts.iter().map(|(k, l)| (*k, l.rect)).collect();
+    let mut rects: HashMap<&str, Rect> = layouts.iter().map(|(k, l)| (*k, l.rect)).collect();
+    // Sequence messages attach to lifelines' line parts (sub-views): give them rects.
+    for v in &views {
+        if let (Some(layout), Some(line)) = (layouts.get(v.id.as_str()), v.ref_id("linePart"))
+            && let Some(r) = line_part_rect(layout)
+        {
+            rects.insert(line, r);
+        }
+    }
 
     let mut bounds: Option<Rect> = None;
     let mut grow = |r: Rect| bounds = Some(bounds.map_or(r, |b| b.union(&r)));
@@ -148,9 +156,14 @@ pub fn build_scene(doc: &Document, diagram: &str, fonts: &Fonts) -> Scene {
     for view in views {
         if let Some(layout) = layouts.get(view.id.as_str()) {
             draw_node(&mut scene, layout, fonts);
+            // A frame is picked by its tag, so clicks inside reach what it frames.
+            let hit = match layout.shape {
+                Shape::Frame { tag } => tag,
+                _ => layout.rect,
+            };
             scene.hits.push(Hit {
                 view: view.id.clone(),
-                shape: HitShape::Rect(layout.rect),
+                shape: HitShape::Rect(hit),
             });
             grow(layout.rect);
         } else if let Some(points) = edge_points(view, &rects) {
@@ -284,6 +297,38 @@ fn draw_node(scene: &mut Scene, l: &NodeLayout, fonts: &Fonts) {
         Shape::Swimlane { header, .. } => {
             rect(scene, r);
             rect(scene, header);
+        }
+        Shape::Lifeline { head } => {
+            rect(scene, head);
+            scene.prims.push(Prim::Line {
+                points: vec![
+                    Point::new(r.center().x, head.bottom()),
+                    Point::new(r.center().x, r.bottom()),
+                ],
+                stroke,
+                dashed: true,
+            });
+        }
+        Shape::Frame { tag } => {
+            scene.prims.push(Prim::Rect {
+                rect: r,
+                fill: None,
+                stroke,
+                dashed: false,
+            });
+            // The name tag: a pentagon with its bottom-right corner cut.
+            let cut = 6.0;
+            scene.prims.push(Prim::Polygon {
+                points: vec![
+                    Point::new(tag.x, tag.y),
+                    Point::new(tag.right(), tag.y),
+                    Point::new(tag.right(), tag.bottom() - cut),
+                    Point::new(tag.right() - cut, tag.bottom()),
+                    Point::new(tag.x, tag.bottom()),
+                ],
+                fill,
+                stroke,
+            });
         }
         Shape::Lollipop { circle } => {
             scene.prims.push(Prim::Ellipse {
@@ -545,6 +590,20 @@ fn draw_icon(scene: &mut Scene, icon: Icon, r: Rect, stroke: Color, fill: Color)
     }
 }
 
+/// The dashed line of a lifeline: from just below the head to the bottom, at the centre.
+pub(crate) fn line_part_rect(layout: &NodeLayout) -> Option<Rect> {
+    let Shape::Lifeline { head } = layout.shape else {
+        return None;
+    };
+    let r = layout.rect;
+    Some(Rect::new(
+        r.center().x,
+        head.bottom() + 1.0,
+        0.0,
+        (r.bottom() - head.bottom() - 1.0).max(0.0),
+    ))
+}
+
 fn edge_points(view: &Element, rects: &HashMap<&str, Rect>) -> Option<Vec<Point>> {
     let tail = rects.get(view.ref_id("tail")?)?;
     let head = rects.get(view.ref_id("head")?)?;
@@ -569,6 +628,8 @@ enum EndMark {
     FilledDiamond,
     /// ⊕ at the container end of a containment line.
     CirclePlus,
+    /// Open arrow and an ✕ (a delete message destroys its target).
+    Destroy,
 }
 
 /// Line style and end markers for an edge view. Associations look at their
@@ -577,6 +638,18 @@ enum EndMark {
 fn edge_style(doc: &Document, view: &Element) -> (bool, EndMark, EndMark) {
     let t = view.type_name.as_str();
     let model = view.ref_id("model").and_then(|m| doc.get(m));
+    if t == "UMLSeqMessageView" {
+        // UML message notation by sort.
+        let sort = model
+            .and_then(|m| m.str("messageSort"))
+            .unwrap_or("synchCall");
+        return match sort {
+            "synchCall" => (false, EndMark::None, EndMark::FilledTriangle),
+            "reply" | "createMessage" => (true, EndMark::None, EndMark::OpenArrow),
+            "deleteMessage" => (false, EndMark::None, EndMark::Destroy),
+            _ => (false, EndMark::None, EndMark::OpenArrow),
+        };
+    }
     if let Some(m) = model.filter(|m| m.get("end1").is_some()) {
         let end = |k: &str| m.children(k).first().and_then(|id| doc.get(id));
         let mark = |k: &str| match end(k) {
@@ -633,6 +706,24 @@ fn draw_edge(
         .str("lineColor")
         .and_then(Color::parse)
         .unwrap_or(Color::BLACK);
+    // A message's activation bar sits under the arrow.
+    if let Some(act) = view.ref_id("activation").and_then(|a| doc.get(a)) {
+        let fill = view
+            .str("fillColor")
+            .and_then(Color::parse)
+            .unwrap_or(Color::WHITE);
+        scene.prims.push(Prim::Rect {
+            rect: Rect::new(
+                act.num("left", 0.0),
+                act.num("top", 0.0),
+                act.num("width", 14.0),
+                act.num("height", 25.0),
+            ),
+            fill: Some(fill),
+            stroke,
+            dashed: false,
+        });
+    }
     let (dashed, tail_mark, head_mark) = edge_style(doc, view);
     scene.prims.push(Prim::Line {
         points: pts.to_vec(),
@@ -668,6 +759,7 @@ fn draw_edge(
                 .map(|m| match m.type_name.as_str() {
                     "UMLTransition" => uml::transition_text(doc, m),
                     "UMLControlFlow" | "UMLObjectFlow" => uml::flow_text(m),
+                    "UMLMessage" => uml::message_text(m),
                     _ => m.name().to_owned(),
                 })
                 .unwrap_or_default(),
@@ -721,8 +813,18 @@ fn draw_edge(
             ),
             None => default_label_placement(key),
         };
-        let anchor = label_point(pts, pos, alpha, distance);
         let w = fonts.width(&text, size, false, false);
+        let anchor = match (view.type_name.as_str(), key, pts) {
+            // A message's name sits above its arrow whichever way it points;
+            // a self message's beside its loop.
+            ("UMLSeqMessageView", "nameLabel", [a, b, ..]) if pts.len() > 2 => {
+                Point::new(b.x + 6.0 + w / 2.0, (a.y + pts[pts.len() - 1].y) / 2.0)
+            }
+            ("UMLSeqMessageView", "nameLabel", [a, b]) => {
+                Point::new((a.x + b.x) / 2.0, a.y.min(b.y) - line_h / 2.0 - 3.0)
+            }
+            _ => label_point(pts, pos, alpha, distance),
+        };
         let rect = Rect::new(anchor.x - w / 2.0, anchor.y - line_h / 2.0, w, line_h);
         scene.prims.push(Prim::Text {
             rect,
@@ -821,6 +923,20 @@ fn draw_mark(scene: &mut Scene, tip: Point, from: Point, mark: EndMark, stroke: 
             }),
             stroke,
         }),
+        EndMark::Destroy => {
+            draw_mark(scene, tip, from, EndMark::OpenArrow, stroke);
+            let k = 8.0;
+            for (dx, dy) in [(k, k), (k, -k)] {
+                scene.prims.push(Prim::Line {
+                    points: vec![
+                        Point::new(tip.x - dx, tip.y - dy),
+                        Point::new(tip.x + dx, tip.y + dy),
+                    ],
+                    stroke,
+                    dashed: false,
+                });
+            }
+        }
         EndMark::CirclePlus => {
             const R: f64 = 7.0;
             let c = at(R, 0.0);
