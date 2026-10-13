@@ -143,5 +143,32 @@ connector="$(run diagram.inspect '{}' | python3 -I -c 'import json,sys; print(ne
 set_field "$(comm UMLForwardMessage "$cs_v" "$cp_v" charge)" arguments '"total"'
 comm UMLReverseMessage "$cs_v" "$connector" confirmation > /dev/null
 
+# --- Interaction overview diagram ------------------------------------------
+diagram UMLInteractionOverviewDiagram "Shopping overview"
+ref_of() { # element field -> the id it refers to
+  run model.get "{\"id\":\"$1\"}" | python3 -I -c 'import json,sys; print(json.load(sys.stdin)["fields"][sys.argv[1]]["$ref"])' "$2"
+}
+read -r _ o_init_v < <(node UMLInitialNode 60 90 "")
+read -r browse browse_v < <(node UMLInteractionUseInOverview 130 70 browse)
+# The use refers to a new interaction; name it for the frame's label.
+set_field "$(ref_of "$(ref_of "$browse" target)" refersTo)" name '"Browse Catalogue"'
+read -r _ o_decide_v < <(node UMLDecisionNode 185 190 "")
+read -r pay pay_v < <(node UMLInteractionInOverview 60 260 pay)
+resize "$pay_v" 260 170
+pay_dgm="$(ref_of "$pay" target)"
+set_field "$pay_dgm" name '"Pay"'
+read -r _ o_end_v < <(node UMLActivityFinalNode 420 197 "")
+edge UMLControlFlow "$o_init_v" "$browse_v" > /dev/null
+edge UMLControlFlow "$browse_v" "$o_decide_v" > /dev/null
+set_field "$(edge UMLControlFlow "$o_decide_v" "$pay_v")" guard '"buy"'
+set_field "$(edge UMLControlFlow "$o_decide_v" "$o_end_v")" guard '"leave"'
+edge UMLControlFlow "$pay_v" "$o_end_v" > /dev/null
+# Draw the inline interaction itself (its own sequence diagram).
+current="$pay_dgm"
+read -r _ pl1_v < <(node UMLLifeline 20 20 customer)
+read -r _ pl2_v < <(node UMLLifeline 200 20 payments)
+msg UMLMessage "$pl1_v" "$pl2_v" 110 pay > /dev/null
+msg UMLReplyMessage "$pl2_v" "$pl1_v" 160 receipt > /dev/null
+
 mv "$file" "$out"
 echo "wrote $out"

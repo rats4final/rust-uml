@@ -125,5 +125,14 @@ read -r _ meta_v < <(node UMLMetaClass 300 60 Class)
 read -r _ entity_v < <(node UMLStereotype 40 60 Entity)
 edge UMLExtension "$entity_v" "$meta_v" > /dev/null
 
+# --- Information flow diagram ----------------------------------------------
+diagram UMLInformationFlowDiagram "Payment information"
+read -r _ cust_v < <(node UMLActor 40 60 Customer)
+read -r _ shop_v < <(node UMLClass 260 60 Shop)
+read -r _ bank_v < <(node UMLClass 520 60 Bank)
+node UMLInformationItem 260 220 PaymentDetails > /dev/null
+set_field "$(edge UMLInformationFlow "$cust_v" "$shop_v")" name '"card details"'
+set_field "$(edge UMLInformationFlow "$shop_v" "$bank_v")" name '"charge request"'
+
 mv "$file" "$out"
 echo "wrote $out"
