@@ -232,6 +232,21 @@ pub fn target_for(
                 container: None,
             })
         }
+        Slot::Participants | Slot::Fragments => {
+            let interaction = doc
+                .get(&diagram_owner)
+                .filter(|o| o.type_name == "UMLInteraction")
+                .ok_or("Lifelines belong to an interaction: add a Sequence Diagram (Model ▸ Add Diagram).")?;
+            Ok(Target {
+                owner: interaction.id.clone(),
+                list: if spec.slot == Slot::Participants {
+                    "participants"
+                } else {
+                    "fragments"
+                },
+                container: None,
+            })
+        }
         Slot::ActivityNodes | Slot::ActivityGroups => {
             let activity = doc
                 .get(&diagram_owner)
@@ -284,7 +299,11 @@ pub fn create_node(
                 let child = Element::new(e.new_id(), *child_type);
                 tree.child(0, list, child);
             }
-            Some(e.append(&target.owner, target.list, tree.elements))
+            let id = e.append(&target.owner, target.list, tree.elements);
+            if spec.id == "UMLLifeline" {
+                add_lifeline_role(e, &target.owner, &id);
+            }
+            Some(id)
         }
         None => None,
     };
@@ -295,6 +314,30 @@ pub fn create_node(
     };
     let view = add_node_view(e, diagram, spec, model_id.as_deref(), x, y, container);
     Ok((model_id, view))
+}
+
+/// As StarUML: a new lifeline represents a new role attribute `RoleN` of the
+/// classifier (usually a collaboration) that owns the interaction.
+fn add_lifeline_role(e: &mut Editor, interaction: &str, lifeline: &str) {
+    let Some(classifier) = e.doc().get(interaction).and_then(|i| i.parent.clone()) else {
+        return;
+    };
+    let is_classifier = e
+        .doc()
+        .get(&classifier)
+        .is_some_and(|c| !matches!(c.type_name.as_str(), "UMLModel" | "UMLPackage" | "Project"));
+    if !is_classifier {
+        return;
+    }
+    let taken = e
+        .doc()
+        .get(&classifier)
+        .map(|c| c.children("attributes").len())
+        .unwrap_or(0);
+    let role = Element::new(e.new_id(), "UMLAttribute")
+        .with("name", Field::str(format!("Role{}", taken + 1)));
+    let role = e.append(&classifier, "attributes", vec![role]);
+    e.set(lifeline, "represent", Field::Ref(role));
 }
 
 /// Top-left for a box of `size` centred on the nearest point of `container`'s border.
@@ -420,11 +463,41 @@ pub fn add_node_view(
                 .map(|el| el.children(list_key).to_vec())
                 .unwrap_or_default();
             for item in items {
-                let v = row_view(e, item_view, &item);
-                t.child(ci, "subViews", v);
+                match item_view {
+                    // Regions are boxes, not text rows.
+                    "UMLRegionView" => {
+                        let v = sub_view(e, item_view).with("model", Field::Ref(item));
+                        t.child(ci, "subViews", v);
+                    }
+                    // An operand is a box with a guard label.
+                    "UMLInteractionOperandView" => {
+                        let v = sub_view(e, item_view).with("model", Field::Ref(item));
+                        let (vi, _) = t.child(ci, "subViews", v);
+                        let (_, gid) = t.child(vi, "subViews", sub_view(e, "LabelView"));
+                        t.set(vi, "guardLabel", Field::Ref(gid));
+                    }
+                    _ => {
+                        let v = row_view(e, item_view, &item);
+                        t.child(ci, "subViews", v);
+                    }
+                }
             }
         }
         t.set(0, key, Field::Ref(cid));
+    }
+
+    if spec.view_type == "UMLSeqLifelineView" {
+        // The dashed line below the 40 px head, at the centre (as StarUML arranges it).
+        let line = sub_view(e, "UMLLinePartView")
+            .with("left", Field::int((x + spec.size.0 / 2.0).round() as i64))
+            .with("top", Field::int((y + LIFELINE_HEAD + 1.0).round() as i64))
+            .with("width", Field::int(1))
+            .with(
+                "height",
+                Field::int((spec.size.1 - LIFELINE_HEAD - 1.0).round() as i64),
+            );
+        let (_, lid) = t.child(0, "subViews", line);
+        t.set(0, "linePart", Field::Ref(lid));
     }
 
     let id = e.append(diagram, "ownedViews", t.elements);
@@ -433,6 +506,9 @@ pub fn add_node_view(
     }
     id
 }
+
+/// Height of a sequence lifeline's head box (StarUML: `SEQ_OBJECT_MINHEIGHT`).
+pub const LIFELINE_HEAD: f64 = 40.0;
 
 /// Record `view` in `container`'s `containedViews`.
 fn add_contained(e: &mut Editor, container: &str, view: &str) {
@@ -457,6 +533,7 @@ pub fn compartment_items(compartment_type: &str) -> Option<(&'static str, &'stat
         "UMLEnumerationLiteralCompartmentView" => Some(("literals", "UMLEnumerationLiteralView")),
         "UMLSlotCompartmentView" => Some(("slots", "UMLSlotView")),
         "UMLDecompositionCompartmentView" => Some(("regions", "UMLRegionView")),
+        "UMLInteractionOperandCompartmentView" => Some(("operands", "UMLInteractionOperandView")),
         _ => None,
     }
 }
@@ -471,12 +548,28 @@ pub fn create_edge(
     tail_view: &str,
     head_view: &str,
 ) -> Result<(Option<Id>, Id), String> {
-    // A self transition always loops back to the state it starts on.
-    let head_view = if spec.id == "UMLSelfTransition" {
+    create_edge_at(e, diagram, spec, tail_view, head_view, None)
+}
+
+/// [`create_edge`], with the height where the drag started: sequence messages
+/// are horizontal lines at that height.
+pub fn create_edge_at(
+    e: &mut Editor,
+    diagram: &str,
+    spec: &EdgeSpec,
+    tail_view: &str,
+    head_view: &str,
+    at_y: Option<f64>,
+) -> Result<(Option<Id>, Id), String> {
+    // Self transitions and self messages always loop back to where they start.
+    let head_view = if matches!(spec.id, "UMLSelfTransition" | "UMLSelfMessage") {
         tail_view
     } else {
         head_view
     };
+    if spec.view_type == "UMLSeqMessageView" {
+        return create_message(e, diagram, spec, tail_view, head_view, at_y);
+    }
     let model_of = |v: &str| {
         e.doc()
             .get(v)
@@ -505,9 +598,12 @@ pub fn create_edge(
                     spec.label
                 ));
             };
-            let rel = Element::new(e.new_id(), model_type)
+            let mut rel = Element::new(e.new_id(), model_type)
                 .with("source", Field::Ref(source.clone()))
                 .with("target", Field::Ref(target));
+            for (k, v) in spec.model_fields {
+                rel = rel.with(k, init(*v));
+            }
             let (owner, list) = edge_owner(e.doc(), spec, &source)?;
             Some(e.append(&owner, list, vec![rel]))
         }
@@ -544,6 +640,103 @@ pub fn create_edge(
     Ok((model_id, view))
 }
 
+/// The line part of a lifeline view (messages attach to it), or `view` itself.
+fn line_part_of(doc: &Document, view: &str) -> Id {
+    doc.get(view)
+        .and_then(|v| v.ref_id("linePart"))
+        .unwrap_or(view)
+        .to_owned()
+}
+
+/// Vertical gap between consecutive messages placed without a height.
+const MESSAGE_GAP: f64 = 30.0;
+
+/// A sequence message between two lifelines, drawn at `at_y` (or below the
+/// lowest message so far). Calls get an activation bar on the receiver.
+fn create_message(
+    e: &mut Editor,
+    diagram: &str,
+    spec: &EdgeSpec,
+    tail_view: &str,
+    head_view: &str,
+    at_y: Option<f64>,
+) -> Result<(Option<Id>, Id), String> {
+    let doc = e.doc();
+    let (tail, head) = (line_part_of(doc, tail_view), line_part_of(doc, head_view));
+    let lifeline_of = |line: &str| {
+        doc.get(line)
+            .and_then(|l| l.parent.as_deref())
+            .and_then(|lv| doc.get(lv))
+            .and_then(|lv| lv.ref_id("model"))
+            .map(str::to_owned)
+    };
+    let (Some(source), Some(target)) = (lifeline_of(&tail), lifeline_of(&head)) else {
+        return Err("Messages connect two lifelines.".into());
+    };
+    let line_x = |line: &str| doc.get(line).map_or(0.0, |l| l.num("left", 0.0));
+    let line_top = |line: &str| doc.get(line).map_or(0.0, |l| l.num("top", 0.0));
+    let y = at_y.unwrap_or_else(|| {
+        // Below every message already on the diagram.
+        let lowest = doc
+            .get(diagram)
+            .map(|d| d.children("ownedViews").to_vec())
+            .unwrap_or_default()
+            .iter()
+            .filter_map(|v| doc.get(v))
+            .filter(|v| v.type_name == "UMLSeqMessageView")
+            .filter_map(|v| {
+                mdj::values::parse_points(v.str("points").unwrap_or(""))
+                    .last()
+                    .map(|p| p.1)
+            })
+            .fold(line_top(&tail).max(line_top(&head)), f64::max);
+        lowest + MESSAGE_GAP
+    });
+    let (x1, x2) = (line_x(&tail), line_x(&head));
+    let points = if tail == head {
+        vec![
+            (x1, y),
+            (x1 + 40.0, y),
+            (x1 + 40.0, y + 20.0),
+            (x1, y + 20.0),
+        ]
+    } else {
+        vec![(x1, y), (x2, y)]
+    };
+
+    let mut msg = Element::new(e.new_id(), "UMLMessage")
+        .with("source", Field::Ref(source.clone()))
+        .with("target", Field::Ref(target));
+    for (k, v) in spec.model_fields {
+        msg = msg.with(k, init(*v));
+    }
+    let (owner, list) = edge_owner(e.doc(), spec, &source)?;
+    let model = e.append(&owner, list, vec![msg]);
+
+    let view = add_edge_view(e, diagram, spec, Some(&model), &tail, &head);
+    e.set(&view, "points", Field::str(format_points(&points)));
+    let is_call = !spec.model_fields.iter().any(|(k, v)| {
+        *k == "messageSort" && matches!(v, Init::Str("reply" | "createMessage" | "deleteMessage"))
+    });
+    if is_call {
+        let ax = x2 - ACTIVATION_W / 2.0;
+        let ay = if tail == head { y + 20.0 } else { y };
+        let activation = sub_view(e, "UMLActivationView")
+            .with("model", Field::Ref(model.clone()))
+            .with("left", Field::int(ax.round() as i64))
+            .with("top", Field::int(ay.round() as i64))
+            .with("width", Field::int(ACTIVATION_W as i64))
+            .with("height", Field::int(ACTIVATION_H as i64));
+        let aid = e.append(&view, "subViews", vec![activation]);
+        e.set(&view, "activation", Field::Ref(aid));
+    }
+    Ok((Some(model), view))
+}
+
+/// Activation bar size (StarUML minimum: 14 × 25).
+const ACTIVATION_W: f64 = 14.0;
+const ACTIVATION_H: f64 = 30.0;
+
 /// Where a new relationship from `source` goes, per the spec.
 fn edge_owner(doc: &Document, spec: &EdgeSpec, source: &str) -> Result<(Id, &'static str), String> {
     let parent_of_type = |t: &str| {
@@ -559,6 +752,9 @@ fn edge_owner(doc: &Document, spec: &EdgeSpec, source: &str) -> Result<(Id, &'st
         EdgeOwner::SourceRegion => parent_of_type("UMLRegion")
             .map(|r| (r, "transitions"))
             .ok_or_else(|| "Transitions start from a state or pseudostate.".to_owned()),
+        EdgeOwner::SourceInteraction => parent_of_type("UMLInteraction")
+            .map(|i| (i, "messages"))
+            .ok_or_else(|| "Messages connect lifelines.".to_owned()),
         EdgeOwner::SourceActivity => parent_of_type("UMLActivity")
             .map(|a| (a, "edges"))
             .ok_or_else(|| "Flows start from an action or activity node.".to_owned()),
@@ -670,6 +866,18 @@ pub fn edge_spec_of(doc: &Document, edge_view: &Element) -> Option<&'static Edge
         "UMLTransitionView" if edge_view.ref_id("tail") == edge_view.ref_id("head") => {
             "UMLSelfTransition"
         }
+        "UMLSeqMessageView" => match model
+            .and_then(|m| m.str("messageSort"))
+            .unwrap_or("synchCall")
+        {
+            _ if edge_view.ref_id("tail") == edge_view.ref_id("head") => "UMLSelfMessage",
+            "asynchCall" => "UMLAsyncMessage",
+            "asynchSignal" => "UMLAsyncSignalMessage",
+            "reply" => "UMLReplyMessage",
+            "createMessage" => "UMLCreateMessage",
+            "deleteMessage" => "UMLDeleteMessage",
+            _ => "UMLMessage",
+        },
         other => return EDGES.iter().find(|s| s.view_type == other),
     };
     edge_spec(id)
@@ -684,6 +892,8 @@ pub enum FeatureKind {
     Operation,
     Literal,
     Slot,
+    /// An operand of a combined fragment (alt/par/…).
+    Operand,
 }
 
 impl FeatureKind {
@@ -693,6 +903,7 @@ impl FeatureKind {
             FeatureKind::Operation => "operations",
             FeatureKind::Literal => "literals",
             FeatureKind::Slot => "slots",
+            FeatureKind::Operand => "operands",
         }
     }
     fn model_type(self) -> &'static str {
@@ -701,6 +912,7 @@ impl FeatureKind {
             FeatureKind::Operation => "UMLOperation",
             FeatureKind::Literal => "UMLEnumerationLiteral",
             FeatureKind::Slot => "UMLSlot",
+            FeatureKind::Operand => "UMLInteractionOperand",
         }
     }
     fn compartment_key(self) -> &'static str {
@@ -709,6 +921,7 @@ impl FeatureKind {
             FeatureKind::Operation => "operationCompartment",
             FeatureKind::Literal => "enumerationLiteralCompartment",
             FeatureKind::Slot => "slotCompartment",
+            FeatureKind::Operand => "operandCompartment",
         }
     }
     fn row_view(self) -> &'static str {
@@ -717,6 +930,7 @@ impl FeatureKind {
             FeatureKind::Operation => "UMLOperationView",
             FeatureKind::Literal => "UMLEnumerationLiteralView",
             FeatureKind::Slot => "UMLSlotView",
+            FeatureKind::Operand => "UMLInteractionOperandView",
         }
     }
     fn base_name(self) -> &'static str {
@@ -725,6 +939,7 @@ impl FeatureKind {
             FeatureKind::Operation => "operation",
             FeatureKind::Literal => "literal",
             FeatureKind::Slot => "slot",
+            FeatureKind::Operand => "operand",
         }
     }
 
@@ -734,6 +949,7 @@ impl FeatureKind {
             "operation" => FeatureKind::Operation,
             "literal" => FeatureKind::Literal,
             "slot" => FeatureKind::Slot,
+            "operand" => FeatureKind::Operand,
             _ => return None,
         })
     }
@@ -742,6 +958,7 @@ impl FeatureKind {
     pub fn allowed_on(self, model_type: &str) -> bool {
         match self {
             FeatureKind::Literal => model_type == "UMLEnumeration",
+            FeatureKind::Operand => model_type == "UMLCombinedFragment",
             FeatureKind::Slot => matches!(
                 model_type,
                 "UMLObject" | "UMLArtifactInstance" | "UMLComponentInstance" | "UMLNodeInstance"
@@ -786,8 +1003,17 @@ pub fn add_feature(e: &mut Editor, owner: &str, kind: FeatureKind) -> Id {
         })
         .collect();
     for comp in compartments {
-        let row = row_view(e, kind.row_view(), &feature_id);
-        e.append(&comp, "subViews", vec![row]);
+        if kind == FeatureKind::Operand {
+            // An operand is a box with a guard label, not a text row.
+            let v = sub_view(e, kind.row_view()).with("model", Field::Ref(feature_id.clone()));
+            let mut t = Tree::new(v);
+            let (_, gid) = t.child(0, "subViews", sub_view(e, "LabelView"));
+            t.set(0, "guardLabel", Field::Ref(gid));
+            e.append(&comp, "subViews", t.elements);
+        } else {
+            let row = row_view(e, kind.row_view(), &feature_id);
+            e.append(&comp, "subViews", vec![row]);
+        }
     }
     feature_id
 }
@@ -869,8 +1095,25 @@ pub fn create_diagram(e: &mut Editor, parent: &str, diagram_type: &str) -> Resul
         }
         "UMLActivityDiagram" if parent_type != "UMLActivity" => Some(("UMLActivity", "Activity")),
         "UMLProfileDiagram" if parent_type != "UMLProfile" => Some(("UMLProfile", "Profile")),
+        "UMLSequenceDiagram" if parent_type != "UMLInteraction" => {
+            Some(("UMLInteraction", "Interaction"))
+        }
         _ => None,
     };
+    // A sequence diagram's interaction sits in a collaboration unless added
+    // to a classifier (StarUML's sequenceDiagramFn).
+    let parent = if wrapper.is_some_and(|(w, _)| w == "UMLInteraction")
+        && matches!(
+            parent_type.as_str(),
+            "UMLModel" | "UMLPackage" | "Project" | "UMLSubsystem"
+        ) {
+        let name = unique_name(e.doc(), parent, "Collaboration");
+        let collab = Element::new(e.new_id(), "UMLCollaboration").with("name", Field::str(name));
+        e.append(parent, "ownedElements", vec![collab])
+    } else {
+        parent.to_owned()
+    };
+    let parent = parent.as_str();
     let owner = match wrapper {
         Some((wrapper_type, wrapper_base)) => {
             let name = unique_name(e.doc(), parent, wrapper_base);
@@ -886,5 +1129,26 @@ pub fn create_diagram(e: &mut Editor, parent: &str, diagram_type: &str) -> Resul
     };
     let name = unique_name(e.doc(), &owner, base);
     let diagram = Element::new(e.new_id(), diagram_type).with("name", Field::str(name));
-    Ok(e.append(&owner, "ownedElements", vec![diagram]))
+    let id = e.append(&owner, "ownedElements", vec![diagram]);
+    if diagram_type == "UMLSequenceDiagram" {
+        add_frame(e, &id);
+    }
+    Ok(id)
+}
+
+/// The frame StarUML puts on a new sequence diagram: model = the diagram,
+/// at (8, 8), 700 × 600, with name and frame-type labels.
+fn add_frame(e: &mut Editor, diagram: &str) {
+    let frame = view(e, "UMLFrameView")
+        .with("model", Field::Ref(diagram.to_owned()))
+        .with("left", Field::int(8))
+        .with("top", Field::int(8))
+        .with("width", Field::int(700))
+        .with("height", Field::int(600));
+    let mut t = Tree::new(frame);
+    for key in ["nameLabel", "frameTypeLabel"] {
+        let (_, lid) = t.child(0, "subViews", sub_view(e, "LabelView"));
+        t.set(0, key, Field::Ref(lid));
+    }
+    e.append(diagram, "ownedViews", t.elements);
 }

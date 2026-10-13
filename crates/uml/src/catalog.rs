@@ -17,6 +17,10 @@ pub enum Slot {
     ActivityNodes,
     /// `groups` of the diagram's activity (swimlanes).
     ActivityGroups,
+    /// `participants` of the diagram's interaction (lifelines).
+    Participants,
+    /// `fragments` of the diagram's interaction (combined fragments).
+    Fragments,
 }
 
 /// Whether a node can or must be dropped onto another box.
@@ -29,7 +33,7 @@ pub enum Placement {
 }
 
 /// A value written into a new element.
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Init {
     Str(&'static str),
     Bool(bool),
@@ -579,6 +583,36 @@ pub const NODES: &[NodeSpec] = &[
             (500.0, 150.0),
         )
     },
+    // Sequence diagrams
+    NodeSpec {
+        slot: Slot::Participants,
+        size: (100.0, 260.0),
+        ..node(
+            "UMLLifeline",
+            "Lifeline",
+            "UMLLifeline",
+            "UMLSeqLifelineView",
+            "Lifeline",
+            (100.0, 260.0),
+        )
+    },
+    NodeSpec {
+        slot: Slot::Fragments,
+        name_compartment: false,
+        labels: &["nameLabel", "frameTypeLabel"],
+        // No metamodel default for the operator: write it.
+        model_fields: &[("interactionOperator", Init::Str("alt"))],
+        model_children: &[("operands", "UMLInteractionOperand")],
+        compartments: &[("operandCompartment", "UMLInteractionOperandCompartmentView")],
+        ..node(
+            "UMLCombinedFragment",
+            "Combined Fragment",
+            "UMLCombinedFragment",
+            "UMLCombinedFragmentView",
+            "CombinedFragment",
+            (260.0, 120.0),
+        )
+    },
     // Annotations (no model element)
     NodeSpec {
         model_type: None,
@@ -630,6 +664,8 @@ pub enum EdgeOwner {
     SourceRegion,
     /// `edges` of the activity that holds the source node.
     SourceActivity,
+    /// `messages` of the interaction that holds the source lifeline.
+    SourceInteraction,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -641,6 +677,8 @@ pub struct EdgeSpec {
     pub model: EdgeModel,
     pub labels: EdgeLabels,
     pub owner: EdgeOwner,
+    /// Values written into the new model element (e.g. a message's sort).
+    pub model_fields: &'static [(&'static str, Init)],
 }
 
 const fn directed(
@@ -657,6 +695,7 @@ const fn directed(
         model: EdgeModel::Directed,
         labels: EdgeLabels::General,
         owner: EdgeOwner::Source,
+        model_fields: &[],
     }
 }
 
@@ -681,6 +720,7 @@ const fn undirected(
         },
         labels: EdgeLabels::Ends,
         owner: EdgeOwner::Source,
+        model_fields: &[],
     }
 }
 
@@ -701,6 +741,20 @@ const fn association(
             agg,
             nav,
         )
+    }
+}
+
+/// A sequence-diagram message of the given `messageSort`. The view connects
+/// the two lifelines' dashed line parts.
+const fn message(
+    id: &'static str,
+    label: &'static str,
+    sort: &'static [(&'static str, Init)],
+) -> EdgeSpec {
+    EdgeSpec {
+        owner: EdgeOwner::SourceInteraction,
+        model_fields: sort,
+        ..directed(id, label, "UMLMessage", "UMLSeqMessageView")
     }
 }
 
@@ -834,6 +888,34 @@ pub const EDGES: &[EdgeSpec] = &[
             "UMLObjectFlowView",
         )
     },
+    // synchCall is the metamodel default, so a plain message writes no sort.
+    message("UMLMessage", "Message", &[]),
+    message("UMLSelfMessage", "Self Message", &[]),
+    message(
+        "UMLAsyncMessage",
+        "Async Message",
+        &[("messageSort", Init::Str("asynchCall"))],
+    ),
+    message(
+        "UMLReplyMessage",
+        "Reply Message",
+        &[("messageSort", Init::Str("reply"))],
+    ),
+    message(
+        "UMLCreateMessage",
+        "Create Message",
+        &[("messageSort", Init::Str("createMessage"))],
+    ),
+    message(
+        "UMLDeleteMessage",
+        "Delete Message",
+        &[("messageSort", Init::Str("deleteMessage"))],
+    ),
+    message(
+        "UMLAsyncSignalMessage",
+        "Async Signal Message",
+        &[("messageSort", Init::Str("asynchSignal"))],
+    ),
     EdgeSpec {
         id: "UMLContainment",
         label: "Containment",
@@ -842,6 +924,7 @@ pub const EDGES: &[EdgeSpec] = &[
         model: EdgeModel::ViewOnly,
         labels: EdgeLabels::None,
         owner: EdgeOwner::Source,
+        model_fields: &[],
     },
     EdgeSpec {
         id: "NoteLink",
@@ -851,6 +934,7 @@ pub const EDGES: &[EdgeSpec] = &[
         model: EdgeModel::ViewOnly,
         labels: EdgeLabels::None,
         owner: EdgeOwner::Source,
+        model_fields: &[],
     },
 ];
 
@@ -1032,6 +1116,25 @@ pub const TOOL_GROUPS: &[ToolGroup] = &[
         ],
     },
     ToolGroup {
+        label: "Sequence",
+        diagrams: &["UMLSequenceDiagram"],
+        tools: &[
+            "UMLLifeline",
+            "UMLMessage",
+            "UMLSelfMessage",
+            "UMLAsyncMessage",
+            "UMLReplyMessage",
+            "UMLCreateMessage",
+            "UMLDeleteMessage",
+            "UMLAsyncSignalMessage",
+        ],
+    },
+    ToolGroup {
+        label: "Sequence (Advanced)",
+        diagrams: &["UMLSequenceDiagram"],
+        tools: &["UMLCombinedFragment"],
+    },
+    ToolGroup {
         label: "Annotations",
         diagrams: &[],
         tools: &["Note", "Text", "NoteLink"],
@@ -1066,6 +1169,7 @@ pub const DIAGRAMS: &[(&str, &str, &str)] = &[
         "StatechartDiagram",
     ),
     ("UMLActivityDiagram", "Activity Diagram", "ActivityDiagram"),
+    ("UMLSequenceDiagram", "Sequence Diagram", "SequenceDiagram"),
 ];
 
 /// A tool, either kind.

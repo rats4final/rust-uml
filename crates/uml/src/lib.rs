@@ -13,12 +13,12 @@ pub use catalog::{
 };
 pub use delete::{delete_elements, delete_views};
 pub use factory::{
-    FeatureKind, Target, add_edge_view, add_feature, add_node_view, add_parameter,
-    compartment_items, container_owner, create_diagram, create_edge, create_node, edge_spec_of,
-    owner_for_new_elements, return_parameter, target_for, views_of, with_contained,
+    FeatureKind, LIFELINE_HEAD, Target, add_edge_view, add_feature, add_node_view, add_parameter,
+    compartment_items, container_owner, create_diagram, create_edge, create_edge_at, create_node,
+    edge_spec_of, owner_for_new_elements, return_parameter, target_for, views_of, with_contained,
 };
 pub use text::{
-    attribute_text, flow_text, instance_text, operation_text, part_text, slot_text,
+    attribute_text, flow_text, instance_text, message_text, operation_text, part_text, slot_text,
     stereotype_text, transition_text, typed_name, var_text, visibility_symbol,
 };
 
@@ -170,11 +170,11 @@ mod tests {
                     .unwrap(),
             )
             .unwrap();
-        assert_eq!(
-            doc.get(&decomposition.children("subViews")[0])
-                .unwrap()
-                .type_name,
-            "UMLRegionView"
+        let region_view = doc.get(&decomposition.children("subViews")[0]).unwrap();
+        assert_eq!(region_view.type_name, "UMLRegionView");
+        assert!(
+            region_view.get("horizontalAlignment").is_none(),
+            "regions are boxes, not text rows"
         );
 
         let (t, _) = edge(&mut doc, &dgm, "UMLTransition", &idle_v, &busy_v);
@@ -226,6 +226,81 @@ mod tests {
             doc.get(&f.unwrap()).unwrap().parent.as_deref(),
             Some(activity.as_str())
         );
+    }
+
+    #[test]
+    fn sequence_diagrams_like_staruml() {
+        let mut doc = Document::new_project();
+        let dgm = diagram_offering(&mut doc, "UMLLifeline");
+        // Collaboration → Interaction → diagram, plus a frame showing the diagram.
+        let interaction = doc.get(&dgm).unwrap().parent.clone().unwrap();
+        let collaboration = doc.get(&interaction).unwrap().parent.clone().unwrap();
+        assert_eq!(doc.get(&interaction).unwrap().type_name, "UMLInteraction");
+        assert_eq!(
+            doc.get(&collaboration).unwrap().type_name,
+            "UMLCollaboration"
+        );
+        let frame = doc
+            .get(&doc.get(&dgm).unwrap().children("ownedViews")[0])
+            .unwrap();
+        assert_eq!(frame.type_name, "UMLFrameView");
+        assert_eq!(frame.ref_id("model"), Some(dgm.as_str()));
+
+        let (a, av) = node(&mut doc, &dgm, "UMLLifeline", 50.0, 40.0, None);
+        let (_, bv) = node(&mut doc, &dgm, "UMLLifeline", 250.0, 40.0, None);
+        // Each lifeline represents a new role of the collaboration.
+        let role = doc.get(&a).unwrap().ref_id("represent").unwrap().to_owned();
+        assert_eq!(
+            doc.get(&role).unwrap().parent.as_deref(),
+            Some(collaboration.as_str())
+        );
+        let line_a = doc.get(&av).unwrap().ref_id("linePart").unwrap().to_owned();
+        assert_eq!(
+            doc.get(&line_a).unwrap().num("left", 0.0),
+            100.0,
+            "centred under the head"
+        );
+
+        let spec = edge_spec("UMLMessage").unwrap();
+        let (m, mv) = doc
+            .try_edit(|e| create_edge_at(e, &dgm, spec, &av, &bv, Some(150.0)))
+            .unwrap();
+        let mv = doc.get(&mv).unwrap();
+        assert_eq!(
+            mv.ref_id("tail"),
+            Some(line_a.as_str()),
+            "messages attach to line parts"
+        );
+        assert_eq!(
+            mdj::values::parse_points(mv.str("points").unwrap()),
+            vec![(100.0, 150.0), (300.0, 150.0)]
+        );
+        assert!(
+            mv.ref_id("activation").is_some(),
+            "a call activates the receiver"
+        );
+        assert_eq!(
+            doc.get(&m.unwrap()).unwrap().parent.as_deref(),
+            Some(interaction.as_str())
+        );
+
+        let (_, reply) = edge(&mut doc, &dgm, "UMLReplyMessage", &bv, &av);
+        let reply = doc.get(&reply).unwrap();
+        assert!(reply.ref_id("activation").is_none());
+        let y = mdj::values::parse_points(reply.str("points").unwrap())[0].1;
+        assert!(y > 150.0, "placed below the last message: {y}");
+
+        let (frag, fv) = node(&mut doc, &dgm, "UMLCombinedFragment", 30.0, 120.0, None);
+        assert_eq!(
+            doc.get(&frag).unwrap().str("interactionOperator"),
+            Some("alt")
+        );
+        let comp = doc
+            .get(doc.get(&fv).unwrap().ref_id("operandCompartment").unwrap())
+            .unwrap();
+        let operand_view = doc.get(&comp.children("subViews")[0]).unwrap();
+        assert_eq!(operand_view.type_name, "UMLInteractionOperandView");
+        assert!(operand_view.ref_id("guardLabel").is_some());
     }
 
     #[test]
@@ -371,6 +446,7 @@ mod tests {
             let end_tool = match spec.owner {
                 catalog::EdgeOwner::SourceRegion => "UMLState",
                 catalog::EdgeOwner::SourceActivity => "UMLAction",
+                catalog::EdgeOwner::SourceInteraction => "UMLLifeline",
                 catalog::EdgeOwner::Source => "UMLClass",
             };
             let end_tool = if node_spec(end_tool)

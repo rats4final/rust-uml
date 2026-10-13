@@ -154,6 +154,29 @@ pub fn transition_text(doc: &Document, t: &Element) -> String {
     s
 }
 
+/// A sequence message's label: `[guard] seq: name(arguments)`, with `:=`
+/// for an assignment target, as UML writes it.
+pub fn message_text(msg: &Element) -> String {
+    let field = |k: &str| msg.str(k).unwrap_or("");
+    let mut s = String::new();
+    if !field("guard").is_empty() {
+        s += &format!("[{}] ", field("guard"));
+    }
+    if !field("sequenceNumber").is_empty() {
+        s += &format!("{}: ", field("sequenceNumber"));
+    }
+    if !field("assignmentTarget").is_empty() {
+        s += &format!("{} := ", field("assignmentTarget"));
+    }
+    s += msg.name();
+    let sort = field("messageSort");
+    let is_call = matches!(sort, "" | "synchCall" | "asynchCall");
+    if is_call && !msg.name().is_empty() || !field("arguments").is_empty() {
+        s += &format!("({})", field("arguments"));
+    }
+    s
+}
+
 /// An activity edge's label: `name [guard]`.
 pub fn flow_text(flow: &Element) -> String {
     let guard = flow.str("guard").unwrap_or("");
@@ -183,6 +206,18 @@ mod tests {
             "start [ready] / log"
         );
         assert_eq!(flow_text(doc.get("F").unwrap()), "[x > 0]");
+    }
+
+    #[test]
+    fn message_labels() {
+        let doc = Document::from_json_str(
+            r#"{"_type":"Project","_id":"P","ownedElements":[
+              {"_type":"UMLMessage","_id":"M","name":"pay","arguments":"amount","guard":"ok","sequenceNumber":"2"},
+              {"_type":"UMLMessage","_id":"R","name":"receipt","messageSort":"reply"}]}"#,
+        )
+        .unwrap();
+        assert_eq!(message_text(doc.get("M").unwrap()), "[ok] 2: pay(amount)");
+        assert_eq!(message_text(doc.get("R").unwrap()), "receipt");
     }
 
     #[test]
