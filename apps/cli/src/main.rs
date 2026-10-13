@@ -1,17 +1,13 @@
-//! Headless command line, mirroring StarUML's CLI where it overlaps.
-//!
-//! ```text
-//! rust-uml-cli new      <model.mdj>
-//! rust-uml-cli info     <model.mdj>
-//! rust-uml-cli image    <model.mdj> [-f svg|png] [-o out-dir] [-s scale] [-d diagram-name]
-//! rust-uml-cli commands
-//! rust-uml-cli tools    [diagram-type]
-//! rust-uml-cli run      <model.mdj> <command-id> [json-params] [-o out.mdj] [-d diagram]
-//! ```
+//! Headless command line: StarUML's CLI where it overlaps, plus scripting
+//! and an MCP server for AI agents. `rust-uml-cli help` lists everything;
+//! `rust-uml-cli help <subcommand>` explains one.
 
+use std::io::{BufRead, Write};
 use std::path::{Path, PathBuf};
 
 use anyhow::{Context, anyhow, bail};
+use automation::script::{self, Step};
+use automation::workspace::Workspace;
 use engine::{Registry, Session};
 use serde_json::{Value, json};
 
@@ -25,35 +21,151 @@ fn main() -> std::process::ExitCode {
     }
 }
 
-const USAGE: &str = "usage:
-  rust-uml-cli new      <model.mdj>
-  rust-uml-cli info     <model.mdj>
-  rust-uml-cli image    <model.mdj> [-f svg|png] [-o out-dir] [-s scale] [-d diagram-name]
-  rust-uml-cli commands
-  rust-uml-cli tools    [diagram-type]
-  rust-uml-cli run      <model.mdj> <command-id> [json-params] [-o out.mdj] [-d diagram]";
+/// name, usage, explanation.
+const SUBCOMMANDS: &[(&str, &str, &str)] = &[
+    (
+        "new",
+        "new <model.mdj>",
+        "Create an empty model file.",
+    ),
+    (
+        "info",
+        "info <model.mdj> [--json]",
+        "List the diagrams in a model.",
+    ),
+    (
+        "image",
+        "image <model.mdj> [-f svg|png] [-o out-dir] [-s scale] [-d diagram]",
+        "Export every diagram (or just -d, by id or name) as PNG or SVG, without watermarks.",
+    ),
+    (
+        "run",
+        "run (<model.mdj> | --new) [<command-id> [json-params]]
+      [--cmd <id> [--params <json>] [--as <name>]]... [--script <steps.json>|-]
+      [-d diagram] [-o out.mdj|out.svg|out.png]...",
+        "Run commands on a model, in order, then write the outputs (-o can repeat: .mdj saves the
+model, .svg/.png export the open diagram). Nothing is written if a step fails.
 
-/// Positional arguments and `-x value` options.
-type Args<'a> = (Vec<&'a str>, Vec<(&'a str, &'a str)>);
+Steps come from the positional command, from --cmd/--params/--as, and from a script file: a
+JSON list of {\"cmd\": id, \"params\": {...}, \"as\": name}. A later step can use an earlier
+result: \"$name.view\", \"$name.model\", \"$prev.id\" (start a string with $$ for a literal $).
 
-/// Splits `args` into positional arguments and `-x value` options.
-fn split(args: &[String]) -> anyhow::Result<Args<'_>> {
-    let mut pos = Vec::new();
-    let mut opts = Vec::new();
-    let mut it = args.iter();
-    while let Some(a) = it.next() {
-        if let Some(flag) = a.strip_prefix('-').filter(|f| f.len() == 1) {
-            let v = it.next().ok_or_else(|| anyhow!("-{flag} needs a value"))?;
-            opts.push((flag, v.as_str()));
-        } else {
-            pos.push(a.as_str());
-        }
+Example:
+  rust-uml-cli run --new \\
+    --cmd diagram.add --params '{\"type\": \"Class Diagram\", \"name\": \"Shop\"}' \\
+    --cmd node.create --params '{\"kind\": \"Class\", \"x\": 40, \"y\": 40, \"name\": \"Cart\"}' --as cart \\
+    --cmd node.create --params '{\"kind\": \"Class\", \"x\": 320, \"y\": 40, \"name\": \"Item\"}' --as item \\
+    --cmd edge.create --params '{\"kind\": \"Composition\", \"tail\": \"$cart.view\", \"head\": \"$item.view\"}' \\
+    -o shop.mdj -o shop.png",
+    ),
+    (
+        "batch",
+        "batch --in <dir> --out <dir> [--script <steps.json>] [--image png|svg] [-s scale]",
+        "Apply a script to every .mdj file in a folder and save the results in another folder,
+and/or export every diagram of every file (--image). A file whose script fails is skipped
+and reported; the others still run.",
+    ),
+    (
+        "commands",
+        "commands [filter] [--json]",
+        "List every command with its parameters.",
+    ),
+    (
+        "tools",
+        "tools [diagram-type] [--json]",
+        "List the diagram types, or the kinds node.create and edge.create accept on one.",
+    ),
+    (
+        "mcp",
+        "mcp [--root <dir>]",
+        "Serve the Model Context Protocol on stdin/stdout so AI agents (Claude Code, Claude Desktop,
+...) can build and read models. Files are read and written only inside --root (default: the
+current folder). Example for Claude Code:
+  claude mcp add rust-uml -- rust-uml-cli mcp --root /path/to/models",
+    ),
+    (
+        "help",
+        "help [subcommand]",
+        "Show this list, or explain one subcommand.",
+    ),
+];
+
+fn usage() -> String {
+    let mut s = String::from("rust-uml-cli: UML models from the command line\n\nusage:\n");
+    for (_, u, _) in SUBCOMMANDS {
+        let first = u.lines().next().unwrap_or_default();
+        s.push_str(&format!("  rust-uml-cli {first}\n"));
     }
-    Ok((pos, opts))
+    s.push_str("\n`rust-uml-cli help <subcommand>` explains one.");
+    s
 }
 
-fn opt<'a>(opts: &[(&str, &'a str)], flag: &str) -> Option<&'a str> {
-    opts.iter().rev().find(|(f, _)| *f == flag).map(|(_, v)| *v)
+fn help(name: &str) -> anyhow::Result<String> {
+    let (_, u, about) = SUBCOMMANDS
+        .iter()
+        .find(|(n, _, _)| *n == name)
+        .ok_or_else(|| anyhow!("no subcommand `{name}`\n\n{}", usage()))?;
+    Ok(format!("usage: rust-uml-cli {u}\n\n{about}"))
+}
+
+/// Flags that take a value.
+const VALUE_FLAGS: &[&str] = &[
+    "-o", "-f", "-s", "-d", "--cmd", "--params", "--as", "--script", "--in", "--out", "--image",
+    "--root",
+];
+/// Flags that stand alone.
+const SWITCHES: &[&str] = &["--new", "--json", "--help", "-h"];
+
+/// Command-line words split into positional arguments and flags, in order.
+struct Args {
+    pos: Vec<String>,
+    flags: Vec<(String, String)>,
+}
+
+impl Args {
+    fn parse(words: &[String]) -> anyhow::Result<Self> {
+        let mut pos = Vec::new();
+        let mut flags = Vec::new();
+        let mut it = words.iter();
+        while let Some(w) = it.next() {
+            if VALUE_FLAGS.contains(&w.as_str()) {
+                let v = it.next().ok_or_else(|| anyhow!("{w} needs a value"))?;
+                flags.push((w.clone(), v.clone()));
+            } else if SWITCHES.contains(&w.as_str()) {
+                flags.push((w.clone(), String::new()));
+            } else if w.starts_with('-') && w.len() > 1 && !looks_like_json(w) {
+                bail!("unknown option {w}");
+            } else {
+                pos.push(w.clone());
+            }
+        }
+        Ok(Self { pos, flags })
+    }
+
+    fn has(&self, flag: &str) -> bool {
+        self.flags.iter().any(|(f, _)| f == flag)
+    }
+
+    /// The last value given for `flag`.
+    fn value(&self, flag: &str) -> Option<&str> {
+        self.flags
+            .iter()
+            .rev()
+            .find(|(f, _)| f == flag)
+            .map(|(_, v)| v.as_str())
+    }
+
+    fn values(&self, flag: &str) -> impl Iterator<Item = &str> {
+        self.flags
+            .iter()
+            .filter(move |(f, _)| f == flag)
+            .map(|(_, v)| v.as_str())
+    }
+}
+
+/// Negative numbers and JSON can start with `-`; nothing else here does.
+fn looks_like_json(w: &str) -> bool {
+    w[1..].starts_with(|c: char| c.is_ascii_digit() || c == '.')
 }
 
 fn load(path: &str) -> anyhow::Result<Session> {
@@ -65,11 +177,36 @@ fn load(path: &str) -> anyhow::Result<Session> {
     Session::open(&text, name, Some(path.to_owned())).with_context(|| format!("loading {path}"))
 }
 
-fn run(args: Vec<String>) -> anyhow::Result<()> {
-    let (pos, opts) = split(&args)?;
+fn print_json(v: &Value) -> anyhow::Result<()> {
+    println!("{}", serde_json::to_string_pretty(v)?);
+    Ok(())
+}
+
+fn run(words: Vec<String>) -> anyhow::Result<()> {
+    let args = Args::parse(&words)?;
+    let Some(sub) = args.pos.first().map(String::as_str) else {
+        if args.has("--help") || args.has("-h") {
+            println!("{}", usage());
+            return Ok(());
+        }
+        bail!("{}", usage());
+    };
+    if args.has("--help") || args.has("-h") {
+        println!("{}", help(sub)?);
+        return Ok(());
+    }
+    let rest: Vec<&str> = args.pos[1..].iter().map(String::as_str).collect();
     let reg = Registry::default();
-    match pos.as_slice() {
-        ["new", file] => {
+    match (sub, rest.as_slice()) {
+        ("help", []) => {
+            println!("{}", usage());
+            Ok(())
+        }
+        ("help", [name]) => {
+            println!("{}", help(name)?);
+            Ok(())
+        }
+        ("new", [file]) => {
             if Path::new(file).exists() {
                 bail!("{file} already exists");
             }
@@ -77,130 +214,367 @@ fn run(args: Vec<String>) -> anyhow::Result<()> {
             println!("created {file}");
             Ok(())
         }
-        ["info", file] => {
+        ("info", [file]) => info(&reg, file, args.has("--json")),
+        ("image", [file]) => {
             let mut s = load(file)?;
-            let diagrams = reg.run(&mut s, "model.diagrams", &json!({}))?;
-            println!("{}: {} elements", file, s.doc.len());
-            for d in diagrams.as_array().into_iter().flatten() {
-                println!(
-                    "  {:<28} {:<32} {} views",
-                    d["type"].as_str().unwrap_or(""),
-                    d["name"].as_str().unwrap_or(""),
-                    d["views"]
-                );
+            let format = args.value("-f").unwrap_or("png");
+            let out = PathBuf::from(args.value("-o").unwrap_or("."));
+            let scale = scale(&args)?;
+            let written = export_all(&reg, &mut s, &out, None, format, scale, args.value("-d"))?;
+            for p in &written {
+                println!("{}", p.display());
             }
-            Ok(())
-        }
-        ["image", file] => {
-            let mut s = load(file)?;
-            let format = opt(&opts, "f").unwrap_or("png");
-            if !["png", "svg"].contains(&format) {
-                bail!("-f must be png or svg");
-            }
-            let out = PathBuf::from(opt(&opts, "o").unwrap_or("."));
-            std::fs::create_dir_all(&out)?;
-            let only = opt(&opts, "d");
-            let scale: f64 = opt(&opts, "s").map(str::parse).transpose()?.unwrap_or(2.0);
-            let diagrams = reg.run(&mut s, "model.diagrams", &json!({}))?;
-            let mut written = 0;
-            for d in diagrams.as_array().into_iter().flatten() {
-                let name = d["name"].as_str().unwrap_or("diagram");
-                if only.is_some_and(|o| o != name) || d["views"] == 0 {
-                    continue;
-                }
-                let params = json!({ "diagram": d["id"], "scale": scale });
-                let path = out.join(format!("{}.{format}", safe_name(name)));
-                if format == "svg" {
-                    let r = reg.run(&mut s, "export.svg", &params)?;
-                    std::fs::write(&path, r["svg"].as_str().unwrap_or(""))?;
-                } else {
-                    use base64::Engine as _;
-                    let r = reg.run(&mut s, "export.png", &params)?;
-                    let b64 = r["png_base64"].as_str().unwrap_or("");
-                    std::fs::write(
-                        &path,
-                        base64::engine::general_purpose::STANDARD.decode(b64)?,
-                    )?;
-                }
-                println!("{}", path.display());
-                written += 1;
-            }
-            if written == 0 {
+            if written.is_empty() {
                 bail!("no matching diagram with content");
             }
             Ok(())
         }
-        ["tools", rest @ ..] => {
-            // What node.create / edge.create accept, per diagram type.
-            let types: Vec<&str> = match rest {
-                [] => uml::DIAGRAMS.iter().map(|(t, _, _)| *t).collect(),
-                [t] => vec![*t],
-                _ => bail!("{USAGE}"),
-            };
-            for t in types {
-                println!("{t}");
-                for g in uml::tool_groups(t) {
-                    let tools: Vec<String> = g
-                        .tools
-                        .iter()
-                        .filter_map(|id| uml::tool(id))
-                        .map(|tool| match tool {
-                            uml::Tool::Node(n) => format!("{} (box)", n.id),
-                            uml::Tool::Edge(e) => format!("{} (line)", e.id),
+        ("tools", rest) if rest.len() <= 1 => tools(rest.first().copied(), args.has("--json")),
+        ("commands", rest) if rest.len() <= 1 => {
+            let filter = rest.first().map(|f| f.to_lowercase());
+            let specs = reg.specs().iter().filter(|c| {
+                filter.as_ref().is_none_or(|f| {
+                    c.id.contains(f.as_str()) || c.label.to_lowercase().contains(f.as_str())
+                })
+            });
+            if args.has("--json") {
+                let list: Vec<Value> = specs
+                    .map(|c| {
+                        json!({
+                            "id": c.id, "label": c.label, "params": c.params,
+                            "menu": c.menu, "shortcut": c.shortcut,
                         })
-                        .collect();
-                    println!("  {:<20} {}", g.label, tools.join(", "));
-                }
+                    })
+                    .collect();
+                return print_json(&Value::Array(list));
+            }
+            for c in specs {
+                println!("{:<26} {}\n{:<26} params: {}", c.id, c.label, "", c.params);
             }
             Ok(())
         }
-        ["commands"] => {
-            for spec in reg.specs() {
-                println!(
-                    "{:<26} {}\n{:<26} params: {}",
-                    spec.id, spec.label, "", spec.params
-                );
-            }
-            Ok(())
+        ("run", rest) => run_steps(&reg, &args, rest),
+        ("batch", []) => batch(&reg, &args),
+        ("mcp", []) => mcp(&args),
+        (sub, _) if SUBCOMMANDS.iter().any(|(n, _, _)| *n == sub) => {
+            bail!("{}", help(sub)?)
         }
-        ["run", file, command, rest @ ..] => {
-            let mut s = load(file)?;
-            let params: Value = match rest {
-                [] => json!({}),
-                [p] => serde_json::from_str(p).context("params must be JSON")?,
-                _ => bail!("{USAGE}"),
-            };
-            // `-d`: the diagram to work on (id or name); otherwise the file's default.
-            if let Some(d) = opt(&opts, "d") {
-                let id = find_diagram(&reg, &mut s, d)?;
-                reg.run(&mut s, "diagram.open", &json!({ "id": id }))?;
-            }
-            let result = reg.run(&mut s, command, &params)?;
-            println!("{}", serde_json::to_string_pretty(&result)?);
-            if let Some(out) = opt(&opts, "o") {
-                std::fs::write(out, s.to_json()?).with_context(|| format!("writing {out}"))?;
-                eprintln!("saved {out}");
-            }
-            Ok(())
-        }
-        _ => bail!("{USAGE}"),
+        _ => bail!("{}", usage()),
     }
 }
 
-/// A diagram's id, given its id or its (unique) name.
-fn find_diagram(reg: &Registry, s: &mut Session, wanted: &str) -> anyhow::Result<String> {
-    let diagrams = reg.run(s, "model.diagrams", &json!({}))?;
-    let matches: Vec<&Value> = diagrams
-        .as_array()
-        .into_iter()
-        .flatten()
-        .filter(|d| d["id"] == wanted || d["name"] == wanted)
-        .collect();
-    match matches.as_slice() {
-        [d] => Ok(d["id"].as_str().unwrap_or_default().to_owned()),
-        [] => bail!("no diagram `{wanted}`"),
-        _ => bail!("several diagrams are named `{wanted}`; use its id"),
+fn scale(args: &Args) -> anyhow::Result<f64> {
+    let s: f64 = args
+        .value("-s")
+        .map(str::parse)
+        .transpose()
+        .context("-s must be a number")?
+        .unwrap_or(2.0);
+    if !(0.1..=8.0).contains(&s) {
+        bail!("-s must be 0.1–8");
     }
+    Ok(s)
+}
+
+fn info(reg: &Registry, file: &str, as_json: bool) -> anyhow::Result<()> {
+    let mut s = load(file)?;
+    let diagrams = reg.run(&mut s, "model.diagrams", &json!({}))?;
+    if as_json {
+        return print_json(&json!({ "file": file, "elements": s.doc.len(), "diagrams": diagrams }));
+    }
+    println!("{}: {} elements", file, s.doc.len());
+    for d in diagrams.as_array().into_iter().flatten() {
+        println!(
+            "  {:<28} {:<32} {} views",
+            d["type"].as_str().unwrap_or(""),
+            d["name"].as_str().unwrap_or(""),
+            d["views"]
+        );
+    }
+    Ok(())
+}
+
+fn tools(diagram_type: Option<&str>, as_json: bool) -> anyhow::Result<()> {
+    if as_json {
+        return print_json(&automation::toolbox(diagram_type).map_err(|e| anyhow!(e))?);
+    }
+    let types: Vec<String> = match diagram_type {
+        None => uml::DIAGRAMS
+            .iter()
+            .map(|(t, _, _)| (*t).to_owned())
+            .collect(),
+        Some(t) => {
+            let found = automation::toolbox(Some(t)).map_err(|e| anyhow!(e))?;
+            vec![found["type"].as_str().unwrap_or(t).to_owned()]
+        }
+    };
+    for t in types {
+        let tb = automation::toolbox(Some(&t)).map_err(|e| anyhow!(e))?;
+        println!("{t}");
+        for g in tb["groups"].as_array().into_iter().flatten() {
+            let tools: Vec<String> = g["tools"]
+                .as_array()
+                .into_iter()
+                .flatten()
+                .map(|tool| {
+                    let kind = tool["kind"].as_str().unwrap_or_default();
+                    match tool["shape"].as_str() {
+                        Some("line") => format!("{kind} (line)"),
+                        _ => format!("{kind} (box)"),
+                    }
+                })
+                .collect();
+            println!(
+                "  {:<20} {}",
+                g["group"].as_str().unwrap_or(""),
+                tools.join(", ")
+            );
+        }
+    }
+    Ok(())
+}
+
+/// The steps given on the command line, in order.
+fn collect_steps(args: &Args, positional: &[&str]) -> anyhow::Result<Vec<Step>> {
+    let mut steps = Vec::new();
+    match positional {
+        [] => {}
+        [cmd] => steps.push(Step::new(*cmd, json!({}))),
+        [cmd, params] => {
+            let p: Value = serde_json::from_str(params).context("params must be JSON")?;
+            steps.push(Step::new(*cmd, p));
+        }
+        _ => bail!("{}", help("run")?),
+    }
+    for (flag, value) in &args.flags {
+        match flag.as_str() {
+            "--cmd" => steps.push(Step::new(value.clone(), json!({}))),
+            "--params" | "--as" => {
+                let Some(last) = steps.last_mut() else {
+                    bail!("{flag} must follow a --cmd");
+                };
+                if flag == "--params" {
+                    last.params = serde_json::from_str(value)
+                        .with_context(|| format!("--params for {} must be JSON", last.cmd))?;
+                } else {
+                    // Validate the name the same way script files are.
+                    let parsed = script::parse_steps(&json!([{ "cmd": last.cmd, "as": value }]))
+                        .map_err(|e| anyhow!("--as {value}: {e}"))?;
+                    last.name = parsed.into_iter().next().and_then(|s| s.name);
+                }
+            }
+            "--script" => {
+                let text = if value == "-" {
+                    std::io::read_to_string(std::io::stdin()).context("reading the script")?
+                } else {
+                    std::fs::read_to_string(value).with_context(|| format!("reading {value}"))?
+                };
+                let v: Value =
+                    serde_json::from_str(&text).with_context(|| format!("{value} is not JSON"))?;
+                steps.extend(script::parse_steps(&v).map_err(|e| anyhow!("{value}: {e}"))?);
+            }
+            _ => {}
+        }
+    }
+    Ok(steps)
+}
+
+fn run_steps(reg: &Registry, args: &Args, rest: &[&str]) -> anyhow::Result<()> {
+    let (mut s, commands) = if args.has("--new") {
+        (Session::default(), rest)
+    } else {
+        let [file, commands @ ..] = rest else {
+            bail!("{}", help("run")?);
+        };
+        (load(file)?, commands)
+    };
+    let steps = collect_steps(args, commands)?;
+    let outputs: Vec<&str> = args.values("-o").collect();
+    if steps.is_empty() && outputs.is_empty() {
+        bail!(
+            "nothing to do: give a command, --cmd, --script or -o\n\n{}",
+            help("run")?
+        );
+    }
+    // Check outputs before running anything, so a typo doesn't waste a run.
+    for out in &outputs {
+        output_kind(out)?;
+    }
+    if let Some(d) = args.value("-d") {
+        let id = automation::find_diagram(reg, &mut s, d).map_err(|e| anyhow!(e))?;
+        reg.run(&mut s, "diagram.open", &json!({ "id": id }))?;
+    }
+    let results = script::run(reg, &mut s, &steps, true).map_err(|f| anyhow!("{f}"))?;
+    match results.as_slice() {
+        [] => {}
+        [one] => print_json(one)?,
+        many => print_json(&Value::Array(many.to_vec()))?,
+    }
+    for out in outputs {
+        let bytes = match output_kind(out)? {
+            "model" => s.to_json()?.into_bytes(),
+            format => diagram_bytes(reg, &mut s, None, format, 2.0)?,
+        };
+        std::fs::write(out, bytes).with_context(|| format!("writing {out}"))?;
+        eprintln!("wrote {out}");
+    }
+    Ok(())
+}
+
+/// What `-o path` writes, from its extension.
+fn output_kind(path: &str) -> anyhow::Result<&'static str> {
+    let ext = Path::new(path)
+        .extension()
+        .and_then(|e| e.to_str())
+        .map(str::to_ascii_lowercase)
+        .unwrap_or_default();
+    match ext.as_str() {
+        "mdj" | "mfj" => Ok("model"),
+        "svg" => Ok("svg"),
+        "png" => Ok("png"),
+        _ => bail!("-o {path}: the extension must be .mdj, .mfj, .svg or .png"),
+    }
+}
+
+/// One diagram (default: the open one) as SVG or PNG bytes.
+fn diagram_bytes(
+    reg: &Registry,
+    s: &mut Session,
+    diagram: Option<&str>,
+    format: &str,
+    scale: f64,
+) -> anyhow::Result<Vec<u8>> {
+    let params = json!({ "diagram": diagram, "scale": scale });
+    if format == "svg" {
+        let r = reg.run(s, "export.svg", &params)?;
+        Ok(r["svg"].as_str().unwrap_or_default().as_bytes().to_vec())
+    } else {
+        use base64::Engine as _;
+        let r = reg.run(s, "export.png", &params)?;
+        let b64 = r["png_base64"].as_str().unwrap_or_default();
+        Ok(base64::engine::general_purpose::STANDARD.decode(b64)?)
+    }
+}
+
+/// Export each diagram with content to `out`, named `<prefix>-<name>.<format>`
+/// (or just `<name>.<format>` without a prefix).
+fn export_all(
+    reg: &Registry,
+    s: &mut Session,
+    out: &Path,
+    prefix: Option<&str>,
+    format: &str,
+    scale: f64,
+    only: Option<&str>,
+) -> anyhow::Result<Vec<PathBuf>> {
+    if !["png", "svg"].contains(&format) {
+        bail!("the image format must be png or svg");
+    }
+    std::fs::create_dir_all(out)?;
+    let diagrams = reg.run(s, "model.diagrams", &json!({}))?;
+    let mut written = Vec::new();
+    for d in diagrams.as_array().into_iter().flatten() {
+        let name = d["name"].as_str().unwrap_or("diagram");
+        if only.is_some_and(|o| o != name && d["id"] != o) || d["views"] == 0 {
+            continue;
+        }
+        let file = match prefix {
+            Some(p) => format!("{}-{}.{format}", safe_name(p), safe_name(name)),
+            None => format!("{}.{format}", safe_name(name)),
+        };
+        let bytes = diagram_bytes(reg, s, d["id"].as_str(), format, scale)?;
+        let path = out.join(file);
+        std::fs::write(&path, bytes).with_context(|| format!("writing {}", path.display()))?;
+        written.push(path);
+    }
+    Ok(written)
+}
+
+fn batch(reg: &Registry, args: &Args) -> anyhow::Result<()> {
+    let (Some(input), Some(output)) = (args.value("--in"), args.value("--out")) else {
+        bail!("{}", help("batch")?);
+    };
+    let image = args.value("--image");
+    let steps = match args.value("--script") {
+        Some(_) => Some(collect_steps(args, &[])?),
+        None => None,
+    };
+    if steps.is_none() && image.is_none() {
+        bail!(
+            "nothing to do: give --script and/or --image\n\n{}",
+            help("batch")?
+        );
+    }
+    let scale = scale(args)?;
+    std::fs::create_dir_all(output)?;
+    if steps.is_some() && Path::new(input).canonicalize()? == Path::new(output).canonicalize()? {
+        bail!("--out must differ from --in, so the originals are kept");
+    }
+    let mut files: Vec<PathBuf> = std::fs::read_dir(input)
+        .with_context(|| format!("reading {input}"))?
+        .filter_map(Result::ok)
+        .map(|e| e.path())
+        .filter(|p| p.extension().is_some_and(|e| e.eq_ignore_ascii_case("mdj")))
+        .collect();
+    files.sort();
+    if files.is_empty() {
+        bail!("no .mdj files in {input}");
+    }
+    let mut failed = 0;
+    for file in &files {
+        let shown = file.display().to_string();
+        let outcome = (|| -> anyhow::Result<()> {
+            let mut s = load(&shown)?;
+            let name = file.file_name().map(|n| n.to_string_lossy().into_owned());
+            if let Some(steps) = &steps {
+                script::run(reg, &mut s, steps, true).map_err(|f| anyhow!("{f}"))?;
+                let target = Path::new(output).join(name.unwrap_or_default());
+                std::fs::write(&target, s.to_json()?)?;
+                println!("{}", target.display());
+            }
+            if let Some(format) = image {
+                let stem = file.file_stem().map(|n| n.to_string_lossy().into_owned());
+                let written = export_all(
+                    reg,
+                    &mut s,
+                    Path::new(output),
+                    stem.as_deref(),
+                    format,
+                    scale,
+                    None,
+                )?;
+                for p in written {
+                    println!("{}", p.display());
+                }
+            }
+            Ok(())
+        })();
+        if let Err(e) = outcome {
+            eprintln!("{shown}: {e:#}");
+            failed += 1;
+        }
+    }
+    if failed > 0 {
+        bail!("{failed} of {} files failed", files.len());
+    }
+    Ok(())
+}
+
+fn mcp(args: &Args) -> anyhow::Result<()> {
+    let root = args.value("--root").unwrap_or(".");
+    let ws = Workspace::new(root).map_err(|e| anyhow!(e))?;
+    eprintln!("rust-uml MCP server; workspace {}", ws.root().display());
+    let mut server = automation::mcp::Server::new(Some(ws));
+    let stdin = std::io::stdin();
+    let mut stdout = std::io::stdout().lock();
+    for line in stdin.lock().lines() {
+        let line = line.context("reading stdin")?;
+        if let Some(reply) = server.handle_line(&line) {
+            writeln!(stdout, "{reply}")?;
+            stdout.flush()?;
+        }
+    }
+    Ok(())
 }
 
 fn safe_name(name: &str) -> String {
