@@ -5,7 +5,8 @@
 //! rust-uml-cli info     <model.mdj>
 //! rust-uml-cli image    <model.mdj> [-f svg|png] [-o out-dir] [-s scale] [-d diagram-name]
 //! rust-uml-cli commands
-//! rust-uml-cli run      <model.mdj> <command-id> [json-params] [-o out.mdj]
+//! rust-uml-cli tools    [diagram-type]
+//! rust-uml-cli run      <model.mdj> <command-id> [json-params] [-o out.mdj] [-d diagram]
 //! ```
 
 use std::path::{Path, PathBuf};
@@ -29,7 +30,8 @@ const USAGE: &str = "usage:
   rust-uml-cli info     <model.mdj>
   rust-uml-cli image    <model.mdj> [-f svg|png] [-o out-dir] [-s scale] [-d diagram-name]
   rust-uml-cli commands
-  rust-uml-cli run      <model.mdj> <command-id> [json-params] [-o out.mdj]";
+  rust-uml-cli tools    [diagram-type]
+  rust-uml-cli run      <model.mdj> <command-id> [json-params] [-o out.mdj] [-d diagram]";
 
 /// Positional arguments and `-x value` options.
 type Args<'a> = (Vec<&'a str>, Vec<(&'a str, &'a str)>);
@@ -128,6 +130,30 @@ fn run(args: Vec<String>) -> anyhow::Result<()> {
             }
             Ok(())
         }
+        ["tools", rest @ ..] => {
+            // What node.create / edge.create accept, per diagram type.
+            let types: Vec<&str> = match rest {
+                [] => uml::DIAGRAMS.iter().map(|(t, _, _)| *t).collect(),
+                [t] => vec![*t],
+                _ => bail!("{USAGE}"),
+            };
+            for t in types {
+                println!("{t}");
+                for g in uml::tool_groups(t) {
+                    let tools: Vec<String> = g
+                        .tools
+                        .iter()
+                        .filter_map(|id| uml::tool(id))
+                        .map(|tool| match tool {
+                            uml::Tool::Node(n) => format!("{} (box)", n.id),
+                            uml::Tool::Edge(e) => format!("{} (line)", e.id),
+                        })
+                        .collect();
+                    println!("  {:<20} {}", g.label, tools.join(", "));
+                }
+            }
+            Ok(())
+        }
         ["commands"] => {
             for spec in reg.specs() {
                 println!(
@@ -144,6 +170,11 @@ fn run(args: Vec<String>) -> anyhow::Result<()> {
                 [p] => serde_json::from_str(p).context("params must be JSON")?,
                 _ => bail!("{USAGE}"),
             };
+            // `-d`: the diagram to work on (id or name); otherwise the file's default.
+            if let Some(d) = opt(&opts, "d") {
+                let id = find_diagram(&reg, &mut s, d)?;
+                reg.run(&mut s, "diagram.open", &json!({ "id": id }))?;
+            }
             let result = reg.run(&mut s, command, &params)?;
             println!("{}", serde_json::to_string_pretty(&result)?);
             if let Some(out) = opt(&opts, "o") {
@@ -153,6 +184,22 @@ fn run(args: Vec<String>) -> anyhow::Result<()> {
             Ok(())
         }
         _ => bail!("{USAGE}"),
+    }
+}
+
+/// A diagram's id, given its id or its (unique) name.
+fn find_diagram(reg: &Registry, s: &mut Session, wanted: &str) -> anyhow::Result<String> {
+    let diagrams = reg.run(s, "model.diagrams", &json!({}))?;
+    let matches: Vec<&Value> = diagrams
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter(|d| d["id"] == wanted || d["name"] == wanted)
+        .collect();
+    match matches.as_slice() {
+        [d] => Ok(d["id"].as_str().unwrap_or_default().to_owned()),
+        [] => bail!("no diagram `{wanted}`"),
+        _ => bail!("several diagrams are named `{wanted}`; use its id"),
     }
 }
 
