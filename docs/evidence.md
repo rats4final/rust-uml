@@ -233,6 +233,33 @@ our words:
   name(arguments)`: `number` is the message's position in the interaction's `messages` (auto) or
   its `sequenceNumber` (custom), omitted when `showSequenceNumber` is off.
 
+### Interaction overview and information flow diagrams (observed 2026-10-13)
+
+From `interactionOverviewDiagramFn`, `interactionUseInOverviewFn`, `interactionInOverviewFn`,
+`UMLInteractionUseView`, `UMLInteractionInlineView`, `UMLInformationItemView`,
+`UMLInformationFlowView`, the frame-type mapping in `elements.js`, and the toolbox, in our words:
+
+- **Interaction overview:** collaboration → interaction → **activity** → diagram (+ frame); added
+  to an activity, no wrappers; to an interaction, only the activity. Its toolbox reuses the
+  activity control nodes and Control Flow (they go in the activity as on activity diagrams).
+- **Interaction Use** tool: a `UMLAction` (`kind: callBehavior`) in the activity's `nodes`, whose
+  `target` is a new `UMLInteractionUse` in the outer interaction's `fragments`, whose `refersTo`
+  is a new `UMLInteraction` created beside the outer one (in the collaboration). View
+  `UMLInteractionUseView`: `nameLabel` and `frameTypeLabel`; drawn as a frame with a `ref` tag
+  and `recipient = Called(arguments): returnValue` beside the tag.
+- **Interaction (Inline)** tool: the same kind of action, whose `target` is a new
+  `UMLSequenceDiagram` inside a new interaction (no frame is added to it). View
+  `UMLInteractionInlineView` (a `UMLFrameView`): an `sd` frame that draws that diagram inside,
+  scaled to fit (10 px from the sides, 30 from the top, never enlarged).
+- **Information flow:** an ordinary diagram in the model. Toolbox: Information Item and
+  Information Flow, plus the use-case and class groups. `UMLInformationItem` is a classifier
+  (`represented` refs) drawn with «information»; `UMLInformationFlow` is a directed relationship
+  owned by its source (`conveyed`, `realizing…` refs), drawn dotted with a stick arrow and «flow»;
+  its name label shows the conveyed classifiers' names when there are any.
+- **Frame keywords** (the tag of a frame showing a diagram or element): `class`, `cmp`, `dep`,
+  `sd` (interaction, sequence, communication, timing, interaction overview), `stm`, `act`, `uc`,
+  `pkg`, `req`, `bdd`, `par`, `ibd`; anything else has none.
+
 ## 4. Free vs. paid — exactly what is locked
 
 The only place the license is checked for features is **`src/engine/diagram-export.js`**, in the

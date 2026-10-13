@@ -9,9 +9,9 @@ StarUML `.mdj` files, and runs on Linux, Windows and macOS and in the browser (W
 ## Status
 
 Class diagrams, all UML structural diagrams (package, object, component, deployment, composite
-structure, profile) and use case, statechart, activity, sequence and communication diagrams, with
-StarUML's tool sets. Any StarUML file opens (timing and interaction-overview diagrams are drawn in a
-simplified way for now), saves losslessly, and exports to
+structure, profile) and use case, statechart, activity, sequence, communication, interaction
+overview and information flow diagrams, with StarUML's tool sets. Any StarUML file opens (timing
+diagrams are drawn in a simplified way for now), saves losslessly, and exports to
 SVG/PNG with no watermarks. Files round-trip with StarUML 7.1.1. The full checklist against StarUML
 is in [`docs/parity.md`](docs/parity.md); what's next is in [`docs/roadmap.md`](docs/roadmap.md).
 

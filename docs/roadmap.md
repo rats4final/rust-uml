@@ -1,6 +1,6 @@
 # Roadmap and handoff
 
-**Read this to pick up the work.** Status as of 2026-10-13: v0.5.0 (agent milestone parts 1–3); since then (not yet released) live app control and communication diagrams.
+**Read this to pick up the work.** Status as of 2026-10-13: v0.5.0 (agent milestone parts 1–3); since then (not yet released) live app control and communication, interaction overview and information flow diagrams.
 Order of reading for a new agent/session: `AGENTS.md` → this file → `docs/parity.md` → `log/devlog.md`.
 
 ## 1. Where things stand
@@ -9,10 +9,10 @@ Order of reading for a new agent/session: `AGENTS.md` → this file → `docs/pa
   Linux x64, Windows x64, macOS arm64 + x64, web zip. Web app live at
   https://rats4final.github.io/rust-uml/ (redeploys on every push to `main`).
 - **Works:** class diagrams, all six UML structural diagram types, and use case, statechart,
-  activity, sequence and communication diagrams, with StarUML's toolbox groups (see
-  `rust-uml-cli tools`; rows in `crates/uml/src/catalog.rs`). Properties panel, undo/redo, lossless
-  `.mdj` save, SVG/PNG export without watermarks. Timing, interaction-overview and
-  information-flow diagrams open and draw generically but have no tools yet.
+  activity, sequence, communication, interaction overview and information flow diagrams, with
+  StarUML's toolbox groups (see `rust-uml-cli tools`; rows in `crates/uml/src/catalog.rs`).
+  Properties panel, undo/redo, lossless `.mdj` save, SVG/PNG export without watermarks. Timing
+  diagrams open and draw generically but have no tools yet.
 - **Verified:** 33 tests (incl. mouse-driven UI tests and a real-file round trip of all 14 model files
   shipped with StarUML); CI green on Linux, Windows, macOS; Windows exe launched natively; web build
   screenshotted in Chromium; StarUML interop proven both ways for class diagrams (M1.5).
@@ -151,8 +151,15 @@ keys inside rust-uml). Guide for users: `docs/agents.md`.
   ride on one (`UMLCommMessageView`, drawn after edges in `render::scene`). Extra messages on one
   connector are stacked further out. Example: "Checkout (communication)" in `behaviour.mdj`.
   Evidence: `docs/evidence.md`, communication section. **Not yet checked in StarUML.**
-- ⬜ Timing, interaction overview, information flow: they reuse tool ids too (`UMLLifeline`,
-  `UMLMessage`, `UMLInitialNode`…), so add rows with `diagrams`.
+- ✅ **Interaction overview** and **information flow** (2026-10-13). `create_diagram` takes a chain
+  of wrappers (overview: interaction → activity). The overview's two frame tools are actions whose
+  `target` is created by `uml::factory::add_overview_target`; the inline frame draws its sequence
+  diagram scaled inside (`render::scene::draw_nested`, nesting capped at 2). Frame tags use
+  StarUML's keywords (`frame_kind`). Examples: "Shopping overview" (`behaviour.mdj`), "Payment
+  information" (`structures.mdj`). **Not yet checked in StarUML.**
+- ⬜ **Timing**: lifelines inside a timing frame, states/conditions, time segments, ticks, time and
+  duration constraints, messages between segments (`timingDiagramFn`, `timingStateFn`,
+  `timeSegmentFn`, `timeTickFn`). Reuses `UMLLifeline`/`UMLMessage` ids: add rows with `diagrams`.
 
 Evidence pointers: `communicationDiagramFn`, `timingDiagramFn`, `interactionOverviewDiagramFn` and
 their `viewFor…DiagramFn` in `uml-factory.js` (communication messages create a connector between

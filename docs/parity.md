@@ -1,6 +1,6 @@
 # Parity with StarUML 7.1.1
 
-Status line: **M3b part 2 started: communication diagrams.** Agent milestone (A) done. Updated 2026-10-13.
+Status line: **M3b part 2: communication, interaction overview and information flow done; timing left.** Updated 2026-10-13.
 
 Each row comes from the evidence in [`evidence.md`](evidence.md). "Paid" marks features StarUML
 locks behind a licence (see evidence §4: only exports are locked, by watermark).
@@ -39,7 +39,9 @@ Legend: ✅ done · 🟡 partial · ⬜ not started
 | UML behaviour (M3a) | Use Case, Statechart, Activity | | ✅ StarUML's tool sets: actors, use cases, subjects, include/extend; states, composite/orthogonal states, all pseudostate kinds, transitions with `trigger [guard] / effect`; actions, control nodes, swimlanes, object nodes, guarded flows. Not yet: pins, expansion regions, interruptible regions, signals/events as actions, internal activities (entry/do/exit), submachine states, frames |
 | UML sequence | Sequence | | ✅ frame, lifelines (with role attributes), all 7 message kinds, activations (hidden when the diagram's `showActivation` is off), combined fragments with operands/guards; messages keep their height when lifelines move. Not yet: automatic sequence numbers (`showSequenceNumber`), found/lost messages, gates, endpoints, state invariants, continuations, interaction uses, time/duration constraints |
 | UML communication | Communication | | ✅ StarUML's tool set: lifelines, connectors (between the lifelines' roles), self connectors, forward/reverse messages (drawn between lifelines they bring the connector; dropped on a connector they ride on it), numbered `1 : name` labels. Not yet: frames, moving a message along its connector, sequence ↔ communication conversion |
-| UML behaviour (rest of M3b) | Timing, Interaction Overview, Information Flow | | ⬜ (generic drawing only) |
+| UML interaction overview | Interaction Overview | | ✅ Interaction Use (`ref` frame naming the called interaction), Interaction (Inline) (an `sd` frame drawing its own sequence diagram inside), control nodes and flows. Not yet: choosing which existing interaction a use refers to (each creates a new one) |
+| UML information flow | Information Flow | | ✅ Information items, information flows (dotted, «flow»), plus the class and use-case tools. Not yet: editing the conveyed items (shown when a file has them) |
+| UML timing | Timing | | ⬜ (generic drawing only) |
 | SysML | Requirement, Block Definition, Internal Block, Parametric | ✔ | ⬜ |
 | BPMN | BPMN | ✔ | ⬜ |
 | Wireframe | Wireframe | ✔ | ⬜ |

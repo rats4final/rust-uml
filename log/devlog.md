@@ -2,6 +2,20 @@
 
 Newest first. Terse: what landed, numbers, what's still open.
 
+## 2026-10-13 — M3b part 2: interaction overview and information flow
+
+- `create_diagram` builds a chain of wrappers; interaction overview diagrams live in an activity in
+  an interaction. Interaction Use / Interaction (Inline) are call-behaviour actions targeting a new
+  interaction use or a new sequence diagram; activity control nodes and flows work unchanged.
+- Renderer: `ref` frames name the called interaction; inline frames draw their sequence diagram
+  scaled inside (nesting capped); overview boxes are clickable everywhere. Frame tags now use
+  StarUML's keywords (class diagrams say `class`, not `pkg`; unknown types say nothing).
+- Information items («information», classifier compartments) and information flows (dotted,
+  «flow», conveyed names); the class and use-case tools are offered on these diagrams too.
+- Examples "Shopping overview" and "Payment information". 132 tests.
+- Open: timing diagrams; pick an existing interaction for a use; edit conveyed items; check in
+  StarUML.
+
 ## 2026-10-13 — M3b part 2: communication diagrams
 
 - Catalog rows may be limited to diagram types; the engine and toolbox pick by the open diagram
