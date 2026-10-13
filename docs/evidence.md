@@ -260,6 +260,36 @@ From `interactionOverviewDiagramFn`, `interactionUseInOverviewFn`, `interactionI
   `sd` (interaction, sequence, communication, timing, interaction overview), `stm`, `act`, `uc`,
   `pkg`, `req`, `bdd`, `par`, `ibd`; anything else has none.
 
+### Timing diagrams (observed 2026-10-13)
+
+From `timingDiagramFn`, `_addTimingFrame`, `lifelineFn`, `timingStateFn`, `timeSegmentFn`,
+`timeTickFn`, the timing branch of `messageFn`, and the `UMLTiming…`/`UMLTime…` views in
+`elements.js`, in our words:
+
+- **Wrapped like a sequence diagram** (collaboration → interaction), with a `UMLTimingFrameView`
+  (model = the diagram) initialised from (5, 5) to (700, 600).
+- **Lifeline**: the same `UMLLifeline` (participants, role); its `UMLTimingLifelineView` must sit
+  in the frame (`containerView`, frame `containedViews`), at least 200 wide, with a `nameLabel`.
+- **State/Condition**: a `UMLConstraint` named `State-ConditionN` in the *lifeline's*
+  `ownedElements`; `UMLTimingStateView` (with `nameLabel`) inside the lifeline view. Dropped on a
+  state, it goes to that state's lifeline.
+- **Time Segment**: a `UMLStateInvariant` named `Time SegmentN` in the interaction's `fragments`,
+  `covered` = the lifeline, `invariant` = the state's constraint; `UMLTimeSegmentView` inside the
+  state view.
+- **Time Tick**: a `UMLTimeTickView` only (no model), inside the frame, with a `text`.
+- **Message**: between two time segments; a `UMLMessage` in `messages` whose source/target are the
+  lifelines the segments cover; view `UMLTimingMessageView` (`tail`/`head` = the segment views),
+  label as `UMLMessage.getString` (timing diagrams have no sequence numbers).
+- **The frame arranges on every draw** (stored positions only give order): lifelines stacked
+  below the frame's tag, full frame width, each at least `25 + 25 × states + 25` tall; the
+  lifeline name turned vertical at the left; states one 25 px row each from 25 px down, names
+  right-aligned up to the time axis start (right of the widest state name); segments of a
+  lifeline (sorted by left) placed one after another from that start, each on its state's row,
+  with a vertical step from the previous one; ticks along the frame's bottom edge (5 px above it)
+  from the same start. Ticks are created one pixel narrower than segments (grid × 3 − 1).
+- Time constraints (`{min..max}` label + link to a message or segment) and duration constraints
+  (`{min..max}`, placed in the frame) exist too.
+
 ## 4. Free vs. paid — exactly what is locked
 
 The only place the license is checked for features is **`src/engine/diagram-export.js`**, in the

@@ -2,6 +2,19 @@
 
 Newest first. Terse: what landed, numbers, what's still open.
 
+## 2026-10-13 — M3b part 2 done: timing diagrams
+
+- Timing frame (`UMLTimingFrameView`); lifelines, states/conditions, time segments and ticks each
+  created inside their container (new `Slot::Timing…`), messages between segments (source and
+  target are the lifelines the segments cover).
+- `render::timing` arranges a timing frame from its structure on every draw, as StarUML does:
+  stacked lifeline bands, state rows, segments one after another with steps, ticks along the
+  bottom; stored positions only give order. `node_layout` leaves these views' sizes alone (the
+  content-fit step was widening segments and ticks).
+- Turned text (`TextStyle::vertical`) for lifeline names, in SVG/PNG and on screen.
+- Example "Door alarm" (`behaviour.mdj`). 135 tests. Every UML diagram type now has StarUML's
+  tools. Open: time and duration constraints; check all M3b examples in StarUML.
+
 ## 2026-10-13 — M3b part 2: interaction overview and information flow
 
 - `create_diagram` builds a chain of wrappers; interaction overview diagrams live in an activity in

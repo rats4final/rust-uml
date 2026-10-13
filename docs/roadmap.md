@@ -1,6 +1,6 @@
 # Roadmap and handoff
 
-**Read this to pick up the work.** Status as of 2026-10-13: v0.5.0 (agent milestone parts 1–3); since then (not yet released) live app control and communication, interaction overview and information flow diagrams.
+**Read this to pick up the work.** Status as of 2026-10-13: v0.5.0 (agent milestone parts 1–3); since then (not yet released) live app control and the rest of the UML diagram types (communication, timing, interaction overview, information flow).
 Order of reading for a new agent/session: `AGENTS.md` → this file → `docs/parity.md` → `log/devlog.md`.
 
 ## 1. Where things stand
@@ -9,10 +9,10 @@ Order of reading for a new agent/session: `AGENTS.md` → this file → `docs/pa
   Linux x64, Windows x64, macOS arm64 + x64, web zip. Web app live at
   https://rats4final.github.io/rust-uml/ (redeploys on every push to `main`).
 - **Works:** class diagrams, all six UML structural diagram types, and use case, statechart,
-  activity, sequence, communication, interaction overview and information flow diagrams, with
-  StarUML's toolbox groups (see `rust-uml-cli tools`; rows in `crates/uml/src/catalog.rs`).
-  Properties panel, undo/redo, lossless `.mdj` save, SVG/PNG export without watermarks. Timing
-  diagrams open and draw generically but have no tools yet.
+  activity, sequence, communication, timing, interaction overview and information flow diagrams
+  (every UML diagram type), with StarUML's toolbox groups (see `rust-uml-cli tools`; rows in
+  `crates/uml/src/catalog.rs`). Properties panel, undo/redo, lossless `.mdj` save, SVG/PNG export
+  without watermarks.
 - **Verified:** 33 tests (incl. mouse-driven UI tests and a real-file round trip of all 14 model files
   shipped with StarUML); CI green on Linux, Windows, macOS; Windows exe launched natively; web build
   screenshotted in Chromium; StarUML interop proven both ways for class diagrams (M1.5).
@@ -142,7 +142,7 @@ keys inside rust-uml). Guide for users: `docs/agents.md`.
    Left: pointer/key driving (`ui.pointer`-style), StarUML's HTTP API on the same server (M8),
    **trying it from a real MCP client** (Claude Code) — the end-to-end run used a scripted client.
 
-### M3b part 2 — Communication, timing, interaction overview, information flow (in progress)
+### M3b part 2 — Communication, timing, interaction overview, information flow ✅ done 2026-10-13
 
 - ✅ **Communication** (2026-10-13): catalog rows can now be limited to diagram types
   (`NodeSpec::diagrams`, `EdgeSpec::diagrams`; look-ups `node_spec_on`/`edge_spec_on`/`tool_on`),
@@ -157,9 +157,12 @@ keys inside rust-uml). Guide for users: `docs/agents.md`.
   diagram scaled inside (`render::scene::draw_nested`, nesting capped at 2). Frame tags use
   StarUML's keywords (`frame_kind`). Examples: "Shopping overview" (`behaviour.mdj`), "Payment
   information" (`structures.mdj`). **Not yet checked in StarUML.**
-- ⬜ **Timing**: lifelines inside a timing frame, states/conditions, time segments, ticks, time and
-  duration constraints, messages between segments (`timingDiagramFn`, `timingStateFn`,
-  `timeSegmentFn`, `timeTickFn`). Reuses `UMLLifeline`/`UMLMessage` ids: add rows with `diagrams`.
+- ✅ **Timing** (2026-10-13): slots `Timing{Lifeline,State,Segment,Tick}` put each piece in its
+  container (lifelines/ticks default to the frame); `uml::factory::place_timing_view` stores a
+  starting geometry, but the renderer arranges from structure every draw (`render::timing`,
+  StarUML's rules), messages attach to arranged segments, and `node_layout` never grows these
+  views. Text can be turned (`TextStyle::vertical`: SVG rotate, egui text angle). Example "Door
+  alarm" in `behaviour.mdj`. Left: time/duration constraints. **Not yet checked in StarUML.**
 
 Evidence pointers: `communicationDiagramFn`, `timingDiagramFn`, `interactionOverviewDiagramFn` and
 their `viewFor…DiagramFn` in `uml-factory.js` (communication messages create a connector between

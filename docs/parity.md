@@ -1,6 +1,6 @@
 # Parity with StarUML 7.1.1
 
-Status line: **M3b part 2: communication, interaction overview and information flow done; timing left.** Updated 2026-10-13.
+Status line: **M3b done: every UML diagram type has StarUML's tools** (timing constraints aside). Updated 2026-10-13.
 
 Each row comes from the evidence in [`evidence.md`](evidence.md). "Paid" marks features StarUML
 locks behind a licence (see evidence §4: only exports are locked, by watermark).
@@ -41,7 +41,7 @@ Legend: ✅ done · 🟡 partial · ⬜ not started
 | UML communication | Communication | | ✅ StarUML's tool set: lifelines, connectors (between the lifelines' roles), self connectors, forward/reverse messages (drawn between lifelines they bring the connector; dropped on a connector they ride on it), numbered `1 : name` labels. Not yet: frames, moving a message along its connector, sequence ↔ communication conversion |
 | UML interaction overview | Interaction Overview | | ✅ Interaction Use (`ref` frame naming the called interaction), Interaction (Inline) (an `sd` frame drawing its own sequence diagram inside), control nodes and flows. Not yet: choosing which existing interaction a use refers to (each creates a new one) |
 | UML information flow | Information Flow | | ✅ Information items, information flows (dotted, «flow»), plus the class and use-case tools. Not yet: editing the conveyed items (shown when a file has them) |
-| UML timing | Timing | | ⬜ (generic drawing only) |
+| UML timing | Timing | | ✅ Lifelines in the timing frame, states/conditions, time segments (stepped state line), time ticks, messages between segments; the frame arranges them as StarUML does, lifeline names turned. Not yet: time constraints, duration constraints, dragging a segment to another state |
 | SysML | Requirement, Block Definition, Internal Block, Parametric | ✔ | ⬜ |
 | BPMN | BPMN | ✔ | ⬜ |
 | Wireframe | Wireframe | ✔ | ⬜ |
