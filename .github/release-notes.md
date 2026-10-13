@@ -2,20 +2,26 @@ Preview of **rust-uml**: an independent, open-source UML modeler written in Rust
 saves StarUML `.mdj` files. Not affiliated with MKLabs/StarUML. What changed in each version:
 `log/devlog.md`.
 
-**New in v0.5.0:** built for scripts and AI agents.
-- **Mermaid import:** File ▸ Import Mermaid… (or `rust-uml-cli import`) turns Mermaid class,
-  sequence and state diagrams into editable UML diagrams, laid out automatically, in one undo step.
-- **MCP server:** `rust-uml-cli mcp --root <folder>` lets Claude or any MCP client create, edit,
-  inspect and preview models in that folder. Try `claude mcp add rust-uml -- rust-uml-cli mcp --root ~/models`.
-- **Scriptable CLI:** `rust-uml-cli run` chains commands or runs a JSON script (all-or-nothing),
-  `batch` runs one script over a folder, `help <sub>` and `--json` listings.
-- Samples in `examples/mermaid/` and `examples/scripts/`; guide in `docs/agents.md`.
+**New in v0.6.0:** every UML diagram type, and agents that work in the open window.
+- **Communication diagrams:** lifelines, connectors, forward/reverse messages numbered `1 : name`
+  (a message drawn between lifelines brings its connector; dropped on a connector it rides on it).
+- **Timing diagrams:** lifelines with states, time segments drawn as a stepped line, time ticks and
+  messages between segments, arranged automatically inside the frame as in StarUML.
+- **Interaction overview diagrams:** `ref` frames calling other interactions and inline `sd` frames
+  showing their own sequence diagram, joined by the activity control nodes and flows.
+- **Information flow diagrams:** information items and «flow» arrows, alongside class and use-case tools.
+- **Live app control:** start the app with `rust-uml --control 7878 --control-token-file <file>
+  --control-root <folder>` and point `rust-uml-cli mcp --bridge 127.0.0.1:7878 --control-token-file
+  <file>` at it: Claude (or any MCP client) then edits the model you have open while you watch, and
+  can look at the window (`ui_screenshot`). Loopback only, token-protected; see `docs/agents.md`.
+- New examples: "Checkout (communication)", "Door alarm", "Shopping overview" in `behaviour.mdj`,
+  "Payment information" in `structures.mdj`.
 
-**What works:** class, structural, use case, statechart, activity and sequence diagrams end to
-end — 54 element and 30 relationship tools,
-properties panel, undo/redo, lossless save (verified both ways with StarUML 7.1.1 for class diagrams),
-SVG/PNG export with no watermarks. Communication, timing and interaction-overview diagrams open and are drawn in a simplified way.
-Full checklist: `docs/parity.md`.
+**What works:** every UML diagram type StarUML offers (class, the six structural ones, use case,
+statechart, activity, sequence, communication, timing, interaction overview, information flow)
+with StarUML's tool sets, properties panel, undo/redo, lossless save (verified both ways with
+StarUML 7.1.1 for class diagrams), SVG/PNG export with no watermarks, scripting, Mermaid import
+and an MCP server. Full checklist: `docs/parity.md`.
 
 ## Downloads
 

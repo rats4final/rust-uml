@@ -1,11 +1,11 @@
 # Roadmap and handoff
 
-**Read this to pick up the work.** Status as of 2026-10-13: v0.5.0 (agent milestone parts 1–3); since then (not yet released) live app control and the rest of the UML diagram types (communication, timing, interaction overview, information flow).
+**Read this to pick up the work.** Status as of 2026-10-13: v0.6.0 (all UML diagram types, live app control).
 Order of reading for a new agent/session: `AGENTS.md` → this file → `docs/parity.md` → `log/devlog.md`.
 
 ## 1. Where things stand
 
-- **Released:** v0.5.0 (pre-release) — https://github.com/rats4final/rust-uml/releases
+- **Released:** v0.6.0 (pre-release) — https://github.com/rats4final/rust-uml/releases
   Linux x64, Windows x64, macOS arm64 + x64, web zip. Web app live at
   https://rats4final.github.io/rust-uml/ (redeploys on every push to `main`).
 - **Works:** class diagrams, all six UML structural diagram types, and use case, statechart,
@@ -49,6 +49,9 @@ driving it. Details in `AGENTS.md`. The product name is **rust-uml**; never call
 
 Each milestone ends with: tests, `docs/parity.md` rows updated, a `log/devlog.md` entry, a tag for a
 release when it's user-visible.
+
+**Order (owner, 2026-10-13):** the paid families (M4) come last. Next up is M5, then M6 onward; the
+milestone numbers are kept so older notes still point at the right sections.
 
 ### M1.5 — Prove StarUML interoperability ✅ done 2026-10-12
 
@@ -169,15 +172,6 @@ their `viewFor…DiagramFn` in `uml-factory.js` (communication messages create a
 lifelines plus a message; see `messageFn`). Toolbox groups `uml.communication`, `uml.timing`,
 `uml.interaction-overview`, `uml.information-flow` in `toolbox/uml.json`.
 
-### M4 — The families StarUML sells ("Pro")
-
-SysML (Requirement, Block Definition, Internal Block, Parametric), BPMN, Wireframe, AWS, GCP.
-These are the paid features; here they are ordinary features with watermark-free export.
-Evidence per family: `extensions/essential/<family>/metamodel.json` (types/fields) and behaviour in
-`elements.js`. **Icons:** AWS/GCP/Azure diagrams need provider icons. Do not copy StarUML's. Use the
-providers' official icon sets only if their licenses allow redistribution (check each; record in
-`ATTRIBUTION.md`), or draw original simplified icons.
-
 ### M5 — Remaining families
 
 Azure, C4, ERD, DFD, Flowchart, Mind map.
@@ -211,6 +205,15 @@ PDF (vector; StarUML uses pdfkit — consider `printpdf`/`krilla` from the Scene
 App icon; macOS `.app` bundle + signing/notarisation; Windows icon, installer (MSI/MSIX) and signing;
 Linux AppImage/Flatpak; auto-update; smaller wasm (7.3 MB now; fonts are embedded twice, once in
 `render` and once registered with egui — share one copy).
+
+### M4 — The families StarUML sells ("Pro") — last, by the owner's choice (2026-10-13)
+
+SysML (Requirement, Block Definition, Internal Block, Parametric), BPMN, Wireframe, AWS, GCP.
+These are the paid features; here they are ordinary features with watermark-free export.
+Evidence per family: `extensions/essential/<family>/metamodel.json` (types/fields) and behaviour in
+`elements.js`. **Icons:** AWS/GCP/Azure diagrams need provider icons. Do not copy StarUML's. Use the
+providers' official icon sets only if their licenses allow redistribution (check each; record in
+`ATTRIBUTION.md`), or draw original simplified icons.
 
 ## 5. Known gaps and debt (fix opportunistically)
 

@@ -2,6 +2,11 @@
 
 Newest first. Terse: what landed, numbers, what's still open.
 
+## 2026-10-13 — v0.6.0: all UML diagram types, live app control
+
+- Release notes for communication, timing, interaction overview and information flow diagrams
+  and for live app control. The owner moved the paid families (M4) to the end of the roadmap.
+
 ## 2026-10-13 — M3b part 2 done: timing diagrams
 
 - Timing frame (`UMLTimingFrameView`); lifelines, states/conditions, time segments and ticks each
