@@ -1048,6 +1048,42 @@ mod tests {
     }
 
     #[test]
+    fn timing_diagram_by_mouse() {
+        fn click_tool(h: &mut Harness<'static, UmlApp>, tool: &str, at: render::Point) -> String {
+            h.get_by_role_and_label(Role::Button, tool).click();
+            h.run();
+            let at = h.state().canvas.to_screen(at);
+            click(h, at);
+            h.state().session.selection[0].clone()
+        }
+        let mut h = harness();
+        h.run();
+        h.state_mut()
+            .exec("diagram.add", json!({"type": "UMLTimingDiagram"}));
+        h.run();
+        // Each tool lands inside what was clicked: lifelines in the frame,
+        // a state in the lifeline, a segment on the state's row.
+        let lifeline = click_tool(&mut h, "Lifeline", render::Point::new(300.0, 300.0));
+        let app = h.state();
+        let diagram = app.session.active_diagram.clone().unwrap();
+        let scene = render::build_scene(&app.session.doc, &diagram, app.session.fonts());
+        let band = scene.node_rect(&lifeline).unwrap();
+        let state = click_tool(&mut h, "State/Condition", band.center());
+        // States start 25 px down the band, one 25 px row each.
+        let row = render::Point::new(band.center().x, band.y + 25.0 + 12.0);
+        let segment = click_tool(&mut h, "Time Segment", row);
+        let doc = &h.state().session.doc;
+        let kind = |v: &str| doc.get(v).unwrap().type_name.clone();
+        assert_eq!(kind(&lifeline), "UMLTimingLifelineView");
+        assert_eq!(kind(&state), "UMLTimingStateView");
+        assert_eq!(kind(&segment), "UMLTimeSegmentView");
+        assert_eq!(
+            doc.get(&segment).unwrap().ref_id("containerView"),
+            Some(state.as_str())
+        );
+    }
+
+    #[test]
     fn component_diagram_toolbox_places_a_port_on_a_component() {
         let mut h = harness();
         h.run();
