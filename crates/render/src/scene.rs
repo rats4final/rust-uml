@@ -706,8 +706,18 @@ fn draw_edge(
         .str("lineColor")
         .and_then(Color::parse)
         .unwrap_or(Color::BLACK);
-    // A message's activation bar sits under the arrow.
-    if let Some(act) = view.ref_id("activation").and_then(|a| doc.get(a)) {
+    // A message's activation bar sits under the arrow, unless the diagram
+    // hides activations (`showActivation`, on by default).
+    let activations_shown = view
+        .parent
+        .as_deref()
+        .and_then(|d| doc.get(d))
+        .is_none_or(|d| d.bool("showActivation", true));
+    if let Some(act) = view
+        .ref_id("activation")
+        .and_then(|a| doc.get(a))
+        .filter(|_| activations_shown)
+    {
         let fill = view
             .str("fillColor")
             .and_then(Color::parse)

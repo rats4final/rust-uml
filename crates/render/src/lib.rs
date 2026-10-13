@@ -5,6 +5,7 @@
 //! Text is measured with Liberation Sans, which is metric-compatible with the
 //! Arial StarUML uses, so box sizes come out close to StarUML's.
 
+pub mod autolayout;
 mod geom;
 mod layout;
 mod png;
