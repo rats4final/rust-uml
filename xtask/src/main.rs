@@ -16,6 +16,7 @@ const LAYERS: &[(&str, u8)] = &[
     ("render", 2),
     ("engine", 3),
     ("ui", 4),
+    ("automation", 4),
 ];
 
 /// Crates nothing below `ui` may use: they pull in windowing or native dialogs.

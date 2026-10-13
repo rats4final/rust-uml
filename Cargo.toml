@@ -17,6 +17,7 @@ uml = { path = "crates/uml" }
 render = { path = "crates/render" }
 engine = { path = "crates/engine" }
 ui = { path = "crates/ui" }
+automation = { path = "crates/automation" }
 
 # external
 ab_glyph = "0.2"

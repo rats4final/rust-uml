@@ -1,0 +1,17 @@
+[package]
+name = "automation"
+description = "L4: scripts of commands, a root-scoped workspace and the MCP server, for the CLI and agents"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+base64.workspace = true
+engine.workspace = true
+render.workspace = true
+serde_json.workspace = true
+uml.workspace = true
