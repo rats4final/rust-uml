@@ -21,7 +21,7 @@ codebase. Read this file first, then `docs/`.
 ```text
 crates/
   mdj      L0  .mdj/.mfj documents: schema-free load/save, edits with undo (pure data, no I/O)
-  uml      L1  UML element factories (StarUML's exact view-tree shapes), cascading delete, display text
+  uml      L1  tool catalog (catalog.rs), factories (StarUML's exact view trees), cascading delete, text
   render   L2  layout, display list (Scene), routing, SVG/PNG export, bundled fonts
   engine   L3  Session + command registry: every action is a command with JSON params
   ui       L4  egui shell (thin); platform services injected through FileService
@@ -45,22 +45,25 @@ below `ui` may use egui, eframe, winit or rfd. Register new crates in `xtask/src
    them (`clippy.toml` allows them in tests). Malformed files and hostile command parameters return
    errors. `engine`'s `no_command_panics_on_hostile_params` test must stay green; extend its input
    list when you add a command.
-3. **Everything is a command.** New user-visible behaviour = a `CommandSpec` in
+3. **Tools are data.** A new element or relationship kind is a row in `crates/uml/src/catalog.rs`
+   (ids as in StarUML's toolbox), plus notation in `render` if it looks new. Don't hand-code
+   per-kind enums.
+4. **Everything is a command.** New user-visible behaviour = a `CommandSpec` in
    `crates/engine/src/commands.rs` with id, label, menu, shortcut, params doc, `enabled`, `run`, plus
    tests. The UI, CLI and future HTTP API all dispatch by id.
-4. **Files stay lossless.** Loading then saving any StarUML file must not change it. Run the
+5. **Files stay lossless.** Loading then saving any StarUML file must not change it. Run the
    real-file test (`crates/mdj/tests/staruml_files.rs`) against a local StarUML install when you
    touch `mdj`. Never commit StarUML's files.
    **Defaults:** StarUML loads a missing field as the *metamodel* default and omits fields equal to
    it when saving. So when writing, store every field whose intended value differs from the
    metamodel default (e.g. row `horizontalAlignment: 0`); when reading, fall back to the metamodel
    default (`mdj::values::absent`), never to "what a new element would get". See `docs/evidence.md` §3.
-5. **Never break wasm.** `cargo xtask wasm` must pass. File-system and dialog code lives in
+6. **Never break wasm.** `cargo xtask wasm` must pass. File-system and dialog code lives in
    `apps/*`, behind `ui::FileService`.
-6. **Verify the UI by driving it.** Add `egui_kittest` tests in `crates/ui` that click and drag
+7. **Verify the UI by driving it.** Add `egui_kittest` tests in `crates/ui` that click and drag
    (see `app.rs` tests). For a visual check run
    `rust-uml model.mdj --screenshot out.png` and look at the PNG.
-7. **Tests are the gate.** Every change comes with tests.
+8. **Tests are the gate.** Every change comes with tests.
 
 ## 4. Before you finish a task
 

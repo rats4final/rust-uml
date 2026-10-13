@@ -1,6 +1,6 @@
 # Parity with StarUML 7.1.1
 
-Status line: **milestone 1 (core) — class diagrams; StarUML interop proven both ways.** Updated 2026-10-12.
+Status line: **M2 — UML structural diagrams.** Updated 2026-10-12.
 
 Each row comes from the evidence in [`evidence.md`](evidence.md). "Paid" marks features StarUML
 locks behind a licence (see evidence §4: only exports are locked, by watermark).
@@ -35,7 +35,7 @@ Legend: ✅ done · 🟡 partial · ⬜ not started
 | Family | Diagram types | Paid in StarUML | Status |
 |---|---|---|---|
 | UML class | Class | | ✅ Class, Interface, Enumeration, DataType, Package; 7 relationship kinds |
-| UML structure | Package, Object, Component, Deployment, Composite Structure, Profile | | 🟡 drawn generically (boxes, lines, stereotypes, notation by edge type); no dedicated tools |
+| UML structure | Package, Object, Component, Deployment, Composite Structure, Profile | | ✅ all six: StarUML's toolbox groups, nesting, ports, parts, objects/slots, 3-D nodes, icons, containment ⊕, «deploy». Not yet: n-ary associations, association classes, template bindings, frames, role bindings, ball-and-socket |
 | UML behaviour | Use Case, Activity, Statechart, Sequence, Communication, Timing, Interaction Overview, Information Flow | | ⬜ (generic drawing only) |
 | SysML | Requirement, Block Definition, Internal Block, Parametric | ✔ | ⬜ |
 | BPMN | BPMN | ✔ | ⬜ |
@@ -53,7 +53,9 @@ Legend: ✅ done · 🟡 partial · ⬜ not started
 
 | Feature | Status | Notes |
 |---|---|---|
-| Create elements from toolbox | ✅ | Class diagram set |
+| Create elements from toolbox | ✅ | Tools follow the diagram type (StarUML's groups); click on a box to create inside it |
+| Boxes inside boxes | 🟡 | Create inside, move and delete together; dragging an existing box into/out of a container ⬜ |
+| Notes, text, note links | ✅ | Rectangles/ellipses/images/hyperlinks from StarUML's annotation set ⬜ |
 | Draw relationships by dragging | ✅ | |
 | Move / resize | ✅ | Attached edges re-route; sub-view positions shift with their box |
 | Undo / redo | ✅ | One step per command; text edits commit on Enter/blur |

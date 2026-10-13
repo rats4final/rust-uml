@@ -8,9 +8,11 @@ StarUML `.mdj` files, and runs on Linux, Windows and macOS and in the browser (W
 
 ## Status
 
-Milestone 1 (core): class diagrams end to end. You can open any StarUML file (other diagram types
-are drawn in a simplified way), edit class diagrams with undo, save losslessly, and export SVG/PNG with
-no watermarks. The full feature checklist against StarUML is in [`docs/parity.md`](docs/parity.md).
+Class diagrams and all UML structural diagrams (package, object, component, deployment, composite
+structure, profile), with StarUML's tool sets, nesting, ports and parts. Any StarUML file opens
+(behavioural diagrams are drawn in a simplified way for now), saves losslessly, and exports to
+SVG/PNG with no watermarks. Files round-trip with StarUML 7.1.1. The full checklist against StarUML
+is in [`docs/parity.md`](docs/parity.md); what's next is in [`docs/roadmap.md`](docs/roadmap.md).
 
 ## Try it
 

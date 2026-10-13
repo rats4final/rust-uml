@@ -137,6 +137,31 @@ A relationship line (`UMLAssociationView`, `UMLGeneralizationView`, …) is an `
 name/stereotype/property and, for associations, role-name/multiplicity/property labels at each end.
 Each label points back with `hostEdge` and to the relationship with `model`.
 
+### Structural diagrams (observed for M2, 2026-10-12)
+
+From `extensions/essential/uml/{metamodel.json,uml-factory.js,toolbox/uml.json,preferences/uml.json}`
+and `src/core/core.js`, described in our words:
+
+- **Boxes inside boxes stay flat.** Every view of a diagram is in its `ownedViews`, however deeply
+  it is nested on screen. Nesting is two references: the inner view's `containerView` and the outer
+  view's `containedViews` list.
+- **Parts and ports are attributes.** A part is a `UMLAttribute` (aggregation `composite`) and a
+  port a `UMLPort`, both in the owning classifier's `attributes`; their views (`UMLPartView`,
+  `UMLPortView`) are contained by the classifier's view. A part dropped on a part view goes to that
+  part's *type*.
+- **Ports** are 14 × 14 squares on the owner's border, with *floating* labels (`NodeLabelView`,
+  `hostNode`) placed by `alpha`/`distance` from the port's centre (name: 20 px at 3π/4).
+- **The containment line** (`UMLContainmentView`) has no model element: drawing it moves the tail
+  element into the head element's `ownedElements`.
+- **Objects and instances** (`UMLObject`, `UMLNodeInstance`, …) have a `classifier` (reference or
+  text) and `slots` (`UMLSlot`, with `value` and optionally `definingFeature`).
+- **New elements take their look from preferences** (`preferences/uml.json`), not the metamodel:
+  components, artifacts, nodes, enumerations, interfaces, use cases and actors start with their
+  attribute/operation compartments hidden; artifacts and interfaces start as icons
+  (`stereotypeDisplay: "icon"`). Per the defaults rule above, rust-uml writes those values.
+- **Toolbox groups per diagram type** come from `toolbox/uml.json` (`diagram-types` lists).
+  rust-uml mirrors them in `crates/uml/src/catalog.rs`.
+
 ## 4. Free vs. paid — exactly what is locked
 
 The only place the license is checked for features is **`src/engine/diagram-export.js`**, in the

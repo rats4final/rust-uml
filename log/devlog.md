@@ -2,6 +2,20 @@
 
 Newest first. Terse: what landed, numbers, what's still open.
 
+## 2026-10-12 — v0.2.0: M2 UML structural diagrams
+
+- `uml` rebuilt around a catalog (`catalog.rs`): 23 box + 17 line tools mirroring StarUML's toolbox
+  ids and per-diagram groups; generic factories; nesting (`containerView`/`containedViews`); parts
+  and ports as attributes; containment line relocates the model; slots on instances.
+- `render`: package/model/subsystem folders, 3-D nodes, component/artifact icons, underlined
+  instances with slots, parts (dashed when shared), ports with floating names, dashed collaboration
+  ellipses, notes, text, lollipops; ⊕ containment end; «deploy». Containers paint first.
+- `engine`: `diagram.add` (7 types), `node.create` with `container`, contents move with their box.
+- `ui`: toolbox follows the diagram type; Model ▸ Add Diagram; properties for the new kinds.
+- `cli`: `tools [type]`, `run … -d <diagram>` (the example script found each run reset to Main).
+- `mdj`: `Editor::relocate`. 59 tests; wasm/Windows/macOS checks clean.
+- Open: check `examples/structures.mdj` in StarUML; drag-into-container; see roadmap M2 list.
+
 ## 2026-10-12 — v0.1.1: interop proven both ways
 
 - Owner edited `shapes.mdj` in StarUML and reopened it here: works; round-trips unchanged.

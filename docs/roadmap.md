@@ -1,6 +1,6 @@
 # Roadmap and handoff
 
-**Read this to pick up the work.** Status as of 2026-10-12, after v0.1.1.
+**Read this to pick up the work.** Status as of 2026-10-12, after v0.2.0.
 Order of reading for a new agent/session: `AGENTS.md` → this file → `docs/parity.md` → `log/devlog.md`.
 
 ## 1. Where things stand
@@ -8,9 +8,11 @@ Order of reading for a new agent/session: `AGENTS.md` → this file → `docs/pa
 - **Released:** v0.1.1 (pre-release) — https://github.com/rats4final/rust-uml/releases
   Linux x64, Windows x64, macOS arm64 + x64, web zip. Web app live at
   https://rats4final.github.io/rust-uml/ (redeploys on every push to `main`).
-- **Works:** class diagrams end to end (5 element kinds, 7 relationship kinds, properties panel,
-  undo/redo, lossless `.mdj` save, SVG/PNG export without watermarks). Any StarUML file opens;
-  non-class diagrams draw in a simplified generic way and cannot be edited with tools yet.
+- **Works:** class diagrams and all six UML structural diagram types (package, object, component,
+  deployment, composite structure, profile) with StarUML's toolbox groups: 23 box tools and
+  17 line tools in `crates/uml/src/catalog.rs`; nesting, ports, parts, objects with slots, notes;
+  properties panel, undo/redo, lossless `.mdj` save, SVG/PNG export without watermarks. Behavioural
+  diagrams (use case, activity, state, sequence, …) open and draw generically but have no tools.
 - **Verified:** 33 tests (incl. mouse-driven UI tests and a real-file round trip of all 14 model files
   shipped with StarUML); CI green on Linux, Windows, macOS; Windows exe launched natively; web build
   screenshotted in Chromium; StarUML interop proven both ways for class diagrams (M1.5).
@@ -57,17 +59,26 @@ release when it's user-visible.
   (missing `horizontalAlignment` = metamodel default centre → now written as left); labels without
   `edgePosition` drawn mid-line and lines without `lineStyle` assumed oblique (now metamodel
   defaults, `mdj::values::absent`); active classes drawn (double side borders).
-- Lesson for every later family: see `AGENTS.md` rule 4 (defaults) and `docs/evidence.md` §3.
+- Lesson for every later family: see `AGENTS.md` rule 5 (defaults) and `docs/evidence.md` §3.
 - `examples/build-shapes.sh` regenerates the example from CLI commands only.
 
-### M2 — UML structural diagrams (tools, not just generic drawing)
+### M2 — UML structural diagrams ✅ done 2026-10-12 (v0.2.0)
 
-Package, Object, Component, Deployment, Composite Structure, Profile diagrams. For each:
-`tools/evidence/mm_fields.py` on the element and view types (e.g. `UMLComponent,UMLComponentView,
-UMLNode,UMLNodeView,UMLPort,UMLPortView`) to get the exact file shape; add factories in `crates/uml`;
-notation in `crates/render` (component icon, node 3D box, port squares, object underlined name);
-toolbox sets per diagram type in `crates/ui` (the toolbox should switch by active diagram type);
-`diagram.add-*` commands. Include interface "lollipop/socket" (`stereotypeDisplay: icon`).
+- Tools are data: `crates/uml/src/catalog.rs` (one row per StarUML toolbox tool, plus which groups
+  show on which diagram type). **Adding a tool for a later milestone = a catalog row** + notation in
+  `crates/render/src/layout.rs` (`shape_of`, `heading`) / `scene.rs` (`edge_style`) if it looks new.
+- Nesting: `uml::container_owner` decides what a box can hold; `view.move` carries contents;
+  deleting a box deletes what's inside (`VIEW_DEPENDENCIES` in `crates/uml/src/delete.rs`).
+- Example built from CLI commands only: `examples/build-structures.sh` → `examples/structures.mdj`
+  (one diagram per type). `rust-uml-cli run … -d <diagram>` picks the diagram to work on;
+  `rust-uml-cli tools [type]` lists tools.
+- Left for later (each small, in `docs/parity.md`): drag a box into/out of a container; ports
+  sliding along the border; n-ary association, association class, template binding, frame, role
+  binding; ball-and-socket (required interfaces); interface `decoration` display; StarUML's other
+  annotations (rect, ellipse, image, hyperlink).
+- **Not yet checked in StarUML:** open `examples/structures.mdj` in StarUML 7.1.1 and compare each
+  diagram (as M1.5 did for class diagrams). Most likely differences: port label positions,
+  icon/keyword choices, nested view geometry.
 
 ### M3 — UML behavioural diagrams
 
