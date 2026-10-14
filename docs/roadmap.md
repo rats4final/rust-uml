@@ -1,6 +1,6 @@
 # Roadmap and handoff
 
-**Read this to pick up the work.** Status as of 2026-10-14: v0.6.0 (all UML diagram types, live app control); since then flowcharts and their Mermaid import (M5).
+**Read this to pick up the work.** Status as of 2026-10-14: v0.6.0 (all UML diagram types, live app control); since then flowcharts and ER diagrams, each with its Mermaid import (M5).
 Order of reading for a new agent/session: `AGENTS.md` → this file → `docs/parity.md` → `log/devlog.md`.
 
 ## 1. Where things stand
@@ -130,7 +130,7 @@ keys inside rust-uml). Guide for users: `docs/agents.md`.
    lines only after layout, and squashes it into one undo step (`Document::squash_undo_since`;
    `command_batch` uses it too). File ▸ Import Mermaid…, `rust-uml-cli import`, MCP
    `mermaid_import`. Mappings follow StarUML's (`docs/evidence.md`, Mermaid section). Samples in
-   `examples/mermaid/`. Flowcharts added in M5. Left: ER/mind map/requirement (need their families),
+   `examples/mermaid/`. Flowcharts and ER added in M5. Left: mind map/requirement (need their families),
    automatic sequence numbers, Auto Layout as a menu command (the layout exists).
    **Not yet checked in StarUML:** open an imported model in StarUML 7.1.1.
 4. ✅ **Live app control:** `rust-uml --control <port> --control-token-file <path>
@@ -190,7 +190,18 @@ and Azure last (provider icons: check their licence first).
   bracket shapes, extended to the named ones. Subgraphs are flattened and link styles dropped,
   each with a warning; `~~~` links only steer the layout. Sample `examples/mermaid/login.mmd`.
   **Not yet checked in StarUML.**
-- ⬜ ERD, Mind map, DFD, C4, Azure.
+- ✅ **ERD** (2026-10-14): `ERDEntity` row with a `columnCompartment` (columns are features:
+  `feature.add` kind `column`); three relationship rows sharing `ERDRelationship`, told apart by
+  end cardinality (`EdgeSpec::end_fields`), drawn with rounded right angles as StarUML's preference
+  says (`EdgeSpec::line_style`) and only between entities. `create_diagram` wraps the diagram in a
+  `Data Model`. `render::layout::entity_layout` lays out the keys | name | type table as StarUML
+  does; `scene::draw_crow` draws the crow's feet. Mermaid `erDiagram` import (`mermaid::er`,
+  `engine::import::er`): symbols and word forms, aliases, PK/FK/UK, comments, `varchar(255)` →
+  type + length; `..` stays non-identifying (StarUML's importer loses that). Example
+  `examples/erd.mdj` from `examples/scripts/shop-erd.json`, sample `examples/mermaid/shop.mmd`.
+  Left: Suppress Columns menu item, ERD validation rules, column quick-edit syntax.
+  **Not yet checked in StarUML.**
+- ⬜ Mind map, DFD, C4, Azure.
 
 ### M6 — Editing depth
 
@@ -241,9 +252,11 @@ providers' official icon sets only if their licenses allow redistribution (check
 | `uml` | Audit the other view types we create for fields whose intended value ≠ metamodel default (only rows and `propertyLabel` were checked). |
 | `render` | Curve and rounded line styles draw as straight/right-angle. |
 | `mdj` | Undoing removal of a single-child (`obj`) field re-inserts the key at the end (key order changes). |
-| `ui` | Toolbox is class-diagram only regardless of diagram type. No marquee select, no clipboard. |
+| `ui` | No marquee select, no clipboard. |
 | `ui` | Linux file dialogs need an XDG portal or `zenity`; fallback is File ▸ Open Path… |
 | `ui` | Properties text buffers are never pruned (harmless, grows per edited field). |
+| `render` | Right-angle lines leave a box side from one point, so several lines from one side share their first stretch and their end marks overlap (visible on ER imports). Spread the attach points along the side. |
+| `engine` | A rename doesn't refresh the stored `text` of name labels (StarUML recomputes it when drawing, so only the file is stale). |
 | `.github` | Actions warn about Node 20 deprecation: bump `actions/checkout`, `upload-artifact`, `download-artifact` majors. |
 | release | Binaries unsigned; macOS ships a bare binary, not an `.app`. |
 

@@ -2,6 +2,20 @@
 
 Newest first. Terse: what landed, numbers, what's still open.
 
+## 2026-10-14 — M5: ER diagrams
+
+- ER diagrams: entities with a keys / name / type column table, one-to-one, one-to-many and
+  many-to-many relationships with crow's-foot ends by cardinality, dotted when non-identifying.
+  Diagrams live in a Data Model, as in StarUML. Columns are features (`feature.add` kind
+  `column`); the properties panel edits column type, length and keys, the identifying flag and
+  each end's cardinality.
+- Mermaid `erDiagram` import (dialog has an ER example; CLI and MCP too): symbols and word
+  forms, aliases, PK/FK/UK, comments; `varchar(255)` becomes type + length; `..` stays
+  non-identifying, which StarUML's own importer loses.
+- `examples/erd.mdj` (in the release archives) from `examples/scripts/shop-erd.json`; sample
+  `examples/mermaid/shop.mmd`. 154 tests.
+- Open: lines from one box side share their exit point (router); check in StarUML; mind map next.
+
 ## 2026-10-14 — M5: Mermaid flowchart import
 
 - `flowchart`/`graph` text imports onto flowchart symbols (File ▸ Import Mermaid…, CLI, MCP):

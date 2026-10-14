@@ -290,6 +290,34 @@ From `timingDiagramFn`, `_addTimingFrame`, `lifelineFn`, `timingStateFn`, `timeS
 - Time constraints (`{min..max}` label + link to a message or segment) and duration constraints
   (`{min..max}`, placed in the frame) exist too.
 
+### Entity-relationship diagrams (observed for M5, 2026-10-14)
+
+From `extensions/essential/erd/` (`metamodel.json`, `erd-factory.js`, `elements.js`,
+`erd-commands.js`, `toolbox/erd.json`, `menus/erd.json`, `rules.js`), in our words:
+
+- An `ERDDiagram` lives in an `ERDDataModel` (created as `Data Model1` unless the parent is one);
+  the diagram is named from its type, `ERDDiagram1`. Entities go in the data model's
+  `ownedElements`.
+- `ERDEntity` (`Entity1`) holds `columns`: `ERDColumn` (`Column1`) with `type`, `length` (text),
+  `primaryKey`, `foreignKey`, `referenceTo`, `nullable`, `unique` (all false by default).
+- `ERDRelationship` is undirected: `end1`/`end2` are `ERDRelationshipEnd` with `cardinality`
+  (`0..1`, `1`, `0..*`, `1..*`; default `1`), plus `identifying` (default true). It joins two
+  entities only and is owned by the tail entity. The toolbox's one-to-one, one-to-many and
+  many-to-many tools are the same type with `end2`, or both ends, set to `0..*`.
+- Views: `ERDEntityView` has a `nameLabel` (centred, bold) and a `columnCompartment`
+  (`ERDColumnCompartmentView`) whose rows are `ERDColumnView`s (left-aligned), plus
+  `suppressColumns`. `ERDRelationshipView` has `nameLabel` (middle, π/2, 15) and
+  `tailNameLabel`/`headNameLabel` (π/6 and −π/6, 30) showing the end names, and starts with line
+  style 2 (rounded rectilinear, from the `erd.relationship.lineStyle` preference).
+- Drawing: the name 5 px from the top, a line under it, then one row per column (rows 2 px
+  apart, 5 px padding) in three table columns: keys (`PK`, `FK`, and for non-primary columns
+  `N` nullable and `U` unique, comma-separated), name, and type with `(length)`; vertical lines
+  between the table columns, 5 px from the text. Ends are crow's feet by cardinality (one: two
+  bars; many: three prongs and a bar; zero: a ring), the line dotted when not identifying.
+- Menus: Add ▸ Data Model / Entity / Column, Add Diagram ▸ ER Diagram, Format ▸ Suppress Columns,
+  File ▸ New from Template ▸ Data Model. Rules: a primary key can't be nullable (ERD001); a
+  foreign key's referenced column must belong to a related entity (ERD002).
+
 ### Flowcharts (observed for M5, 2026-10-13)
 
 From `extensions/essential/flowchart/` (`metamodel.json`, `flowchart-factory.js`, `elements.js`,
@@ -378,6 +406,13 @@ scope for "the installed app".
 - **State:** one state machine with one region; all states flattened into it (composites are not
   nested); `<<choice>>`/`<<fork>>`/`<<join>>` pseudostates; transition label → name; notes linked.
 
+- **ER** (observed 2026-10-14): one `ERDDataModel` holding the diagram and every entity. Entity
+  name = its label or id; each attribute becomes a column with the type as written, PK/FK/UK as
+  primary key / foreign key / unique, and the comment as documentation. Each relationship is an
+  `ERDRelationship` named by its label, owned by the first entity; the marker next to each
+  entity becomes that end's cardinality (`||` 1, `|o` 0..1, `}o` 0..*, `}|` 1..*). It means to
+  set `identifying` from `--` vs `..` but compares the wrong value, so every imported
+  relationship comes out non-identifying (dotted).
 - **Flowchart** (observed 2026-10-14): one `FCFlowchart` holding the diagram and every node.
   Bracket shapes map to symbols: `[ ]` process, `( )` alternate process, `([ ])` terminator,
   `[[ ]]` predefined process, `[( )]` database, `(( ))` connector, `{ }` decision, `{{ }}`
@@ -390,7 +425,8 @@ rust-uml follows these mappings, except that composite states keep their nesting
 are drawn as package boxes, and flowcharts also read Mermaid's newer named shapes
 (`A@{ shape: doc }`) onto the matching symbols (document, delay, manual input, display, …);
 `[\ \]` becomes data and `[/ \]` manual operation (the closest symbols), and `((( )))` a
-connector. ER, mind map and requirement imports wait for those families.
+connector. ER relationships keep `--` identifying and `..` non-identifying, and `varchar(255)`
+is split into type and length. Mind map and requirement imports wait for those families.
 
 ## 6. Unknowns / limits of this evidence
 
