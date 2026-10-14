@@ -2,8 +2,9 @@ use std::sync::Arc;
 
 use resvg::{tiny_skia, usvg};
 
+use crate::icons::{IconSource, NoIcons};
 use crate::scene::Scene;
-use crate::svg::to_svg;
+use crate::svg::to_svg_with;
 use crate::text::{FONT_BOLD, FONT_BOLD_ITALIC, FONT_ITALIC, FONT_REGULAR};
 
 /// Largest side of an exported image, to keep a huge diagram or scale from
@@ -12,7 +13,13 @@ const MAX_SIDE: u32 = 16_384;
 
 /// Rasterise a scene to PNG bytes at `scale` (1.0 = 1 px per diagram unit).
 /// Uses the bundled fonts only, so output is identical on every platform.
+/// Icons draw as placeholders; see [`to_png_with`].
 pub fn to_png(scene: &Scene, scale: f32) -> Result<Vec<u8>, String> {
+    to_png_with(scene, scale, &NoIcons)
+}
+
+/// [`to_png`], drawing the icons `icons` has.
+pub fn to_png_with(scene: &Scene, scale: f32, icons: &dyn IconSource) -> Result<Vec<u8>, String> {
     if !(scale.is_finite() && scale > 0.0) {
         return Err(format!("invalid scale {scale}"));
     }
@@ -25,7 +32,8 @@ pub fn to_png(scene: &Scene, scale: f32) -> Result<Vec<u8>, String> {
         font_family: "Liberation Sans".into(),
         ..Default::default()
     };
-    let tree = usvg::Tree::from_str(&to_svg(scene), &opts).map_err(|e| e.to_string())?;
+    let tree =
+        usvg::Tree::from_str(&to_svg_with(scene, icons), &opts).map_err(|e| e.to_string())?;
     let size = tree.size();
     let (w, h) = (
         (size.width() * scale).ceil(),

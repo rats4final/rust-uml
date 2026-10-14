@@ -354,7 +354,7 @@ fn specs() -> Vec<CommandSpec> {
             enabled: has_diagram,
             run: |s, p| {
                 let scene = scene_for(s, p)?;
-                Ok(json!({ "svg": render::to_svg(&scene) }))
+                Ok(json!({ "svg": render::to_svg_with(&scene, s.icons()) }))
             },
         },
         CommandSpec {
@@ -373,7 +373,8 @@ fn specs() -> Vec<CommandSpec> {
                         .ok_or_else(|| CommandError::Param("`scale` must be 0.1–8".into()))?,
                 };
                 let scene = scene_for(s, p)?;
-                let png = render::to_png(&scene, scale as f32).map_err(CommandError::Failed)?;
+                let png = render::to_png_with(&scene, scale as f32, s.icons())
+                    .map_err(CommandError::Failed)?;
                 Ok(json!({ "png_base64": base64::engine::general_purpose::STANDARD.encode(png) }))
             },
         },
@@ -1763,6 +1764,10 @@ mod tests {
             json!({"classifier": real[1], "kind": "column", "name": "id"}),
             json!({"model": real[0], "x": 0, "y": 0}),
             json!({"model": real[1], "x": 1e300, "y": "no"}),
+            json!({"type": "AzureDiagram"}),
+            json!({"kind": "AzureService", "x": 0, "y": 0, "container": real[1]}),
+            json!({"kind": "AzureConnector", "tail": real[0], "head": real[1]}),
+            json!({"id": real[1], "values": {"icon": "../../etc/passwd", "dashed": "yes"}}),
             json!({"type": "C4Diagram"}),
             json!({"kind": "C4ContainerDatabase", "x": 0, "y": 0}),
             json!({"kind": "C4Relationship", "tail": real[0], "head": real[1]}),
@@ -1913,5 +1918,35 @@ mod tests {
             reg.run(&mut s, "view.add", &json!({"model": root, "x": 0, "y": 0}))
                 .is_err()
         );
+    }
+
+    #[test]
+    fn exports_draw_the_sessions_icons() {
+        struct Blue;
+        impl render::IconSource for Blue {
+            fn svg(&self, _: &str, _: &str) -> Option<std::sync::Arc<str>> {
+                Some(std::sync::Arc::from(
+                    r#"<svg xmlns="http://www.w3.org/2000/svg" width="4" height="4"/>"#,
+                ))
+            }
+        }
+        let reg = Registry::default();
+        let mut s = Session::default();
+        run(&reg, &mut s, "diagram.add", json!({"type": "AzureDiagram"}));
+        run(
+            &reg,
+            &mut s,
+            "node.create",
+            json!({"kind": "AzureService", "x": 0, "y": 0}),
+        );
+        let svg = |s: &mut Session| {
+            run(&reg, s, "export.svg", json!({}))["svg"]
+                .as_str()
+                .unwrap()
+                .to_owned()
+        };
+        assert!(!svg(&mut s).contains("<image"));
+        s.set_icons(std::sync::Arc::new(Blue));
+        assert!(svg(&mut s).contains("<image"));
     }
 }

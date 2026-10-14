@@ -37,6 +37,8 @@ pub enum FileEvent {
         path: Option<String>,
     },
     Failed(String),
+    /// A new icon folder is in use for new sessions; the message says which.
+    IconsChanged(String),
 }
 
 /// File access, implemented per platform. Requests may complete later (in a
@@ -64,4 +66,13 @@ pub trait FileService {
     ///
     /// [`has_paths`]: FileService::has_paths
     fn open_path(&mut self, _path: &str) {}
+
+    /// Whether the user can pick a folder of icons (Microsoft's Azure icon
+    /// set, which rust-uml doesn't ship).
+    fn has_icon_folder(&self) -> bool {
+        false
+    }
+
+    /// Ask for the icon folder; report with [`FileEvent::IconsChanged`].
+    fn choose_icon_folder(&mut self) {}
 }

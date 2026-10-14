@@ -65,6 +65,15 @@ pub enum Prim {
         fill: Option<Color>,
         stroke: Color,
     },
+    /// A named icon (an Azure service's) filling `rect`, from an
+    /// [`IconSource`](crate::IconSource); `fallback` is drawn when the source
+    /// doesn't have it.
+    Icon {
+        rect: Rect,
+        family: &'static str,
+        name: String,
+        fallback: Vec<Prim>,
+    },
     /// `rect` is the text's line box; `baseline` is measured from its top.
     Text {
         rect: Rect,
@@ -208,6 +217,14 @@ fn build_scene_at(doc: &Document, diagram: &str, fonts: &Fonts, depth: usize) ->
         }
         if let Some(layout) = layouts.get(view.id.as_str()) {
             draw_node(&mut scene, layout, fonts);
+            if layout.shape == Shape::Icon {
+                let name = view
+                    .ref_id("model")
+                    .and_then(|m| doc.get(m))
+                    .and_then(|m| m.str("icon"))
+                    .unwrap_or("");
+                scene.prims.push(icon(layout.rect, "azure", name, fonts));
+            }
             // An inline interaction shows its sequence diagram, shrunk to fit.
             if view.type_name == "UMLInteractionInlineView"
                 && depth < MAX_NESTING
@@ -297,76 +314,92 @@ fn draw_nested(
     }
     let k = (area.w / b.w).min(area.h / b.h).min(1.0);
     let (dx, dy) = (area.x - b.x * k, area.y - b.y * k);
+    for prim in inner.prims {
+        scene.prims.push(scaled(prim, k, dx, dy));
+    }
+}
+
+/// `prim` scaled by `k` and moved by (`dx`, `dy`).
+fn scaled(prim: Prim, k: f64, dx: f64, dy: f64) -> Prim {
     let pt = |p: Point| Point::new(p.x * k + dx, p.y * k + dy);
     let rect = |r: Rect| Rect::new(r.x * k + dx, r.y * k + dy, r.w * k, r.h * k);
-    for prim in inner.prims {
-        scene.prims.push(match prim {
-            Prim::Rect {
-                rect: r,
-                fill,
-                stroke,
-                dashed,
-            } => Prim::Rect {
-                rect: rect(r),
-                fill,
-                stroke,
-                dashed,
+    match prim {
+        Prim::Rect {
+            rect: r,
+            fill,
+            stroke,
+            dashed,
+        } => Prim::Rect {
+            rect: rect(r),
+            fill,
+            stroke,
+            dashed,
+        },
+        Prim::RoundRect {
+            rect: r,
+            radius,
+            fill,
+            stroke,
+        } => Prim::RoundRect {
+            rect: rect(r),
+            radius: radius * k,
+            fill,
+            stroke,
+        },
+        Prim::Ellipse {
+            rect: r,
+            fill,
+            stroke,
+            dashed,
+        } => Prim::Ellipse {
+            rect: rect(r),
+            fill,
+            stroke,
+            dashed,
+        },
+        Prim::Line {
+            points,
+            stroke,
+            dashed,
+        } => Prim::Line {
+            points: points.into_iter().map(pt).collect(),
+            stroke,
+            dashed,
+        },
+        Prim::Polygon {
+            points,
+            fill,
+            stroke,
+        } => Prim::Polygon {
+            points: points.into_iter().map(pt).collect(),
+            fill,
+            stroke,
+        },
+        Prim::Icon {
+            rect: r,
+            family,
+            name,
+            fallback,
+        } => Prim::Icon {
+            rect: rect(r),
+            family,
+            name,
+            fallback: fallback.into_iter().map(|p| scaled(p, k, dx, dy)).collect(),
+        },
+        Prim::Text {
+            rect: r,
+            baseline,
+            text,
+            style,
+        } => Prim::Text {
+            rect: rect(r),
+            baseline: baseline * k,
+            text,
+            style: TextStyle {
+                size: style.size * k,
+                ..style
             },
-            Prim::RoundRect {
-                rect: r,
-                radius,
-                fill,
-                stroke,
-            } => Prim::RoundRect {
-                rect: rect(r),
-                radius: radius * k,
-                fill,
-                stroke,
-            },
-            Prim::Ellipse {
-                rect: r,
-                fill,
-                stroke,
-                dashed,
-            } => Prim::Ellipse {
-                rect: rect(r),
-                fill,
-                stroke,
-                dashed,
-            },
-            Prim::Line {
-                points,
-                stroke,
-                dashed,
-            } => Prim::Line {
-                points: points.into_iter().map(pt).collect(),
-                stroke,
-                dashed,
-            },
-            Prim::Polygon {
-                points,
-                fill,
-                stroke,
-            } => Prim::Polygon {
-                points: points.into_iter().map(pt).collect(),
-                fill,
-                stroke,
-            },
-            Prim::Text {
-                rect: r,
-                baseline,
-                text,
-                style,
-            } => Prim::Text {
-                rect: rect(r),
-                baseline: baseline * k,
-                text,
-                style: TextStyle {
-                    size: style.size * k,
-                    ..style
-                },
-            },
-        });
+        },
     }
 }
 
@@ -598,11 +631,32 @@ fn draw_node(scene: &mut Scene, l: &NodeLayout, fonts: &Fonts) {
             );
         }
         Shape::Text => {}
+        Shape::RoundRect if dashed => {
+            // Filled, then a dashed outline (an Azure group).
+            scene.prims.push(Prim::RoundRect {
+                rect: r,
+                radius: ROUND,
+                fill,
+                stroke: l.fill,
+            });
+            scene.prims.push(Prim::Line {
+                points: round_rect_points(r, ROUND),
+                stroke,
+                dashed: true,
+            });
+        }
         Shape::RoundRect => scene.prims.push(Prim::RoundRect {
             rect: r,
             radius: ROUND,
             fill,
             stroke,
+        }),
+        Shape::Icon => {}
+        Shape::Dot => scene.prims.push(Prim::Ellipse {
+            rect: r,
+            fill,
+            stroke,
+            dashed: false,
         }),
         Shape::MindNode => scene.prims.push(Prim::RoundRect {
             rect: r,
@@ -739,6 +793,46 @@ fn draw_node(scene: &mut Scene, l: &NodeLayout, fonts: &Fonts) {
             text: label.line.text.clone(),
             style: s,
         });
+    }
+}
+
+/// An icon over `r`: drawn from the app's icon source, or as a placeholder,
+/// a soft rounded square with the icon's initials.
+fn icon(r: Rect, family: &'static str, name: &str, fonts: &Fonts) -> Prim {
+    let text = crate::icons::initials(name);
+    let size = (r.h * 0.33).clamp(6.0, 16.0);
+    let w = fonts.width(&text, size, true, false);
+    let line_h = fonts.line_height(size);
+    Prim::Icon {
+        rect: r,
+        family,
+        name: name.to_owned(),
+        fallback: vec![
+            Prim::RoundRect {
+                rect: r,
+                radius: (r.w.min(r.h) / 6.0).min(8.0),
+                fill: Color::parse("#eef2f7"),
+                stroke: Color::parse("#8a99ad").unwrap_or(Color::BLACK),
+            },
+            Prim::Text {
+                rect: Rect::new(
+                    r.center().x - w / 2.0,
+                    r.center().y - line_h / 2.0,
+                    w,
+                    line_h,
+                ),
+                baseline: fonts.ascent(size),
+                text,
+                style: TextStyle {
+                    size,
+                    bold: true,
+                    italic: false,
+                    underline: false,
+                    color: Color::parse("#4a5568").unwrap_or(Color::BLACK),
+                    vertical: false,
+                },
+            },
+        ],
     }
 }
 
@@ -1646,6 +1740,11 @@ fn edge_style(doc: &Document, view: &Element) -> (bool, EndMark, EndMark) {
         (false, EndMark::FilledTriangle)
     } else if t == "C4RelationshipView" {
         (true, EndMark::FilledTriangle)
+    } else if t == "AzureConnectorView" {
+        (
+            model.is_some_and(|m| m.bool("dashed", false)),
+            EndMark::FilledTriangle,
+        )
     } else if t == "UMLInformationFlowView" {
         (true, EndMark::OpenArrow)
     } else if t.contains("Generalization") {
@@ -3015,5 +3114,81 @@ mod tests {
                 .iter()
                 .any(|p| matches!(p, Prim::Line { dashed: true, .. }))
         );
+    }
+
+    /// Icons from memory, for tests.
+    struct OneIcon;
+    impl crate::IconSource for OneIcon {
+        fn svg(&self, family: &str, name: &str) -> Option<std::sync::Arc<str>> {
+            (family == "azure" && crate::icon_key(name) == "app-services.svg").then(|| {
+                std::sync::Arc::from(
+                    r##"<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18"><rect width="18" height="18" fill="#0078d4"/></svg>"##,
+                )
+            })
+        }
+    }
+
+    #[test]
+    fn azure_groups_services_callouts_and_icons() {
+        let mut doc = Document::new_project();
+        let root = doc.root().to_owned();
+        let on = "AzureDiagram";
+        let dgm = doc.try_edit(|e| uml::create_diagram(e, &root, on)).unwrap();
+        let add = |doc: &mut Document, tool: &str, x: f64| {
+            let spec = uml::node_spec_on(tool, on).unwrap();
+            doc.try_edit(|e| uml::create_node(e, &dgm, spec, x, 300.0, None))
+                .unwrap()
+        };
+        let (group, gv) = add(&mut doc, "AzureGroup", 0.0);
+        let (_, app) = add(&mut doc, "AzureService", 300.0);
+        let (sql, db) = add(&mut doc, "AzureService", 500.0);
+        let (_, callout) = add(&mut doc, "AzureCallout", 700.0);
+        doc.edit(|e| {
+            e.set(&group.unwrap(), "rounded", mdj::Field::bool(true));
+            e.set(
+                &sql.clone().unwrap(),
+                "icon",
+                mdj::Field::str("SQL-Database.svg"),
+            );
+        });
+        let layout =
+            |v: &str| crate::node_layout(&doc, doc.get(v).unwrap(), &Fonts::default()).unwrap();
+        assert_eq!(layout(&gv).shape, Shape::RoundRect);
+        let s = layout(&app);
+        assert_eq!(s.shape, Shape::Icon);
+        assert!(s.rect.w >= 48.0 && s.rect.h >= 48.0);
+        assert!(
+            s.outside[0].center.y > s.rect.bottom(),
+            "the name sits below"
+        );
+        let c = layout(&callout);
+        assert_eq!(c.shape, Shape::Dot);
+        assert_eq!(c.compartments[0].lines[0].text, "1");
+        assert_eq!(c.fill, Color::BLACK);
+
+        let scene = build_scene(&doc, &dgm, &Fonts::default());
+        let icons: Vec<&str> = scene
+            .prims
+            .iter()
+            .filter_map(|p| match p {
+                Prim::Icon { name, .. } => Some(name.as_str()),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(icons, ["App-Services.svg", "SQL-Database.svg"]);
+        // Without icons: placeholders with initials. With: the picture.
+        let plain = crate::to_svg(&scene);
+        assert!(plain.contains(">AS</text>") && plain.contains(">SD</text>"));
+        assert!(!plain.contains("<image"));
+        let with = crate::to_svg_with(&scene, &OneIcon);
+        assert_eq!(
+            with.matches("<image").count(),
+            1,
+            "only App Service is known"
+        );
+        assert!(with.contains("data:image/svg+xml;base64,") && with.contains(">SD</text>"));
+        let png = crate::to_png_with(&scene, 1.0, &OneIcon).unwrap();
+        assert_eq!(&png[1..4], b"PNG");
+        let _ = db;
     }
 }

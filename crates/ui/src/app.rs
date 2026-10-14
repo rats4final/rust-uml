@@ -370,6 +370,11 @@ impl UmlApp {
                     self.status = format!("Saved {name}");
                 }
                 FileEvent::Failed(e) => self.status = e,
+                FileEvent::IconsChanged(message) => {
+                    self.session.use_default_icons();
+                    self.canvas.forget_icons();
+                    self.status = message;
+                }
             }
         }
     }
@@ -487,6 +492,19 @@ impl UmlApp {
                 }
                 if ui.button("Actual Size").clicked() {
                     self.canvas.actual_size();
+                }
+                if self.files.has_icon_folder() {
+                    ui.separator();
+                    if ui
+                        .button("Azure Icons Folder…")
+                        .on_hover_text(
+                            "Microsoft's Azure architecture icons, downloaded from \
+                             learn.microsoft.com/azure/architecture/icons (rust-uml doesn't ship them)",
+                        )
+                        .clicked()
+                    {
+                        self.files.choose_icon_folder();
+                    }
                 }
             });
             ui.menu_button("Help", |ui| {
@@ -816,7 +834,9 @@ impl eframe::App for UmlApp {
                 }
                 let scene = self.scene.take();
                 if let Some((rev, d, scene)) = scene {
-                    let out = self.canvas.show(ui, &scene, &selection, tool);
+                    let out = self
+                        .canvas
+                        .show(ui, &scene, &selection, tool, self.session.icons());
                     self.scene = Some((rev, d, scene));
                     commands.extend(out.commands);
                     if out.tool_done {
@@ -1338,6 +1358,53 @@ mod tests {
         assert!(h.state().mermaid.is_none(), "{:?}", h.state().status);
         assert_eq!(views_of_type(h.state(), "MMNode").len(), 8);
         assert_eq!(views_of_type(h.state(), "MMEdgeView").len(), 7);
+    }
+
+    /// Three icons, by name only.
+    struct ThreeIcons;
+    impl render::IconSource for ThreeIcons {
+        fn svg(&self, _: &str, _: &str) -> Option<std::sync::Arc<str>> {
+            None
+        }
+        fn names(&self, _: &str) -> Vec<String> {
+            [
+                "App-Services.svg",
+                "SQL-Database.svg",
+                "Storage-Accounts.svg",
+            ]
+            .map(str::to_owned)
+            .to_vec()
+        }
+    }
+
+    #[test]
+    fn azure_service_by_mouse_and_its_icon_picked() {
+        let mut h = harness();
+        h.run();
+        h.state_mut()
+            .exec("diagram.add", json!({"type": "AzureDiagram"}));
+        h.state_mut()
+            .session
+            .set_icons(std::sync::Arc::new(ThreeIcons));
+        h.run();
+        h.get_by_role_and_label(Role::Button, "Azure Service")
+            .click();
+        h.run();
+        let at = h.state().canvas.to_screen(render::Point::new(120.0, 120.0));
+        click(&mut h, at);
+        let view = h.state().session.selection[0].clone();
+        h.get_by_label("SQL Database").click();
+        h.run();
+        let app = h.state();
+        let v = app.session.doc.get(&view).unwrap();
+        assert_eq!(v.type_name, "AzureServiceView");
+        let m = app.session.doc.get(v.ref_id("model").unwrap()).unwrap();
+        assert_eq!(m.str("icon"), Some("SQL-Database.svg"));
+        assert_eq!(
+            m.name(),
+            "SQL Database",
+            "renamed after the icon, as StarUML"
+        );
     }
 
     #[test]

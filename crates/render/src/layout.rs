@@ -148,6 +148,11 @@ pub enum Shape {
     DataStore,
     /// A C4 element.
     C4(C4Look),
+    /// An icon (an Azure service): no outline of its own; the scene draws
+    /// the icon over the box.
+    Icon,
+    /// A filled circle with centred text (an Azure callout).
+    Dot,
 }
 
 /// How a C4 box is drawn (StarUML's c4 extension).
@@ -696,6 +701,15 @@ pub fn node_layout(doc: &Document, view: &Element, fonts: &Fonts) -> Option<Node
         });
     }
 
+    if matches!(
+        view.type_name.as_str(),
+        "AzureGroupView" | "AzureServiceView" | "AzureCalloutView"
+    ) {
+        let mut l = azure_layout(doc, view, model, stored, size, fonts);
+        (l.fill, l.line, l.text) = (fill, line, text);
+        return Some(l);
+    }
+
     if view.type_name.starts_with("C4") && view.type_name.ends_with("View") {
         let mut l = c4_layout(doc, view, model, stored, size, fonts);
         (l.fill, l.line, l.text) = (fill, line, text);
@@ -1193,6 +1207,137 @@ pub fn node_layout(doc: &Document, view: &Element, fonts: &Fonts) -> Option<Node
         outside: Vec::new(),
         dividers,
     })
+}
+
+/// Padding around an Azure group's name (StarUML: 10); smallest service icon
+/// (48) and callout (24).
+const AZURE_PAD: f64 = 10.0;
+const AZURE_ICON: f64 = 48.0;
+const AZURE_CALLOUT: f64 = 24.0;
+
+/// Azure elements, laid out as StarUML does: a group is a box (rounded
+/// and dashed as its model says) with its name centred at the top; a
+/// service an icon at least 48 px square with its name floating below; a
+/// callout a dot with its number in the middle.
+fn azure_layout(
+    doc: &Document,
+    view: &Element,
+    model: Option<&Element>,
+    stored: Rect,
+    size: f64,
+    fonts: &Fonts,
+) -> NodeLayout {
+    let line_h = fonts.line_height(size);
+    let name = model.map(|m| m.name().to_owned()).unwrap_or_default();
+    let flag = |k: &str| model.is_some_and(|m| m.bool(k, false));
+    let mut l = NodeLayout {
+        rect: stored,
+        min_w: 0.0,
+        min_h: 0.0,
+        shape: Shape::Box,
+        compartments: Vec::new(),
+        separators: false,
+        font_size: size,
+        fill: Color::WHITE,
+        line: Color::BLACK,
+        text: Color::BLACK,
+        active: false,
+        dashed: false,
+        icon: None,
+        outside: Vec::new(),
+        dividers: Vec::new(),
+    };
+    match view.type_name.as_str() {
+        "AzureServiceView" => {
+            l.shape = Shape::Icon;
+            (l.min_w, l.min_h) = (AZURE_ICON, AZURE_ICON);
+            l.rect = Rect::new(
+                stored.x,
+                stored.y,
+                stored.w.max(AZURE_ICON),
+                stored.h.max(AZURE_ICON),
+            );
+            // The name floats where its label says (below, by default).
+            if !name.is_empty() {
+                let label = view.ref_id("nameLabel").and_then(|id| doc.get(id));
+                let alpha = label.map_or(-std::f64::consts::FRAC_PI_2, |l| {
+                    l.num("alpha", -std::f64::consts::FRAC_PI_2)
+                });
+                let distance = label.map_or(42.0, |l| l.num("distance", 42.0));
+                let c = l.rect.center();
+                l.outside.push(OutsideLabel {
+                    line: TextLine::centered(name),
+                    // StarUML measures label angles opposite to screen angles.
+                    center: Point::new(c.x + distance * alpha.cos(), c.y - distance * alpha.sin()),
+                });
+            }
+        }
+        "AzureCalloutView" => {
+            l.shape = Shape::Dot;
+            let w = fonts.width(&name, size, false, false);
+            l.min_w = AZURE_CALLOUT.max((w + 2.0 * PAD_X).ceil());
+            l.min_h = AZURE_CALLOUT.max((line_h + 2.0 * PAD_Y).ceil());
+            l.rect = Rect::new(
+                stored.x,
+                stored.y,
+                stored.w.max(l.min_w),
+                stored.h.max(l.min_h),
+            );
+            let top = l.rect.y + (l.rect.h - line_h) / 2.0;
+            l.compartments.push(Compartment {
+                lines: vec![TextLine::centered(name)],
+                rect: Rect::new(l.rect.x, top - PAD_Y, l.rect.w, line_h + 2.0 * PAD_Y),
+            });
+        }
+        _ => {
+            l.shape = if flag("rounded") {
+                Shape::RoundRect
+            } else {
+                Shape::Box
+            };
+            l.dashed = flag("dashed");
+            let room = (stored.w - 2.0 * AZURE_PAD).max(0.0);
+            let widest_word = name
+                .split(['\n', ' '])
+                .map(|w| fonts.width(w, size, false, false))
+                .fold(0.0, f64::max);
+            let lines = if view.bool("wordWrap", true) {
+                wrap(&name, room.max(widest_word), fonts, size)
+            } else {
+                name.split('\n').map(str::to_owned).collect()
+            };
+            let widest = lines
+                .iter()
+                .map(|t| fonts.width(t, size, false, false))
+                .fold(0.0, f64::max);
+            let text_h = if name.is_empty() {
+                0.0
+            } else {
+                lines.len() as f64 * line_h
+            };
+            l.min_w = (widest + 2.0 * AZURE_PAD).max(MIN_WIDTH).ceil();
+            l.min_h = (text_h + 2.0 * AZURE_PAD).ceil();
+            l.rect = Rect::new(
+                stored.x,
+                stored.y,
+                stored.w.max(l.min_w),
+                stored.h.max(l.min_h),
+            );
+            if !name.is_empty() {
+                let top = l.rect.y + AZURE_PAD;
+                l.compartments.push(Compartment {
+                    lines: lines.into_iter().map(TextLine::centered).collect(),
+                    rect: Rect::new(
+                        l.rect.x + AZURE_PAD,
+                        top - PAD_Y,
+                        l.rect.w - 2.0 * AZURE_PAD,
+                        text_h + 2.0 * PAD_Y,
+                    ),
+                });
+            }
+        }
+    }
+    l
 }
 
 /// C4 boxes: padding at each side (StarUML: 8), between labels (2), extra

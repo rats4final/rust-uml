@@ -1,7 +1,8 @@
 use std::collections::HashSet;
+use std::sync::{Arc, RwLock};
 
 use mdj::{Document, Editor, Element, Id, LoadError};
-use render::{Fonts, Scene};
+use render::{Fonts, IconSource, NoIcons, Scene};
 
 use crate::CommandError;
 
@@ -16,6 +17,27 @@ pub struct Session {
     /// Selected views and/or model elements.
     pub selection: Vec<Id>,
     fonts: Fonts,
+    /// Where icon pictures come from (Azure services); none by default.
+    icons: Arc<dyn IconSource>,
+}
+
+/// Icons every new session starts with: set once by the app or CLI (from
+/// its icon folder setting), so sessions opened anywhere draw them.
+static DEFAULT_ICONS: RwLock<Option<Arc<dyn IconSource>>> = RwLock::new(None);
+
+/// Make `icons` the icons of every session created from now on.
+pub fn set_default_icons(icons: Arc<dyn IconSource>) {
+    if let Ok(mut d) = DEFAULT_ICONS.write() {
+        *d = Some(icons);
+    }
+}
+
+fn default_icons() -> Arc<dyn IconSource> {
+    DEFAULT_ICONS
+        .read()
+        .ok()
+        .and_then(|d| d.clone())
+        .unwrap_or_else(|| Arc::new(NoIcons))
 }
 
 /// What an edit touched, so geometry can be brought up to date afterwards.
@@ -77,7 +99,25 @@ impl Session {
             active_diagram,
             selection: Vec::new(),
             fonts: Fonts::default(),
+            icons: default_icons(),
         }
+    }
+
+    /// Icon pictures for drawing and exports (the app's, e.g. a folder of
+    /// Microsoft's Azure icons the user downloaded).
+    pub fn icons(&self) -> &dyn IconSource {
+        self.icons.as_ref()
+    }
+
+    /// Switch to the icons new sessions get (after [`set_default_icons`]).
+    pub fn use_default_icons(&mut self) {
+        self.icons = default_icons();
+    }
+
+    /// Use `icons` in this session (see [`set_default_icons`] for every
+    /// session made from now on).
+    pub fn set_icons(&mut self, icons: Arc<dyn IconSource>) {
+        self.icons = icons;
     }
 
     /// Open a project from file contents.

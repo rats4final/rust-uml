@@ -101,7 +101,12 @@ pub struct Properties {
     shown: Option<String>,
     /// Put the cursor in the name field on the next frame.
     pub focus_name: bool,
+    /// What the Azure icon picker is filtered by.
+    icon_search: String,
 }
+
+/// Icons the picker lists at once.
+const ICON_MATCHES: usize = 40;
 
 impl Properties {
     /// The elements with text buffers (for tests).
@@ -135,7 +140,7 @@ impl Properties {
             .show(ui, |ui| {
                 let t = el.type_name.as_str();
                 ui.heading(
-                    ["UML", "ERD", "FC", "MM", "DFD", "C4"]
+                    ["UML", "ERD", "FC", "MM", "DFD", "C4", "Azure"]
                         .iter()
                         .find_map(|p| t.strip_prefix(p))
                         .unwrap_or(t)
@@ -157,6 +162,9 @@ impl Properties {
                         self.specific(ui, &s.doc, el, &mut out);
                     });
                 self.lists(ui, &s.doc, el, &mut out);
+                if el.type_name == "AzureService" {
+                    self.icon_picker(ui, s, el, &mut out);
+                }
                 ui.add_space(8.0);
                 ui.label("Documentation");
                 self.text(
@@ -462,6 +470,19 @@ impl Properties {
                     ui.end_row();
                 }
             }
+            "AzureService" => {
+                self.field(ui, el, "Icon", "icon", el.str("icon").unwrap_or(""), out);
+            }
+            "AzureGroup" => {
+                check(ui, el, "dashed", "Dashed", false, out);
+                ui.end_row();
+                check(ui, el, "rounded", "Rounded", false, out);
+                ui.end_row();
+            }
+            "AzureConnector" => {
+                check(ui, el, "dashed", "Dashed", false, out);
+                ui.end_row();
+            }
             "C4Person" | "C4SoftwareSystem" | "C4Container" | "C4Component" | "C4Element"
             | "C4Model" | "C4Relationship" => {
                 if t == "C4Container" {
@@ -607,6 +628,50 @@ impl Properties {
                 });
             }
         }
+    }
+
+    /// Choose an Azure service's icon from the icon folder, by name. As in
+    /// StarUML, the service is renamed after the icon.
+    fn icon_picker(&mut self, ui: &mut egui::Ui, s: &Session, el: &Element, out: &mut Commands) {
+        let names = s.icons().names("azure");
+        ui.add_space(8.0);
+        ui.strong("Choose icon");
+        if names.is_empty() {
+            ui.weak(
+                "No icon folder: download Microsoft's Azure icons and choose the folder \
+                 with View ▸ Azure Icons Folder… (rust-uml doesn't ship them).",
+            );
+            return;
+        }
+        ui.add(
+            egui::TextEdit::singleline(&mut self.icon_search)
+                .hint_text(format!("Search {} icons", names.len()))
+                .desired_width(f32::INFINITY),
+        );
+        let wanted = self.icon_search.to_lowercase();
+        let current = el.str("icon").unwrap_or("");
+        let matches: Vec<&String> = names
+            .iter()
+            .filter(|n| n.to_lowercase().contains(&wanted))
+            .take(ICON_MATCHES)
+            .collect();
+        egui::ScrollArea::vertical()
+            .id_salt("icons")
+            .max_height(200.0)
+            .show(ui, |ui| {
+                for name in matches {
+                    let title = render::icon_title(name);
+                    if ui
+                        .selectable_label(name.eq_ignore_ascii_case(current), &title)
+                        .clicked()
+                    {
+                        out.push((
+                            "element.set",
+                            json!({ "id": el.id, "values": { "icon": name, "name": title } }),
+                        ));
+                    }
+                }
+            });
     }
 
     fn field(

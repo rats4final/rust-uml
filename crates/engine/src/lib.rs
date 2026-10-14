@@ -17,4 +17,4 @@ mod session;
 mod validate;
 
 pub use commands::{CommandError, CommandSpec, Registry};
-pub use session::Session;
+pub use session::{Session, set_default_icons};

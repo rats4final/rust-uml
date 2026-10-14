@@ -219,13 +219,20 @@ fn is_orthogonal(style: i64) -> bool {
 }
 
 /// Space kept between lines touching one side of a box, and from its
-/// corners: room for end marks such as crow's feet side by side.
+/// corners: room for end marks such as crow's feet side by side. Short
+/// sides (a 48 px icon) keep a quarter of their length instead.
 const SPREAD: f64 = 20.0;
 
+/// The spacing used on `side` of `r`.
+fn gap(r: &Rect, side: u8) -> f64 {
+    let len = if side < 2 { r.h } else { r.w };
+    SPREAD.min(len / 4.0)
+}
+
 /// Positions ever further from `along`, `toward` (+1/-1) first, in steps
-/// small enough to find any gap of `SPREAD` between taken spots.
+/// small enough to find any gap between taken spots.
 fn nearby(along: f64, toward: f64) -> impl Iterator<Item = f64> {
-    (1..200).flat_map(move |k| [toward, -toward].map(|d| along + d * 4.0 * f64::from(k)))
+    (1..400).flat_map(move |k| [toward, -toward].map(|d| along + d * 2.0 * f64::from(k)))
 }
 
 /// A side of a box: which box, and 0 left, 1 right, 2 top, 3 bottom.
@@ -268,10 +275,10 @@ impl Taken {
         }
     }
 
-    fn is_free(&self, bx: &str, side: u8, along: f64) -> bool {
+    fn is_free(&self, bx: &str, side: u8, along: f64, gap: f64) -> bool {
         self.at
             .get(&(bx.to_owned(), side))
-            .is_none_or(|v| v.iter().all(|a| (a - along).abs() >= SPREAD - 0.5))
+            .is_none_or(|v| v.iter().all(|a| (a - along).abs() >= gap - 0.5))
     }
 
     /// The free spot on a side nearest `along`, within `lo..=hi`, trying
@@ -283,11 +290,12 @@ impl Taken {
         along: f64,
         (lo, hi): (f64, f64),
         toward: f64,
+        gap: f64,
     ) -> Option<f64> {
-        if self.is_free(bx, side, along) {
+        if self.is_free(bx, side, along, gap) {
             return Some(along);
         }
-        nearby(along, toward).find(|&a| a >= lo && a <= hi && self.is_free(bx, side, a))
+        nearby(along, toward).find(|&a| a >= lo && a <= hi && self.is_free(bx, side, a, gap))
     }
 
     /// Move a freshly routed right-angle line's ends off spots already taken
@@ -303,9 +311,12 @@ impl Taken {
             return;
         }
         // Range of positions along a side, clear of the corners.
-        let range = |r: &Rect, side: u8| match side {
-            0 | 1 => (r.y + SPREAD, r.bottom() - SPREAD),
-            _ => (r.x + SPREAD, r.right() - SPREAD),
+        let range = |r: &Rect, side: u8| {
+            let g = gap(r, side);
+            match side {
+                0 | 1 => (r.y + g, r.bottom() - g),
+                _ => (r.x + g, r.right() - g),
+            }
         };
         let set = |p: &mut Point, side: u8, along: f64| match side {
             0 | 1 => p.y = along,
@@ -315,14 +326,15 @@ impl Taken {
             let (Some((ts, ta)), Some((hs, _))) = (side_of(tr, pts[0]), side_of(hr, pts[1])) else {
                 return;
             };
-            if self.is_free(tail, ts, ta) && self.is_free(head, hs, ta) {
+            let g = gap(tr, ts).min(gap(hr, hs));
+            if self.is_free(tail, ts, ta, g) && self.is_free(head, hs, ta, g) {
                 return;
             }
             let (t_lo, t_hi) = range(tr, ts);
             let (h_lo, h_hi) = range(hr, hs);
             let (lo, hi) = (t_lo.max(h_lo), t_hi.min(h_hi));
             let moved = nearby(ta, 1.0).find(|&a| {
-                a >= lo && a <= hi && self.is_free(tail, ts, a) && self.is_free(head, hs, a)
+                a >= lo && a <= hi && self.is_free(tail, ts, a, g) && self.is_free(head, hs, a, g)
             });
             if let Some(a) = moved {
                 set(&mut pts[0], ts, a);
@@ -340,7 +352,7 @@ impl Taken {
                 _ => pts[far].x,
             };
             let toward = if other < along { -1.0 } else { 1.0 };
-            if let Some(a) = self.free_near(bx, side, along, range(r, side), toward)
+            if let Some(a) = self.free_near(bx, side, along, range(r, side), toward, gap(r, side))
                 && a != along
             {
                 set(&mut pts[end], side, a);

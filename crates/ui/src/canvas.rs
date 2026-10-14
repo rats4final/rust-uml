@@ -1,12 +1,15 @@
 //! The diagram canvas: draws a [`render::Scene`] and turns mouse input into
 //! engine commands. It never edits the document itself.
 
+use std::cell::RefCell;
+use std::collections::HashMap;
+
 use egui::{
     Color32, CornerRadius, CursorIcon, FontId, PointerButton, Pos2, Rect, Sense, Shape, Stroke,
     StrokeKind, Vec2,
     text::{LayoutJob, TextFormat},
 };
-use render::{HitShape, Prim, Scene};
+use render::{HitShape, IconSource, Prim, Scene};
 use serde_json::{Value, json};
 use uml::{EdgeSpec, NodeSpec};
 
@@ -55,7 +58,12 @@ pub struct Canvas {
     /// Fit the diagram into view on the next frame (after a file or
     /// diagram opens, when the canvas size is known).
     fit_pending: bool,
+    /// Icons drawn so far, by name and pixel size (`None`: not available).
+    icons: RefCell<HashMap<(String, u32, u32), Option<egui::TextureHandle>>>,
 }
+
+/// Icon pictures kept before the cache starts over.
+const ICON_CACHE: usize = 512;
 
 impl Default for Canvas {
     fn default() -> Self {
@@ -65,6 +73,7 @@ impl Default for Canvas {
             drag: Drag::None,
             screen: Rect::NOTHING,
             fit_pending: true,
+            icons: RefCell::default(),
         }
     }
 }
@@ -82,6 +91,11 @@ pub struct Output {
 impl Canvas {
     pub fn reset_view(&mut self) {
         *self = Self::default();
+    }
+
+    /// Drop the icons drawn so far (the icon source changed).
+    pub fn forget_icons(&self) {
+        self.icons.borrow_mut().clear();
     }
 
     pub fn zoom(&self) -> f32 {
@@ -133,6 +147,7 @@ impl Canvas {
         scene: &Scene,
         selection: &[String],
         tool: Tool,
+        icons: &dyn IconSource,
     ) -> Output {
         let mut out = Output::default();
         let (response, painter) = ui.allocate_painter(ui.available_size(), Sense::click_and_drag());
@@ -147,7 +162,7 @@ impl Canvas {
         let to_diagram = |p: Pos2| ((p - origin) / zoom).to_pos2();
 
         painter.rect_filled(response.rect, CornerRadius::ZERO, Color32::from_gray(250));
-        self.paint_scene(&painter, scene, &to_screen);
+        self.paint_scene(&painter, scene, &to_screen, icons);
         self.paint_selection(&painter, scene, selection, &to_screen, tool);
 
         // Zoom with Ctrl+wheel / pinch around the pointer; pan with the wheel.
@@ -334,135 +349,198 @@ impl Canvas {
         painter: &egui::Painter,
         scene: &Scene,
         to_screen: &dyn Fn(f64, f64) -> Pos2,
+        icons: &dyn IconSource,
+    ) {
+        for prim in &scene.prims {
+            self.paint_prim(painter, prim, to_screen, icons);
+        }
+    }
+
+    fn paint_prim(
+        &self,
+        painter: &egui::Painter,
+        prim: &Prim,
+        to_screen: &dyn Fn(f64, f64) -> Pos2,
+        icons: &dyn IconSource,
     ) {
         let z = self.zoom;
         let col = |c: render::Color| Color32::from_rgba_unmultiplied(c.0, c.1, c.2, c.3);
         let pts = |p: &[render::Point]| p.iter().map(|p| to_screen(p.x, p.y)).collect::<Vec<_>>();
-        for prim in &scene.prims {
-            match prim {
-                Prim::Rect {
-                    rect,
-                    fill,
-                    stroke,
-                    dashed,
-                } => {
-                    let r = Rect::from_min_max(
-                        to_screen(rect.x, rect.y),
-                        to_screen(rect.right(), rect.bottom()),
-                    );
-                    if let Some(f) = fill {
-                        painter.rect_filled(r, CornerRadius::ZERO, col(*f));
+        match prim {
+            Prim::Icon {
+                rect,
+                family,
+                name,
+                fallback,
+            } => {
+                let r = Rect::from_min_max(
+                    to_screen(rect.x, rect.y),
+                    to_screen(rect.right(), rect.bottom()),
+                );
+                match self.icon_texture(painter.ctx(), icons, family, name, r.size()) {
+                    Some(texture) => {
+                        let uv = Rect::from_min_max(Pos2::ZERO, Pos2::new(1.0, 1.0));
+                        painter.image(texture.id(), r, uv, Color32::WHITE);
                     }
-                    let stroke = Stroke::new(1.0, col(*stroke));
-                    if *dashed {
-                        let c = [
-                            r.left_top(),
-                            r.right_top(),
-                            r.right_bottom(),
-                            r.left_bottom(),
-                            r.left_top(),
-                        ];
-                        painter.extend(Shape::dashed_line(&c, stroke, 6.0 * z, 4.0 * z));
-                    } else {
-                        painter.rect_stroke(r, CornerRadius::ZERO, stroke, StrokeKind::Middle);
-                    }
-                }
-                Prim::RoundRect {
-                    rect,
-                    radius,
-                    fill,
-                    stroke,
-                } => {
-                    let r = Rect::from_min_max(
-                        to_screen(rect.x, rect.y),
-                        to_screen(rect.right(), rect.bottom()),
-                    );
-                    let corner = CornerRadius::same((*radius as f32 * z).clamp(0.0, 255.0) as u8);
-                    if let Some(f) = fill {
-                        painter.rect_filled(r, corner, col(*f));
-                    }
-                    painter.rect_stroke(
-                        r,
-                        corner,
-                        Stroke::new(1.0, col(*stroke)),
-                        StrokeKind::Middle,
-                    );
-                }
-                Prim::Ellipse {
-                    rect,
-                    fill,
-                    stroke,
-                    dashed,
-                } => {
-                    let center = to_screen(rect.x + rect.w / 2.0, rect.y + rect.h / 2.0);
-                    let radius = Vec2::new(rect.w as f32 / 2.0, rect.h as f32 / 2.0) * z;
-                    if let Some(f) = fill {
-                        painter.add(Shape::ellipse_filled(center, radius, col(*f)));
-                    }
-                    let stroke = Stroke::new(1.0, col(*stroke));
-                    if *dashed {
-                        let outline: Vec<Pos2> = (0..=64)
-                            .map(|i| {
-                                let a = i as f32 / 64.0 * std::f32::consts::TAU;
-                                center + Vec2::new(a.cos() * radius.x, a.sin() * radius.y)
-                            })
-                            .collect();
-                        painter.extend(Shape::dashed_line(&outline, stroke, 6.0 * z, 4.0 * z));
-                    } else {
-                        painter.add(Shape::ellipse_stroke(center, radius, stroke));
-                    }
-                }
-                Prim::Line {
-                    points,
-                    stroke,
-                    dashed,
-                } => {
-                    let stroke = Stroke::new(1.0, col(*stroke));
-                    if *dashed {
-                        painter.extend(Shape::dashed_line(&pts(points), stroke, 6.0 * z, 4.0 * z));
-                    } else {
-                        painter.add(Shape::line(pts(points), stroke));
-                    }
-                }
-                Prim::Polygon {
-                    points,
-                    fill,
-                    stroke,
-                } => {
-                    painter.add(Shape::convex_polygon(
-                        pts(points),
-                        fill.map_or(Color32::TRANSPARENT, col),
-                        Stroke::new(1.0, col(*stroke)),
-                    ));
-                }
-                Prim::Text {
-                    rect, text, style, ..
-                } => {
-                    let size = (style.size as f32 * z).max(1.0);
-                    let mut format = TextFormat {
-                        font_id: FontId::new(size, fonts::family(style.bold, style.italic)),
-                        color: col(style.color),
-                        ..Default::default()
-                    };
-                    if style.underline {
-                        format.underline = Stroke::new(1.0, col(style.color));
-                    }
-                    let mut job = LayoutJob::default();
-                    job.append(text, 0.0, format);
-                    let galley = painter.layout_job(job);
-                    if style.vertical {
-                        // Turned a quarter left about its bottom-left corner.
-                        let at = to_screen(rect.x, rect.bottom());
-                        painter.add(
-                            egui::epaint::TextShape::new(at, galley, Color32::BLACK)
-                                .with_angle(-std::f32::consts::FRAC_PI_2),
-                        );
-                    } else {
-                        painter.galley(to_screen(rect.x, rect.y), galley, Color32::BLACK);
+                    None => {
+                        for p in fallback {
+                            self.paint_prim(painter, p, to_screen, icons);
+                        }
                     }
                 }
             }
+            Prim::Rect {
+                rect,
+                fill,
+                stroke,
+                dashed,
+            } => {
+                let r = Rect::from_min_max(
+                    to_screen(rect.x, rect.y),
+                    to_screen(rect.right(), rect.bottom()),
+                );
+                if let Some(f) = fill {
+                    painter.rect_filled(r, CornerRadius::ZERO, col(*f));
+                }
+                let stroke = Stroke::new(1.0, col(*stroke));
+                if *dashed {
+                    let c = [
+                        r.left_top(),
+                        r.right_top(),
+                        r.right_bottom(),
+                        r.left_bottom(),
+                        r.left_top(),
+                    ];
+                    painter.extend(Shape::dashed_line(&c, stroke, 6.0 * z, 4.0 * z));
+                } else {
+                    painter.rect_stroke(r, CornerRadius::ZERO, stroke, StrokeKind::Middle);
+                }
+            }
+            Prim::RoundRect {
+                rect,
+                radius,
+                fill,
+                stroke,
+            } => {
+                let r = Rect::from_min_max(
+                    to_screen(rect.x, rect.y),
+                    to_screen(rect.right(), rect.bottom()),
+                );
+                let corner = CornerRadius::same((*radius as f32 * z).clamp(0.0, 255.0) as u8);
+                if let Some(f) = fill {
+                    painter.rect_filled(r, corner, col(*f));
+                }
+                painter.rect_stroke(
+                    r,
+                    corner,
+                    Stroke::new(1.0, col(*stroke)),
+                    StrokeKind::Middle,
+                );
+            }
+            Prim::Ellipse {
+                rect,
+                fill,
+                stroke,
+                dashed,
+            } => {
+                let center = to_screen(rect.x + rect.w / 2.0, rect.y + rect.h / 2.0);
+                let radius = Vec2::new(rect.w as f32 / 2.0, rect.h as f32 / 2.0) * z;
+                if let Some(f) = fill {
+                    painter.add(Shape::ellipse_filled(center, radius, col(*f)));
+                }
+                let stroke = Stroke::new(1.0, col(*stroke));
+                if *dashed {
+                    let outline: Vec<Pos2> = (0..=64)
+                        .map(|i| {
+                            let a = i as f32 / 64.0 * std::f32::consts::TAU;
+                            center + Vec2::new(a.cos() * radius.x, a.sin() * radius.y)
+                        })
+                        .collect();
+                    painter.extend(Shape::dashed_line(&outline, stroke, 6.0 * z, 4.0 * z));
+                } else {
+                    painter.add(Shape::ellipse_stroke(center, radius, stroke));
+                }
+            }
+            Prim::Line {
+                points,
+                stroke,
+                dashed,
+            } => {
+                let stroke = Stroke::new(1.0, col(*stroke));
+                if *dashed {
+                    painter.extend(Shape::dashed_line(&pts(points), stroke, 6.0 * z, 4.0 * z));
+                } else {
+                    painter.add(Shape::line(pts(points), stroke));
+                }
+            }
+            Prim::Polygon {
+                points,
+                fill,
+                stroke,
+            } => {
+                painter.add(Shape::convex_polygon(
+                    pts(points),
+                    fill.map_or(Color32::TRANSPARENT, col),
+                    Stroke::new(1.0, col(*stroke)),
+                ));
+            }
+            Prim::Text {
+                rect, text, style, ..
+            } => {
+                let size = (style.size as f32 * z).max(1.0);
+                let mut format = TextFormat {
+                    font_id: FontId::new(size, fonts::family(style.bold, style.italic)),
+                    color: col(style.color),
+                    ..Default::default()
+                };
+                if style.underline {
+                    format.underline = Stroke::new(1.0, col(style.color));
+                }
+                let mut job = LayoutJob::default();
+                job.append(text, 0.0, format);
+                let galley = painter.layout_job(job);
+                if style.vertical {
+                    // Turned a quarter left about its bottom-left corner.
+                    let at = to_screen(rect.x, rect.bottom());
+                    painter.add(
+                        egui::epaint::TextShape::new(at, galley, Color32::BLACK)
+                            .with_angle(-std::f32::consts::FRAC_PI_2),
+                    );
+                } else {
+                    painter.galley(to_screen(rect.x, rect.y), galley, Color32::BLACK);
+                }
+            }
         }
+    }
+
+    /// The icon `name` drawn at `size` screen pixels, made once and kept.
+    fn icon_texture(
+        &self,
+        ctx: &egui::Context,
+        icons: &dyn IconSource,
+        family: &str,
+        name: &str,
+        size: Vec2,
+    ) -> Option<egui::TextureHandle> {
+        let (w, h) = (size.x.round() as u32, size.y.round() as u32);
+        let key = (format!("{family}/{name}"), w, h);
+        let mut cache = self.icons.borrow_mut();
+        if let Some(found) = cache.get(&key) {
+            return found.clone();
+        }
+        if cache.len() > ICON_CACHE {
+            cache.clear();
+        }
+        let made = icons
+            .svg(family, name)
+            .and_then(|svg| render::rasterize_svg(&svg, w, h))
+            .map(|rgba| {
+                let image =
+                    egui::ColorImage::from_rgba_unmultiplied([w as usize, h as usize], &rgba);
+                ctx.load_texture(&key.0, image, egui::TextureOptions::LINEAR)
+            });
+        cache.insert(key, made.clone());
+        made
     }
 
     fn paint_selection(
