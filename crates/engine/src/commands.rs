@@ -1668,6 +1668,8 @@ mod tests {
             json!({"type": "UMLInteractionOverviewDiagram"}),
             json!({"kind": "UMLInteractionUseInOverview", "x": 0, "y": 0}),
             json!({"kind": "UMLInteractionInOverview", "x": 0, "y": 0}),
+            json!({"type": "FCFlowchartDiagram"}),
+            json!({"kind": "FCFlow", "tail": real[0], "head": real[0]}),
             json!({"type": "UMLTimingDiagram"}),
             json!({"kind": "UMLTimingState", "x": 0, "y": 0}),
             json!({"kind": "UMLTimeSegment", "x": 0, "y": 0, "container": real[0]}),

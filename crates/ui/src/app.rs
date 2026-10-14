@@ -1084,6 +1084,34 @@ mod tests {
     }
 
     #[test]
+    fn flowchart_by_mouse() {
+        let mut h = harness();
+        h.run();
+        h.state_mut()
+            .exec("diagram.add", json!({"type": "FCFlowchartDiagram"}));
+        h.run();
+        let mut place = |tool: &str, x: f64, y: f64| {
+            h.get_by_role_and_label(Role::Button, tool).click();
+            h.run();
+            let at = h.state().canvas.to_screen(render::Point::new(x, y));
+            click(&mut h, at);
+            h.state().session.selection[0].clone()
+        };
+        let process = place("Process", 80.0, 80.0);
+        let decision = place("Decision", 80.0, 260.0);
+        h.get_by_role_and_label(Role::Button, "Flow").click();
+        h.run();
+        let (from, to) = (center_of(&h, &process), center_of(&h, &decision));
+        drag(&mut h, from, to);
+        let app = h.state();
+        assert_eq!(
+            app.session.doc.get(&decision).unwrap().type_name,
+            "FCDecisionView"
+        );
+        assert_eq!(views_of_type(app, "FCFlowView").len(), 1);
+    }
+
+    #[test]
     fn component_diagram_toolbox_places_a_port_on_a_component() {
         let mut h = harness();
         h.run();
