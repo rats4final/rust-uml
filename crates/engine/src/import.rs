@@ -12,6 +12,7 @@ use mdj::{Field, Id};
 use mermaid::class::{ClassDiagram, End};
 use mermaid::er::{Cardinality, ErDiagram};
 use mermaid::flowchart::{self, Flowchart, Shape, Stroke};
+use mermaid::mindmap::{self as mm, Mindmap};
 use mermaid::sequence::{Arrow, Block, Event, NotePlace, SequenceDiagram};
 use mermaid::state::{Kind, Point, StateDiagram};
 use mermaid::{Diagram, Direction};
@@ -53,6 +54,7 @@ pub(crate) fn import_mermaid(s: &mut Session, p: &Value) -> Result<Value, Comman
         Diagram::State(d) => b.state(d, name, parent),
         Diagram::Flowchart(d) => b.flowchart(d, name, parent),
         Diagram::Er(d) => b.er(d, name, parent),
+        Diagram::Mindmap(d) => b.mindmap(d, name, parent),
     };
     let warnings = b.warnings;
     match built {
@@ -825,6 +827,77 @@ impl Builder<'_> {
 
     // -----------------------------------------------------------------------
 
+    /// One node per Mermaid node and a line from each child to its parent
+    /// (StarUML's direction), laid out as a mind map: the root in the
+    /// middle, its branches split to the right and the left.
+    fn mindmap(
+        &mut self,
+        d: &Mindmap,
+        name: Option<String>,
+        parent: Option<String>,
+    ) -> Result<Id, CommandError> {
+        let diagram = self.diagram("MMMindmapDiagram", name, parent)?;
+        if d.nodes
+            .iter()
+            .any(|n| !matches!(n.shape, mm::Shape::Default | mm::Shape::Rounded))
+        {
+            self.warnings
+                .push("node shapes were not kept: mind map nodes are rounded boxes".into());
+        }
+        let mut views = Vec::with_capacity(d.nodes.len());
+        for node in &d.nodes {
+            let (_, view) = self.node("MMNode", Some(&node.text), None, ORIGIN)?;
+            // Long names wrap; short ones stay on one line.
+            let one_line = node
+                .text
+                .lines()
+                .map(|l| self.s.fonts().width(l, 13.0, false, false))
+                .fold(0.0, f64::max);
+            let width = (one_line + 16.0).clamp(40.0, MIND_WIDTH).ceil();
+            self.run(
+                resize_view,
+                json!({ "view": view, "width": width, "height": 30 }),
+            )?;
+            views.push(view);
+        }
+        let sizes: Vec<(f64, f64)> = views
+            .iter()
+            .map(|v| {
+                let r = self.rect(v);
+                (r.w, r.h)
+            })
+            .collect();
+        let parents: Vec<Option<usize>> = d.nodes.iter().map(|n| n.parent).collect();
+        for (i, at) in mind_layout(&parents, &sizes).into_iter().enumerate() {
+            let r = self.rect(&views[i]);
+            let (dx, dy) = (at.0 - r.x, at.1 - r.y);
+            if dx != 0.0 || dy != 0.0 {
+                self.run(
+                    move_views,
+                    json!({ "views": [views[i]], "dx": dx, "dy": dy }),
+                )?;
+            }
+        }
+        let lines = d
+            .nodes
+            .iter()
+            .enumerate()
+            .filter_map(|(i, n)| {
+                let p = n.parent.filter(|p| *p < views.len())?;
+                Some(Line::plain(
+                    "MMEdge",
+                    views[i].clone(),
+                    views[p].clone(),
+                    None,
+                ))
+            })
+            .collect();
+        self.connect(lines)?;
+        Ok(diagram)
+    }
+
+    // -----------------------------------------------------------------------
+
     fn sequence(
         &mut self,
         d: &SequenceDiagram,
@@ -1094,6 +1167,94 @@ impl Builder<'_> {
     }
 }
 
+/// Widest a mind map node is made on import; longer names wrap.
+const MIND_WIDTH: f64 = 180.0;
+/// Space between a mind map node and its children, and between siblings.
+const MIND_GAP_X: f64 = 50.0;
+const MIND_GAP_Y: f64 = 16.0;
+
+/// Top-left corners for a mind map: `parents[i]` is node `i`'s parent
+/// (parents come before their children; node 0 is the root). The root's
+/// first half of children go right, the rest left; every subtree is
+/// centred on its node. Iterative, so deep maps can't exhaust the stack.
+fn mind_layout(parents: &[Option<usize>], sizes: &[(f64, f64)]) -> Vec<(f64, f64)> {
+    let n = parents.len().min(sizes.len());
+    let mut children = vec![Vec::new(); n];
+    for (i, p) in parents.iter().enumerate().take(n) {
+        if let Some(p) = p.filter(|p| *p < i) {
+            children[p].push(i);
+        }
+    }
+    let stack = |kids: &[usize], span: &[f64]| {
+        kids.iter().map(|&c| span[c]).sum::<f64>()
+            + MIND_GAP_Y * kids.len().saturating_sub(1) as f64
+    };
+    // Height each subtree needs, children before parents.
+    let mut span = vec![0.0; n];
+    for i in (0..n).rev() {
+        span[i] = sizes[i].1.max(stack(&children[i], &span));
+    }
+    // +1 right of the root, -1 left; descendants follow their branch. The
+    // root's branches keep their order: the first ones go right, up to
+    // where the two sides are closest in height.
+    let mut side = vec![1.0; n];
+    if let Some(top) = children.first() {
+        let total: f64 = top.iter().map(|&c| span[c]).sum();
+        let (mut split, mut best, mut right) = (0, f64::INFINITY, 0.0);
+        for (k, &c) in top.iter().enumerate() {
+            right += span[c];
+            // On a tie the right side takes the extra branch.
+            let diff = (2.0 * right - total).abs();
+            if diff <= best {
+                (split, best) = (k + 1, diff);
+            }
+        }
+        for (k, &c) in top.iter().enumerate() {
+            side[c] = if k < split { 1.0 } else { -1.0 };
+        }
+    }
+    for i in 1..n {
+        if let Some(p) = parents[i].filter(|p| *p != 0 && *p < i) {
+            side[i] = side[p];
+        }
+    }
+    // Left edge and vertical centre of each node, parents before children.
+    let (mut x, mut cy) = (vec![0.0; n], vec![0.0; n]);
+    let place = |i: usize, kids: &[usize], x: &mut [f64], cy: &mut [f64]| {
+        let mut cursor = cy[i] - stack(kids, &span) / 2.0;
+        for &c in kids {
+            cy[c] = cursor + span[c] / 2.0;
+            cursor += span[c] + MIND_GAP_Y;
+            x[c] = if side[c] > 0.0 {
+                x[i] + sizes[i].0 + MIND_GAP_X
+            } else {
+                x[i] - MIND_GAP_X - sizes[c].0
+            };
+        }
+    };
+    if let Some(top) = children.first() {
+        for s in [1.0, -1.0] {
+            let kids: Vec<usize> = top.iter().copied().filter(|&c| side[c] == s).collect();
+            place(0, &kids, &mut x, &mut cy);
+        }
+    }
+    for (i, kids) in children.iter().enumerate().skip(1) {
+        place(i, kids, &mut x, &mut cy);
+    }
+    let left = (0..n).map(|i| x[i]).fold(f64::INFINITY, f64::min);
+    let top = (0..n)
+        .map(|i| cy[i] - sizes[i].1 / 2.0)
+        .fold(f64::INFINITY, f64::min);
+    (0..n)
+        .map(|i| {
+            (
+                (ORIGIN.0 + x[i] - left).round(),
+                (ORIGIN.1 + cy[i] - sizes[i].1 / 2.0 - top).round(),
+            )
+        })
+        .collect()
+}
+
 /// The flowchart symbol for a Mermaid shape, if one is close enough.
 fn symbol(shape: &Shape) -> Option<&'static str> {
     Some(match shape {
@@ -1277,7 +1438,8 @@ class Gen~T~"#,
         assert!(!s.doc.can_undo());
 
         for bad in [
-            "mindmap\n  root",
+            "requirementDiagram\n  requirement r { }",
+            "mindmap\n  a\n  b",
             "erDiagram\nA {\nint id",
             "flowchart TD\nsubgraph x\nA-->B",
             "classDiagram\nclass A {",
@@ -1544,5 +1706,76 @@ class Gen~T~"#,
         assert!(!uses.bool("identifying", true), "`..` is non-identifying");
         let replaces = rel("replaces");
         assert_eq!(card(replaces, "end2"), "0..1");
+    }
+
+    #[test]
+    fn mind_map_branches_both_ways_from_the_root() {
+        let mut s = Session::default();
+        let r = import(
+            &mut s,
+            "mindmap
+  root((Trip))
+    Pack
+      Passport
+      Charger
+    Book
+      Flights
+      Hotel
+    Budget
+    Map[Route]",
+        );
+        let warnings = r["warnings"].as_array().unwrap();
+        assert_eq!(warnings.len(), 1, "shapes: {warnings:?}");
+        let d = inspect(&mut s);
+        assert_eq!(d["type"], "MMMindmapDiagram");
+        let boxes = d["boxes"].as_array().unwrap();
+        assert_eq!(boxes.len(), 9);
+        assert!(overlapping(boxes).is_none(), "{:?}", overlapping(boxes));
+        let find = |n: &str| boxes.iter().find(|b| b["name"] == n).unwrap().clone();
+        let mid = |n: &str| {
+            let b = find(n);
+            (
+                b["x"].as_f64().unwrap() + b["width"].as_f64().unwrap() / 2.0,
+                b["y"].as_f64().unwrap() + b["height"].as_f64().unwrap() / 2.0,
+            )
+        };
+        let root = mid("Trip");
+        // Branches split by height, in order: Pack (two leaves) balances
+        // Book (two leaves) plus two single nodes best. Grandchildren sit
+        // further out on their branch's side.
+        assert!(mid("Pack").0 > root.0);
+        for left in ["Book", "Budget", "Route"] {
+            assert!(mid(left).0 < root.0, "{left}");
+        }
+        assert!(mid("Passport").0 > mid("Pack").0);
+        assert!(mid("Flights").0 < mid("Book").0);
+        // A subtree is centred on its node.
+        let (a, b) = (mid("Flights").1, mid("Hotel").1);
+        assert!(((a + b) / 2.0 - mid("Book").1).abs() < 1.0);
+
+        let lines = d["lines"].as_array().unwrap();
+        assert_eq!(lines.len(), 8);
+        // From the child to its parent, as StarUML draws them.
+        let pack = find("Pack")["view"].clone();
+        let root_view = find("Trip")["view"].clone();
+        assert!(
+            lines
+                .iter()
+                .any(|l| l["tail"] == pack && l["head"] == root_view)
+        );
+        assert!(lines.iter().all(|l| l["type"] == "MMEdgeView"));
+    }
+
+    #[test]
+    fn mind_layout_survives_odd_input() {
+        assert!(super::mind_layout(&[], &[]).is_empty());
+        // A deep chain doesn't recurse.
+        let n: usize = 5000;
+        let parents: Vec<Option<usize>> = (0..n).map(|i| i.checked_sub(1)).collect();
+        let at = super::mind_layout(&parents, &vec![(40.0, 30.0); n]);
+        assert_eq!(at.len(), n);
+        // Parents out of order are ignored rather than trusted.
+        let at = super::mind_layout(&[Some(1), Some(0)], &[(40.0, 30.0); 2]);
+        assert_eq!(at.len(), 2);
     }
 }

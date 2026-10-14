@@ -2,8 +2,8 @@
 //!
 //! Written from Mermaid's public syntax documentation. Covers what maps onto
 //! UML: `classDiagram`, `sequenceDiagram` and `stateDiagram(-v2)`, and
-//! `flowchart`/`graph` and `erDiagram`, which map onto flowchart symbols and
-//! ER diagrams. Styling
+//! `flowchart`/`graph`, `erDiagram` and `mindmap`, which map onto flowchart
+//! symbols, ER diagrams and mind maps. Styling
 //! (`style`, `classDef`, `:::`, `click`, …) is skipped silently; anything
 //! else that isn't understood is skipped with a warning, so an import never
 //! fails on one odd line. Structural mistakes (an unclosed block) are errors.
@@ -12,6 +12,7 @@ pub mod class;
 pub mod er;
 pub mod flowchart;
 mod lines;
+pub mod mindmap;
 pub mod sequence;
 pub mod state;
 
@@ -46,6 +47,7 @@ pub enum Diagram {
     State(state::StateDiagram),
     Flowchart(flowchart::Flowchart),
     Er(er::ErDiagram),
+    Mindmap(mindmap::Mindmap),
 }
 
 /// A parsed diagram, its title and what was skipped.
@@ -119,11 +121,12 @@ pub fn parse(text: &str) -> Result<Parsed, ParseError> {
             None,
         ),
         "erDiagram" => (Diagram::Er(er::parse(rest, &mut warnings)?), None),
-        "mindmap" | "requirementDiagram" => {
+        "mindmap" => (Diagram::Mindmap(mindmap::parse(rest, &mut warnings)?), None),
+        "requirementDiagram" => {
             return Err(err(
                 header.number,
                 format!(
-                    "`{kind}` can't be imported yet: it needs a diagram family rust-uml doesn't have yet (class, sequence, state, flowchart and ER diagrams work)"
+                    "`{kind}` can't be imported yet: it needs a diagram family rust-uml doesn't have yet (class, sequence, state, flowchart, ER and mind map diagrams work)"
                 ),
             ));
         }
@@ -131,7 +134,7 @@ pub fn parse(text: &str) -> Result<Parsed, ParseError> {
             return Err(err(
                 header.number,
                 format!(
-                    "`{kind}` is not a Mermaid diagram rust-uml can import (classDiagram, sequenceDiagram, stateDiagram, flowchart, erDiagram)"
+                    "`{kind}` is not a Mermaid diagram rust-uml can import (classDiagram, sequenceDiagram, stateDiagram, flowchart, erDiagram, mindmap)"
                 ),
             ));
         }
@@ -192,7 +195,7 @@ mod tests {
         let p = parse("---\ntitle: Shop\n---\n%% a comment\nclassDiagram\nclass A").unwrap();
         assert_eq!(p.title.as_deref(), Some("Shop"));
         assert!(matches!(p.diagram, Diagram::Class(_)));
-        let e = parse("mindmap\n  root").unwrap_err();
+        let e = parse("requirementDiagram\n  requirement r { }").unwrap_err();
         assert!(e.message.contains("can't be imported yet"));
         assert!(parse("pie\n\"a\": 1").is_err());
         assert!(parse("  \n%% only a comment").is_err());

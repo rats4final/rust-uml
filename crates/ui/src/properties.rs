@@ -98,7 +98,7 @@ impl Properties {
             .show(ui, |ui| {
                 let t = el.type_name.as_str();
                 ui.heading(
-                    ["UML", "ERD", "FC"]
+                    ["UML", "ERD", "FC", "MM"]
                         .iter()
                         .find_map(|p| t.strip_prefix(p))
                         .unwrap_or(t)

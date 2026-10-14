@@ -53,6 +53,10 @@ const MERMAID_EXAMPLES: &[(&str, &str)] = &[
         "ER",
         "erDiagram\n    CUSTOMER ||--o{ ORDER : places\n    ORDER ||--|{ LINE-ITEM : contains\n    CUSTOMER {\n        int id PK\n        varchar(120) email UK\n    }\n    ORDER {\n        int id PK\n        int customer_id FK\n    }",
     ),
+    (
+        "Mind map",
+        "mindmap\n  Launch\n    Product\n      Pricing\n      Docs\n    Marketing\n      Blog post\n      Newsletter\n    Support",
+    ),
 ];
 
 /// Work sent from outside the window (the desktop app's control channel),
@@ -579,7 +583,7 @@ impl UmlApp {
         egui::Modal::new(egui::Id::new("mermaid")).show(ctx, |ui| {
             ui.strong("Import Mermaid");
             ui.label(
-                "Paste a classDiagram, sequenceDiagram, stateDiagram, flowchart or erDiagram. It becomes a new diagram.",
+                "Paste a classDiagram, sequenceDiagram, stateDiagram, flowchart, erDiagram or mindmap. It becomes a new diagram.",
             );
             ui.horizontal(|ui| {
                 for (label, text) in MERMAID_EXAMPLES {
@@ -1198,12 +1202,12 @@ mod tests {
         h.get_by_role_and_label(Role::Button, "State example")
             .click();
         h.run();
-        h.state_mut().mermaid.as_mut().unwrap().text = "mindmap\n  root".into();
+        h.state_mut().mermaid.as_mut().unwrap().text = "requirementDiagram\n  r".into();
         h.run();
         h.get_by_role_and_label(Role::Button, "Import").click();
         h.run();
         let error = h.state().mermaid.as_ref().and_then(|m| m.error.clone());
-        assert!(error.is_some_and(|e| e.contains("mindmap")));
+        assert!(error.is_some_and(|e| e.contains("requirementDiagram")));
 
         h.get_by_role_and_label(Role::Button, "Class example")
             .click();
@@ -1249,6 +1253,46 @@ mod tests {
         assert!(h.state().mermaid.is_none(), "{:?}", h.state().status);
         assert_eq!(views_of_type(h.state(), "ERDEntity").len(), 3);
         assert_eq!(views_of_type(h.state(), "ERDColumn").len(), 4);
+
+        // And a mind map.
+        h.get_by_role_and_label(Role::Button, "File").click();
+        h.run();
+        h.get_by_role_and_label(Role::Button, "Import Mermaid…")
+            .click();
+        h.run();
+        h.get_by_role_and_label(Role::Button, "Mind map example")
+            .click();
+        h.run();
+        h.get_by_role_and_label(Role::Button, "Import").click();
+        h.run();
+        assert!(h.state().mermaid.is_none(), "{:?}", h.state().status);
+        assert_eq!(views_of_type(h.state(), "MMNode").len(), 8);
+        assert_eq!(views_of_type(h.state(), "MMEdgeView").len(), 7);
+    }
+
+    #[test]
+    fn mind_map_by_mouse() {
+        let mut h = harness();
+        h.run();
+        h.state_mut()
+            .exec("diagram.add", json!({"type": "MMMindmapDiagram"}));
+        h.run();
+        let mut place = |x: f64, y: f64| {
+            h.get_by_role_and_label(Role::Button, "Node").click();
+            h.run();
+            let at = h.state().canvas.to_screen(render::Point::new(x, y));
+            click(&mut h, at);
+            h.state().session.selection[0].clone()
+        };
+        let root = place(200.0, 120.0);
+        let child = place(400.0, 60.0);
+        h.get_by_role_and_label(Role::Button, "Edge").click();
+        h.run();
+        let (from, to) = (center_of(&h, &child), center_of(&h, &root));
+        drag(&mut h, from, to);
+        let app = h.state();
+        assert_eq!(app.session.doc.get(&root).unwrap().type_name, "MMNodeView");
+        assert_eq!(views_of_type(app, "MMEdgeView").len(), 1);
     }
 
     #[test]

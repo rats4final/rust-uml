@@ -5,6 +5,8 @@
 pub struct Line {
     /// 1-based line number in the original text.
     pub number: usize,
+    /// Leading whitespace characters (mind maps nest by indentation).
+    pub indent: usize,
     pub text: String,
 }
 
@@ -40,6 +42,7 @@ pub(crate) fn split(text: &str) -> (Option<String>, Vec<Line>) {
         let t = t.strip_suffix(';').unwrap_or(t).trim_end();
         out.push(Line {
             number: i + 1,
+            indent: raw.chars().take_while(|c| c.is_whitespace()).count(),
             text: t.to_owned(),
         });
     }
