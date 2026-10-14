@@ -141,6 +141,8 @@ pub enum Shape {
     Flowchart(Flow),
     /// A mind map node: a box with well-rounded corners.
     MindNode,
+    /// A data store: a box open on the right.
+    DataStore,
 }
 
 /// The flowchart symbols (StarUML's flowchart extension, ISO 5807 shapes).
@@ -668,6 +670,15 @@ pub fn node_layout(doc: &Document, view: &Element, fonts: &Fonts) -> Option<Node
         });
     }
 
+    if matches!(
+        view.type_name.as_str(),
+        "DFDExternalEntityView" | "DFDProcessView" | "DFDDataStoreView"
+    ) {
+        let mut l = dfd_layout(view, model, stored, size, fonts);
+        (l.fill, l.line, l.text) = (fill, line, text);
+        return Some(l);
+    }
+
     if view.type_name == "ERDEntityView" {
         let mut l = entity_layout(doc, view, model, stored, size, fonts);
         (l.fill, l.line, l.text) = (fill, line, text);
@@ -1150,6 +1161,140 @@ pub fn node_layout(doc: &Document, view: &Element, fonts: &Fonts) -> Option<Node
         outside: Vec::new(),
         dividers,
     })
+}
+
+/// Padding around a data flow element's name (StarUML: 10), and around its id (5).
+const DFD_PAD: f64 = 10.0;
+const DFD_ID_PAD: f64 = 5.0;
+
+/// A data flow diagram element, laid out as StarUML does: an external entity
+/// is a box with its id over its name; a process a rounded box with its id
+/// in a band across the top; a data store a box open on the right with its
+/// id in a compartment at the left. Names wrap to the box unless `wordWrap`
+/// is off.
+fn dfd_layout(
+    view: &Element,
+    model: Option<&Element>,
+    stored: Rect,
+    size: f64,
+    fonts: &Fonts,
+) -> NodeLayout {
+    let line_h = fonts.line_height(size);
+    let width = |t: &str| fonts.width(t, size, false, false);
+    let name = model.map(|m| m.name().to_owned()).unwrap_or_default();
+    let id = model.and_then(|m| m.str("id")).unwrap_or("").to_owned();
+    let id_w = if id.is_empty() { 0.0 } else { width(&id) };
+    let wraps = view.bool("wordWrap", true);
+    let widest_word = name.split(['\n', ' ']).map(width).fold(0.0, f64::max);
+    let kind = view.type_name.as_str();
+    // Horizontal room the name has, besides the box's own width.
+    let beside = match kind {
+        "DFDDataStoreView" => 2.0 * DFD_ID_PAD + id_w + 2.0 * DFD_PAD,
+        _ => 2.0 * DFD_PAD,
+    };
+    let lines: Vec<String> = if wraps {
+        wrap(&name, (stored.w - beside).max(widest_word), fonts, size)
+    } else {
+        name.split('\n').map(str::to_owned).collect()
+    };
+    let name_w = if wraps {
+        widest_word
+    } else {
+        lines.iter().map(|l| width(l)).fold(0.0, f64::max)
+    };
+    let name_h = lines.len() as f64 * line_h;
+    let (min_w, min_h) = match kind {
+        "DFDDataStoreView" => (beside + name_w, 2.0 * DFD_PAD + name_h),
+        "DFDProcessView" => (
+            name_w.max(id_w) + 2.0 * DFD_PAD,
+            2.0 * DFD_ID_PAD + line_h + 2.0 * DFD_PAD + name_h,
+        ),
+        _ => {
+            let id_h = if id.is_empty() { 0.0 } else { line_h };
+            (
+                name_w.max(id_w) + 2.0 * DFD_PAD,
+                2.0 * DFD_PAD + id_h + name_h,
+            )
+        }
+    };
+    let (min_w, min_h) = (min_w.max(MIN_WIDTH).ceil(), min_h.ceil());
+    let rect = Rect::new(stored.x, stored.y, stored.w.max(min_w), stored.h.max(min_h));
+
+    // Text centred across `x..x + w`, its top at `top`.
+    let block = |lines: Vec<String>, x: f64, w: f64, top: f64| Compartment {
+        rect: Rect::new(x, top - PAD_Y, w, lines.len() as f64 * line_h + 2.0 * PAD_Y),
+        lines: lines.into_iter().map(TextLine::centered).collect(),
+    };
+    let ids = |id: &str| {
+        if id.is_empty() {
+            Vec::new()
+        } else {
+            vec![id.to_owned()]
+        }
+    };
+    let inner = (rect.x + DFD_PAD, rect.w - 2.0 * DFD_PAD);
+    let (shape, compartments, dividers) = match kind {
+        "DFDProcessView" => {
+            let band = rect.y + 2.0 * DFD_ID_PAD + line_h;
+            (
+                Shape::RoundRect,
+                vec![
+                    block(ids(&id), inner.0, inner.1, rect.y + DFD_ID_PAD),
+                    block(lines, inner.0, inner.1, band + DFD_PAD),
+                ],
+                vec![(
+                    Point::new(rect.x, band),
+                    Point::new(rect.right(), band),
+                    false,
+                )],
+            )
+        }
+        "DFDDataStoreView" => {
+            let x = rect.x + 2.0 * DFD_ID_PAD + id_w;
+            let name_x = x + DFD_PAD;
+            (
+                Shape::DataStore,
+                vec![
+                    block(ids(&id), rect.x + DFD_ID_PAD, id_w, rect.y + DFD_PAD),
+                    block(
+                        lines,
+                        name_x,
+                        rect.right() - DFD_PAD - name_x,
+                        rect.y + DFD_PAD,
+                    ),
+                ],
+                vec![(Point::new(x, rect.y), Point::new(x, rect.bottom()), false)],
+            )
+        }
+        _ => {
+            let id_h = if id.is_empty() { 0.0 } else { line_h };
+            (
+                Shape::Box,
+                vec![
+                    block(ids(&id), inner.0, inner.1, rect.y + DFD_ID_PAD),
+                    block(lines, inner.0, inner.1, rect.y + DFD_PAD + id_h),
+                ],
+                Vec::new(),
+            )
+        }
+    };
+    NodeLayout {
+        rect,
+        min_w,
+        min_h,
+        shape,
+        compartments,
+        separators: false,
+        font_size: size,
+        fill: Color::WHITE,
+        line: Color::BLACK,
+        text: Color::BLACK,
+        active: false,
+        dashed: false,
+        icon: None,
+        outside: Vec::new(),
+        dividers,
+    }
 }
 
 /// Padding inside an ERD entity, around its name and its column table, and

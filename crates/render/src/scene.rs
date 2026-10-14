@@ -610,6 +610,23 @@ fn draw_node(scene: &mut Scene, l: &NodeLayout, fonts: &Fonts) {
             fill,
             stroke,
         }),
+        Shape::DataStore => {
+            scene.prims.push(Prim::Rect {
+                rect: r,
+                fill,
+                stroke: l.fill,
+                dashed: false,
+            });
+            line(
+                scene,
+                vec![
+                    Point::new(r.right(), r.y),
+                    Point::new(r.x, r.y),
+                    Point::new(r.x, r.bottom()),
+                    Point::new(r.right(), r.bottom()),
+                ],
+            );
+        }
         Shape::Actor { figure } => draw_actor(scene, figure, stroke),
         Shape::Symbol(symbol) => draw_symbol(scene, symbol, r, stroke, l.fill, fonts),
         Shape::Swimlane { header, .. } => {
@@ -1420,7 +1437,7 @@ fn edge_style(doc: &Document, view: &Element) -> (bool, EndMark, EndMark) {
         };
         return (false, mark("end1"), mark("end2"));
     }
-    let (dashed, head) = if t == "FCFlowView" {
+    let (dashed, head) = if t == "FCFlowView" || t == "DFDDataFlowView" {
         (false, EndMark::FilledTriangle)
     } else if t == "UMLInformationFlowView" {
         (true, EndMark::OpenArrow)
@@ -2463,5 +2480,54 @@ mod tests {
         assert!(!dashed(&scene), "identifying by default");
         doc.edit(|e| e.set(&m.unwrap(), "identifying", mdj::Field::bool(false)));
         assert!(dashed(&build_scene(&doc, &dgm, &Fonts::default())));
+    }
+
+    #[test]
+    fn data_flow_elements_show_their_ids() {
+        let mut doc = Document::new_project();
+        let model = doc.get(doc.root()).unwrap().children("ownedElements")[0].clone();
+        let on = "DFDDiagram";
+        let dgm = doc
+            .try_edit(|e| uml::create_diagram(e, &model, on))
+            .unwrap();
+        let mut add = |tool: &str, id: &str| {
+            let spec = uml::node_spec_on(tool, on).unwrap();
+            let (m, v) = doc
+                .try_edit(|e| uml::create_node(e, &dgm, spec, 0.0, 0.0, None))
+                .unwrap();
+            doc.edit(|e| e.set(&m.unwrap(), "id", mdj::Field::str(id)));
+            v
+        };
+        let (process, store) = (add("DFDProcess", "1.2"), add("DFDDataStore", "D1"));
+        let layout =
+            |v: &str| crate::node_layout(&doc, doc.get(v).unwrap(), &Fonts::default()).unwrap();
+        let text = |l: &NodeLayout, i: usize| l.compartments[i].lines[0].text.clone();
+
+        let p = layout(&process);
+        assert_eq!(p.shape, Shape::RoundRect);
+        assert_eq!(
+            (text(&p, 0), text(&p, 1)),
+            ("1.2".into(), "Process1".into())
+        );
+        // The id band's line runs across, above the name.
+        let (from, to, _) = p.dividers[0];
+        assert_eq!((from.x, to.x), (p.rect.x, p.rect.right()));
+        assert!(from.y < p.compartments[1].rect.y + TEXT_PAD_Y);
+
+        let s = layout(&store);
+        assert_eq!(s.shape, Shape::DataStore);
+        assert_eq!(text(&s, 0), "D1");
+        // The id compartment's line is left of the name.
+        let (line, _, _) = s.dividers[0];
+        assert!(line.x > s.rect.x && line.x < s.compartments[1].rect.x);
+
+        // An open box: no line down the right side.
+        let scene = build_scene(&doc, &dgm, &Fonts::default());
+        let r = s.rect;
+        let right_side = scene.prims.iter().any(|p| {
+            matches!(p, Prim::Line { points, .. }
+                if points.windows(2).any(|w| w[0].x == r.right() && w[1].x == r.right()))
+        });
+        assert!(!right_side);
     }
 }
