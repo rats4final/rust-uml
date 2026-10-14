@@ -10,6 +10,7 @@ use std::collections::HashMap;
 
 use mdj::{Field, Id};
 use mermaid::class::{ClassDiagram, End};
+use mermaid::er::{Cardinality, ErDiagram};
 use mermaid::flowchart::{self, Flowchart, Shape, Stroke};
 use mermaid::sequence::{Arrow, Block, Event, NotePlace, SequenceDiagram};
 use mermaid::state::{Kind, Point, StateDiagram};
@@ -51,6 +52,7 @@ pub(crate) fn import_mermaid(s: &mut Session, p: &Value) -> Result<Value, Comman
         Diagram::Sequence(d) => b.sequence(d, name, parent),
         Diagram::State(d) => b.state(d, name, parent),
         Diagram::Flowchart(d) => b.flowchart(d, name, parent),
+        Diagram::Er(d) => b.er(d, name, parent),
     };
     let warnings = b.warnings;
     match built {
@@ -83,6 +85,8 @@ struct Line {
     label: Option<String>,
     /// Association end fields: (`end1`/`end2`, values).
     ends: Vec<(&'static str, Value)>,
+    /// Fields of the relationship itself.
+    values: Value,
 }
 
 impl Line {
@@ -93,6 +97,7 @@ impl Line {
             head,
             label,
             ends: Vec::new(),
+            values: json!({}),
         }
     }
 }
@@ -309,6 +314,7 @@ impl Builder<'_> {
         for l in lines {
             let (model, _) = self.edge(l.kind, &l.tail, &l.head, l.label.as_deref(), None)?;
             let Some(model) = model else { continue };
+            self.set(&model, l.values)?;
             for (key, values) in l.ends {
                 if let Some(end) = self.child(&model, key) {
                     self.set(&end, values)?;
@@ -517,6 +523,7 @@ impl Builder<'_> {
                 head: head.1.clone(),
                 label: label.map(str::to_owned),
                 ends,
+                values: json!({}),
             });
         }
 
@@ -715,6 +722,101 @@ impl Builder<'_> {
             Spacing {
                 node: 50.0,
                 layer: 50.0,
+            },
+        )?;
+        self.connect(lines)?;
+        Ok(diagram)
+    }
+
+    // -----------------------------------------------------------------------
+
+    /// Entities with their attributes as columns; relationships with their
+    /// cardinalities, as StarUML maps them (but `..` stays non-identifying).
+    fn er(
+        &mut self,
+        d: &ErDiagram,
+        name: Option<String>,
+        parent: Option<String>,
+    ) -> Result<Id, CommandError> {
+        let diagram = self.diagram("ERDDiagram", name, parent)?;
+        let mut items: Vec<Item> = Vec::new();
+        let mut edges: Vec<(usize, usize)> = Vec::new();
+        let mut lines: Vec<Line> = Vec::new();
+        let mut entities: HashMap<&str, usize> = HashMap::new();
+
+        for entity in &d.entities {
+            let (model, view) = self.node("ERDEntity", Some(entity.name()), None, ORIGIN)?;
+            let model =
+                model.ok_or_else(|| CommandError::Failed("an entity has no model".into()))?;
+            for a in &entity.attributes {
+                let r = self.run(
+                    add_feature,
+                    json!({ "classifier": model, "kind": "column", "name": a.name }),
+                )?;
+                // `varchar(255)` is a type and a length.
+                let (ty, length) = match a.ty.split_once('(') {
+                    Some((t, l)) if l.ends_with(')') => (t, Some(&l[..l.len() - 1])),
+                    _ => (a.ty.as_str(), None),
+                };
+                let mut values = serde_json::Map::new();
+                values.insert("type".into(), json!(ty));
+                if let Some(l) = length {
+                    values.insert("length".into(), json!(l));
+                }
+                for (key, field) in [("PK", "primaryKey"), ("FK", "foreignKey"), ("UK", "unique")] {
+                    if a.has_key(key) {
+                        values.insert(field.into(), json!(true));
+                    }
+                }
+                if let Some(c) = &a.comment {
+                    values.insert("documentation".into(), json!(c));
+                }
+                self.set(&id_of(&r, "id")?, Value::Object(values))?;
+            }
+            entities.insert(entity.id.as_str(), items.len());
+            items.push(Item { view, within: None });
+        }
+
+        let cardinality = |c: Cardinality| match c {
+            Cardinality::ExactlyOne => json!({}),
+            Cardinality::ZeroOrOne => json!({ "cardinality": "0..1" }),
+            Cardinality::ZeroOrMore => json!({ "cardinality": "0..*" }),
+            Cardinality::OneOrMore => json!({ "cardinality": "1..*" }),
+        };
+        for r in &d.relationships {
+            let (Some(&a), Some(&b)) = (entities.get(r.a.as_str()), entities.get(r.b.as_str()))
+            else {
+                continue;
+            };
+            if a != b {
+                edges.push((a, b));
+            }
+            lines.push(Line {
+                kind: "ERDRelationship",
+                tail: items[a].view.clone(),
+                head: items[b].view.clone(),
+                label: r.label.clone(),
+                ends: vec![
+                    ("end1", cardinality(r.a_card)),
+                    ("end2", cardinality(r.b_card)),
+                ],
+                values: if r.identifying {
+                    json!({})
+                } else {
+                    json!({ "identifying": false })
+                },
+            });
+        }
+
+        // Wider than StarUML's 50 between layers: room for a crow's foot at
+        // each end and the name between them.
+        self.arrange(
+            &items,
+            &edges,
+            flow(d.direction),
+            Spacing {
+                node: 50.0,
+                layer: 110.0,
             },
         )?;
         self.connect(lines)?;
@@ -1175,7 +1277,8 @@ class Gen~T~"#,
         assert!(!s.doc.can_undo());
 
         for bad in [
-            "erDiagram\nA ||--o{ B : has",
+            "mindmap\n  root",
+            "erDiagram\nA {\nint id",
             "flowchart TD\nsubgraph x\nA-->B",
             "classDiagram\nclass A {",
             "",
@@ -1364,5 +1467,82 @@ class Gen~T~"#,
             .run(&mut s, "edit.undo", &json!({}))
             .unwrap();
         assert!(!s.doc.can_undo(), "one undo step");
+    }
+
+    #[test]
+    fn er_diagram_entities_columns_and_relationships() {
+        let mut s = Session::default();
+        let r = import(
+            &mut s,
+            r#"erDiagram
+    direction LR
+    CUSTOMER ||--o{ ORDER : places
+    ORDER ||--|{ LINE-ITEM : contains
+    CUSTOMER }|..|{ ADDRESS : uses
+    PART |o--o| PART : replaces
+    CUSTOMER {
+        int id PK
+        varchar(120) email UK "login"
+    }
+    ORDER {
+        int customer_id FK
+    }"#,
+        );
+        assert!(r["warnings"].as_array().unwrap().is_empty(), "{r}");
+        let d = inspect(&mut s);
+        assert_eq!(d["type"], "ERDDiagram");
+        let boxes = d["boxes"].as_array().unwrap();
+        assert!(overlapping(boxes).is_none(), "{:?}", overlapping(boxes));
+        let find = |n: &str| boxes.iter().find(|b| b["name"] == n).unwrap().clone();
+        let x = |n: &str| find(n)["x"].as_f64().unwrap();
+        assert!(
+            x("CUSTOMER") < x("ORDER") && x("ORDER") < x("LINE-ITEM"),
+            "left to right"
+        );
+
+        let doc = &s.doc;
+        let model = |n: &str| doc.get(find(n)["model"].as_str().unwrap()).unwrap();
+        let columns: Vec<&mdj::Element> = model("CUSTOMER")
+            .children("columns")
+            .iter()
+            .map(|c| doc.get(c).unwrap())
+            .collect();
+        assert_eq!(columns.len(), 2);
+        assert!(columns[0].bool("primaryKey", false));
+        let email = columns[1];
+        assert_eq!(
+            (email.str("type"), email.str("length")),
+            (Some("varchar"), Some("120"))
+        );
+        assert!(email.bool("unique", false));
+        assert_eq!(email.str("documentation"), Some("login"));
+
+        let lines = d["lines"].as_array().unwrap();
+        assert_eq!(lines.len(), 4);
+        let rel = |label: &str| {
+            let l = lines.iter().find(|l| l["name"] == label).unwrap();
+            doc.get(l["model"].as_str().unwrap()).unwrap()
+        };
+        let card = |r: &mdj::Element, k: &str| {
+            doc.get(&r.children(k)[0])
+                .unwrap()
+                .str("cardinality")
+                .unwrap_or("1")
+                .to_owned()
+        };
+        let places = rel("places");
+        assert_eq!(
+            (card(places, "end1"), card(places, "end2")),
+            ("1".into(), "0..*".into())
+        );
+        assert!(places.bool("identifying", true));
+        let uses = rel("uses");
+        assert_eq!(
+            (card(uses, "end1"), card(uses, "end2")),
+            ("1..*".into(), "1..*".into())
+        );
+        assert!(!uses.bool("identifying", true), "`..` is non-identifying");
+        let replaces = rel("replaces");
+        assert_eq!(card(replaces, "end2"), "0..1");
     }
 }

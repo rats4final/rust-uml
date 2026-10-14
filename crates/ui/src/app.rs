@@ -49,6 +49,10 @@ const MERMAID_EXAMPLES: &[(&str, &str)] = &[
         "Flowchart",
         "flowchart TD\n    start([Start]) --> pay[/Card details/]\n    pay --> ok{Approved?}\n    ok -->|yes| ship[Ship order] --> done([End])\n    ok -->|no| pay",
     ),
+    (
+        "ER",
+        "erDiagram\n    CUSTOMER ||--o{ ORDER : places\n    ORDER ||--|{ LINE-ITEM : contains\n    CUSTOMER {\n        int id PK\n        varchar(120) email UK\n    }\n    ORDER {\n        int id PK\n        int customer_id FK\n    }",
+    ),
 ];
 
 /// Work sent from outside the window (the desktop app's control channel),
@@ -575,7 +579,7 @@ impl UmlApp {
         egui::Modal::new(egui::Id::new("mermaid")).show(ctx, |ui| {
             ui.strong("Import Mermaid");
             ui.label(
-                "Paste a classDiagram, sequenceDiagram, stateDiagram or flowchart. It becomes a new diagram.",
+                "Paste a classDiagram, sequenceDiagram, stateDiagram, flowchart or erDiagram. It becomes a new diagram.",
             );
             ui.horizontal(|ui| {
                 for (label, text) in MERMAID_EXAMPLES {
@@ -1116,6 +1120,38 @@ mod tests {
     }
 
     #[test]
+    fn er_diagram_by_mouse() {
+        let mut h = harness();
+        h.run();
+        h.state_mut()
+            .exec("diagram.add", json!({"type": "ERDDiagram"}));
+        h.run();
+        let mut place = |x: f64, y: f64| {
+            h.get_by_role_and_label(Role::Button, "Entity").click();
+            h.run();
+            let at = h.state().canvas.to_screen(render::Point::new(x, y));
+            click(&mut h, at);
+            h.state().session.selection[0].clone()
+        };
+        let customer = place(80.0, 80.0);
+        let order = place(360.0, 80.0);
+        h.get_by_role_and_label(Role::Button, "One to Many Relationship")
+            .click();
+        h.run();
+        let (from, to) = (center_of(&h, &customer), center_of(&h, &order));
+        drag(&mut h, from, to);
+        let app = h.state();
+        assert_eq!(
+            app.session.doc.get(&order).unwrap().type_name,
+            "ERDEntityView"
+        );
+        let rel = views_of_type(app, "ERDRelationship");
+        assert_eq!(rel.len(), 1);
+        let end2 = app.session.doc.get(&rel[0].children("end2")[0]).unwrap();
+        assert_eq!(end2.str("cardinality"), Some("0..*"));
+    }
+
+    #[test]
     fn component_diagram_toolbox_places_a_port_on_a_component() {
         let mut h = harness();
         h.run();
@@ -1162,12 +1198,12 @@ mod tests {
         h.get_by_role_and_label(Role::Button, "State example")
             .click();
         h.run();
-        h.state_mut().mermaid.as_mut().unwrap().text = "erDiagram\nA ||--o{ B : has".into();
+        h.state_mut().mermaid.as_mut().unwrap().text = "mindmap\n  root".into();
         h.run();
         h.get_by_role_and_label(Role::Button, "Import").click();
         h.run();
         let error = h.state().mermaid.as_ref().and_then(|m| m.error.clone());
-        assert!(error.is_some_and(|e| e.contains("erDiagram")));
+        assert!(error.is_some_and(|e| e.contains("mindmap")));
 
         h.get_by_role_and_label(Role::Button, "Class example")
             .click();
@@ -1199,6 +1235,20 @@ mod tests {
         assert!(h.state().mermaid.is_none(), "{:?}", h.state().status);
         assert_eq!(views_of_type(h.state(), "FCDecision").len(), 1);
         assert_eq!(views_of_type(h.state(), "FCTerminator").len(), 2);
+
+        // And an ER diagram on entities.
+        h.get_by_role_and_label(Role::Button, "File").click();
+        h.run();
+        h.get_by_role_and_label(Role::Button, "Import Mermaid…")
+            .click();
+        h.run();
+        h.get_by_role_and_label(Role::Button, "ER example").click();
+        h.run();
+        h.get_by_role_and_label(Role::Button, "Import").click();
+        h.run();
+        assert!(h.state().mermaid.is_none(), "{:?}", h.state().status);
+        assert_eq!(views_of_type(h.state(), "ERDEntity").len(), 3);
+        assert_eq!(views_of_type(h.state(), "ERDColumn").len(), 4);
     }
 
     #[test]

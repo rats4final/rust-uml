@@ -41,8 +41,8 @@ element.set {id, values: {...}} sets fields such as type, visibility, multiplici
 toolbox lists the kinds each diagram type offers. Lay boxes out on a grid with room for lines \
 (classes are about 150×80; leave 100+ px between them).
 
-From Mermaid: mermaid_import turns classDiagram, sequenceDiagram, stateDiagram or flowchart text \
-into a laid-out diagram in one step; often the quickest way to draw a whole diagram.
+From Mermaid: mermaid_import turns classDiagram, sequenceDiagram, stateDiagram, flowchart or \
+erDiagram text into a laid-out diagram in one step; often the quickest way to draw a whole diagram.
 
 To look: model_info lists diagrams, diagram_inspect lists boxes and lines with their ids and \
 positions, render_preview shows the diagram as an image. Check your work with render_preview.
@@ -585,11 +585,11 @@ const TOOLS: &[Tool] = &[
     Tool {
         name: "mermaid_import",
         title: "Import Mermaid",
-        description: "Add a diagram written in Mermaid (classDiagram, sequenceDiagram, stateDiagram or flowchart) to the open model, laid out automatically. Returns the new diagram's id and any lines that were skipped. One undo step.",
+        description: "Add a diagram written in Mermaid (classDiagram, sequenceDiagram, stateDiagram, flowchart or erDiagram) to the open model, laid out automatically. Returns the new diagram's id and any lines that were skipped. One undo step.",
         args: &[
             req(
                 "text",
-                r#"{"type": "string", "description": "Mermaid text, starting with classDiagram, sequenceDiagram, stateDiagram or flowchart"}"#,
+                r#"{"type": "string", "description": "Mermaid text, starting with classDiagram, sequenceDiagram, stateDiagram, flowchart or erDiagram"}"#,
             ),
             arg(
                 "name",
