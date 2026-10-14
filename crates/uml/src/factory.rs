@@ -777,6 +777,48 @@ pub fn add_node_view(
 /// Height of a sequence lifeline's head box (StarUML: `SEQ_OBJECT_MINHEIGHT`).
 pub const LIFELINE_HEAD: f64 = 40.0;
 
+/// Bring the text stored in `model`'s views' labels in line with the model
+/// after a rename: name labels (in a name compartment or directly on the
+/// view) show its name, a data flow element's `idLabel` its `id`. StarUML
+/// recomputes these when drawing, so only the file was stale. Labels that
+/// store no text are left so.
+pub fn sync_label_texts(e: &mut Editor, model: &str) {
+    let Some(m) = e.doc().get(model) else {
+        return;
+    };
+    let name = m.name().to_owned();
+    let id = m.str("id").unwrap_or("").to_owned();
+    let mut updates: Vec<(Id, String)> = Vec::new();
+    for view in views_of(e.doc(), model) {
+        let Some(v) = e.doc().get(&view) else {
+            continue;
+        };
+        // Only boxes: edge labels store no text of ours.
+        if v.get("head").is_some() {
+            continue;
+        }
+        let compartment_label = v
+            .ref_id("nameCompartment")
+            .and_then(|c| e.doc().get(c))
+            .and_then(|c| c.ref_id("nameLabel"));
+        for (label, text) in [
+            (compartment_label, &name),
+            (v.ref_id("nameLabel"), &name),
+            (v.ref_id("idLabel"), &id),
+        ] {
+            let Some(l) = label.and_then(|l| e.doc().get(l)) else {
+                continue;
+            };
+            if l.get("text").is_some() && l.str("text") != Some(text.as_str()) {
+                updates.push((l.id.clone(), text.clone()));
+            }
+        }
+    }
+    for (label, text) in updates {
+        e.set(&label, "text", Field::str(text));
+    }
+}
+
 /// Record `view` in `container`'s `containedViews`.
 fn add_contained(e: &mut Editor, container: &str, view: &str) {
     let mut list: Vec<Id> = e

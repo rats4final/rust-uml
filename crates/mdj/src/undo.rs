@@ -112,6 +112,15 @@ impl<'a> Editor<'a> {
         self.doc
     }
 
+    /// Fields set or cleared so far in this edit, as `(element, key)`, in
+    /// order (repeats possible).
+    pub fn changed_fields(&self) -> impl Iterator<Item = (&str, &str)> {
+        self.inverse.iter().filter_map(|op| match op {
+            Op::Set { id, key, .. } => Some((id.as_str(), key.as_str())),
+            _ => None,
+        })
+    }
+
     pub fn new_id(&mut self) -> Id {
         self.doc.new_id()
     }

@@ -1717,4 +1717,59 @@ mod tests {
             }
         }
     }
+
+    #[test]
+    fn renaming_updates_the_stored_label_text() {
+        let reg = Registry::default();
+        let mut s = Session::default();
+        let label_text = |s: &Session, view: &str, path: &[&str]| {
+            let mut el = s.doc.get(view).unwrap();
+            for key in path {
+                el = s.doc.get(el.ref_id(key).unwrap()).unwrap();
+            }
+            el.str("text").map(str::to_owned)
+        };
+        let class = run(
+            &reg,
+            &mut s,
+            "node.create",
+            json!({"kind": "Class", "x": 0, "y": 0, "name": "Order"}),
+        );
+        let (model, view) = (
+            class["model"].as_str().unwrap().to_owned(),
+            class["view"].as_str().unwrap().to_owned(),
+        );
+        let name_label = ["nameCompartment", "nameLabel"];
+        assert_eq!(label_text(&s, &view, &name_label).as_deref(), Some("Order"));
+        run(
+            &reg,
+            &mut s,
+            "element.set",
+            json!({"id": model, "key": "name", "value": "Purchase"}),
+        );
+        assert_eq!(
+            label_text(&s, &view, &name_label).as_deref(),
+            Some("Purchase")
+        );
+        run(&reg, &mut s, "edit.undo", json!({}));
+        assert_eq!(label_text(&s, &view, &name_label).as_deref(), Some("Order"));
+
+        // A data flow element's id label follows its id.
+        run(&reg, &mut s, "diagram.add", json!({"type": "DFDDiagram"}));
+        let p = run(
+            &reg,
+            &mut s,
+            "node.create",
+            json!({"kind": "DFDProcess", "x": 0, "y": 0, "name": "Ship"}),
+        );
+        let pv = p["view"].as_str().unwrap().to_owned();
+        run(
+            &reg,
+            &mut s,
+            "element.set",
+            json!({"id": p["model"], "values": {"id": "3"}}),
+        );
+        assert_eq!(label_text(&s, &pv, &["idLabel"]).as_deref(), Some("3"));
+        assert_eq!(label_text(&s, &pv, &["nameLabel"]).as_deref(), Some("Ship"));
+    }
 }

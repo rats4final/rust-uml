@@ -132,6 +132,17 @@ impl Session {
         self.doc.try_edit(|e| {
             let mut changes = Changes::default();
             let result = f(e, &mut changes)?;
+            // Renamed elements: their labels' stored text follows.
+            let mut renamed: Vec<Id> = e
+                .changed_fields()
+                .filter(|(_, key)| matches!(*key, "name" | "id"))
+                .map(|(id, _)| id.to_owned())
+                .collect();
+            renamed.sort();
+            renamed.dedup();
+            for model in renamed {
+                uml::sync_label_texts(e, &model);
+            }
             let mut diagrams: Vec<Id> = changes.diagrams.iter().cloned().collect();
             diagrams.sort();
             if let Some(a) = active {

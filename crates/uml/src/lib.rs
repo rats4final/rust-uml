@@ -15,7 +15,8 @@ pub use delete::{delete_elements, delete_views};
 pub use factory::{
     FeatureKind, LIFELINE_HEAD, Target, add_edge_view, add_feature, add_node_view, add_parameter,
     compartment_items, container_owner, create_diagram, create_edge, create_edge_at, create_node,
-    edge_spec_of, owner_for_new_elements, return_parameter, target_for, views_of, with_contained,
+    edge_spec_of, owner_for_new_elements, return_parameter, sync_label_texts, target_for, views_of,
+    with_contained,
 };
 pub use text::{
     attribute_text, column_keys, column_type, flow_text, instance_text, message_text,
