@@ -114,6 +114,15 @@ fn specs() -> Vec<CommandSpec> {
             run: crate::quick_edit::suppress_columns,
         },
         CommandSpec {
+            id: "view.add",
+            label: "Add View of Element",
+            menu: None,
+            shortcut: None,
+            params: r#"{"model": element id, "x", "y"} → {"view"}; shows an existing element on the open diagram (a C4 system on its own containers diagram is drawn as their boundary)"#,
+            enabled: has_diagram,
+            run: add_view,
+        },
+        CommandSpec {
             id: "model.validate",
             label: "Validate Model",
             menu: Some("Model"),
@@ -608,6 +617,29 @@ pub(crate) fn create_node(s: &mut Session, p: &Value) -> Result<Value, CommandEr
     })?;
     s.selection = vec![view.clone()];
     Ok(json!({ "model": model, "view": view }))
+}
+
+fn add_view(s: &mut Session, p: &Value) -> Result<Value, CommandError> {
+    let model = params::str(p, "model")?.to_owned();
+    let el = get(&s.doc, &model)?;
+    if is_view(el) || is_diagram(el) {
+        return Err(CommandError::Param(format!(
+            "`{model}` is not a model element"
+        )));
+    }
+    let ty = active_type(s)?;
+    let spec = uml::node_spec_for_model(&el.type_name, &ty).ok_or_else(|| {
+        CommandError::Param(format!("a {} can't be shown on this diagram", el.type_name))
+    })?;
+    let (x, y) = (params::coord(p, "x")?, params::coord(p, "y")?);
+    let diagram = active(s)?;
+    let view = s.edit(|e, c| {
+        let v = uml::add_node_view(e, &diagram, spec, Some(&model), x, y, None);
+        c.touched.insert(v.clone());
+        Ok(v)
+    })?;
+    s.selection = vec![view.clone()];
+    Ok(json!({ "view": view }))
 }
 
 pub(crate) fn create_edge(s: &mut Session, p: &Value) -> Result<Value, CommandError> {
@@ -1729,6 +1761,11 @@ mod tests {
             json!({"kind": "ERDEntity", "x": 0, "y": 0, "container": real[0]}),
             json!({"kind": "ERDRelationshipManyToMany", "tail": real[0], "head": real[1]}),
             json!({"classifier": real[1], "kind": "column", "name": "id"}),
+            json!({"model": real[0], "x": 0, "y": 0}),
+            json!({"model": real[1], "x": 1e300, "y": "no"}),
+            json!({"type": "C4Diagram"}),
+            json!({"kind": "C4ContainerDatabase", "x": 0, "y": 0}),
+            json!({"kind": "C4Relationship", "tail": real[0], "head": real[1]}),
             json!({"type": "DFDDiagram"}),
             json!({"type": "DFDDiagram", "parent": real[1]}),
             json!({"kind": "DFDProcess", "x": 0, "y": 0, "container": real[1]}),
@@ -1829,5 +1866,52 @@ mod tests {
         );
         assert_eq!(label_text(&s, &pv, &["idLabel"]).as_deref(), Some("3"));
         assert_eq!(label_text(&s, &pv, &["nameLabel"]).as_deref(), Some("Ship"));
+    }
+
+    #[test]
+    fn view_add_shows_an_existing_element() {
+        let reg = Registry::default();
+        let mut s = Session::default();
+        let root = s.doc.root().to_owned();
+        run(
+            &reg,
+            &mut s,
+            "diagram.add",
+            json!({"type": "C4Diagram", "parent": root}),
+        );
+        let system = run(
+            &reg,
+            &mut s,
+            "node.create",
+            json!({"kind": "Software System", "x": 0, "y": 0, "name": "Bank"}),
+        );
+        let inside = run(
+            &reg,
+            &mut s,
+            "diagram.add",
+            json!({"type": "C4 Diagram", "parent": system["model"]}),
+        );
+        assert_eq!(s.active_diagram.as_deref(), inside["id"].as_str());
+        let shown = run(
+            &reg,
+            &mut s,
+            "view.add",
+            json!({"model": system["model"], "x": 10, "y": 10}),
+        );
+        let v = s.doc.get(shown["view"].as_str().unwrap()).unwrap();
+        assert_eq!(v.type_name, "C4SoftwareSystemView");
+        assert_eq!(v.ref_id("model"), system["model"].as_str());
+        assert_eq!(v.parent.as_deref(), inside["id"].as_str());
+        // Not a diagram's content: a view, a diagram, or a type with no box here.
+        for bad in [shown["view"].clone(), inside["id"].clone()] {
+            assert!(
+                reg.run(&mut s, "view.add", &json!({"model": bad, "x": 0, "y": 0}))
+                    .is_err()
+            );
+        }
+        assert!(
+            reg.run(&mut s, "view.add", &json!({"model": root, "x": 0, "y": 0}))
+                .is_err()
+        );
     }
 }
