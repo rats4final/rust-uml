@@ -209,7 +209,14 @@ and Azure last (provider icons: check their licence first).
   height, iterative). Shapes become rounded boxes, with one warning. Example `examples/mindmap.mdj`
   from `examples/scripts/trip-mindmap.json`, sample `examples/mermaid/trip.mmd`.
   Left: Add Node Left/Right quick edits. **Not yet checked in StarUML.**
-- ⬜ DFD, C4, Azure.
+- ✅ **DFD** (2026-10-14): `catalog::dfd` rows for external entity, process and data store
+  (`nameLabel` + `idLabel`; only the name label gets the name), `DFDDataFlow` (named, filled
+  arrowhead, rounded right angles), only between DFD elements. `create_diagram` wraps the diagram
+  in a `DataFlowModel` unless the parent is already a DFD element, so a process holds its lower
+  level. `render::layout::dfd_layout` places id and name with StarUML's padding; `Shape::DataStore`
+  is the box open on the right. No Mermaid syntax exists for DFDs. Example `examples/dfd.mdj` from
+  `examples/scripts/order-dfd.json`. **Not yet checked in StarUML.**
+- ⬜ C4, Azure.
 
 ### M6 — Editing depth
 

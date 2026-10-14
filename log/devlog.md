@@ -2,6 +2,14 @@
 
 Newest first. Terse: what landed, numbers, what's still open.
 
+## 2026-10-14 — M5: data flow diagrams
+
+- Data flow diagrams: external entities, processes with an id band, data stores open on the right
+  with an id compartment, and named data flows with filled arrowheads. Element ids are edited in
+  the properties panel; a process can hold its lower-level diagram (no new wrapper).
+- `examples/dfd.mdj` (in the release archives) from `examples/scripts/order-dfd.json`. 164 tests.
+- Open: check in StarUML. M5 left: C4, Azure.
+
 ## 2026-10-14 — v0.7.0: flowcharts, ER diagrams, mind maps
 
 - Release notes for the three M5 families and their Mermaid imports. Workspace version set to

@@ -290,6 +290,26 @@ From `timingDiagramFn`, `_addTimingFrame`, `lifelineFn`, `timingStateFn`, `timeS
 - Time constraints (`{min..max}` label + link to a message or segment) and duration constraints
   (`{min..max}`, placed in the frame) exist too.
 
+### Data flow diagrams (observed for M5, 2026-10-14)
+
+From `extensions/essential/dfd/` (`metamodel.json`, `dfd-factory.js`, `elements.js`,
+`toolbox/dfd.json`, `preferences/dfd.json`), in our words:
+
+- A `DFDDiagram` lives in a `DFDDataFlowModel` (created as `DataFlowModel1`) unless its parent is
+  already a DFD element, so a process can hold its own lower-level diagram. The diagram is named
+  from its type (`DFDDiagram1`); elements from theirs without `DFD` (`ExternalEntity1`,
+  `Process1`, `DataStore1`).
+- Every DFD element has an `id` string (default empty) shown on its shape. `DFDDataFlow` is a
+  directed relationship between DFD elements only, owned by its source.
+- Views (`DFDGeneralNodeView`: `nameLabel`, `wordWrap` default true; processes and data stores
+  also an `idLabel`): an external entity is a box with the id 5 px from the top and the name
+  10 px below that; a process is a rounded box (radius 10) with the id in a band across the top
+  (5 px padding) and a line under it, the name 10 px further down; a data store is a box open on
+  the right with the id in a compartment at the left (5 px padding), a line after it, and the
+  name 10 px beyond. Names are centred, 10 px from the sides.
+- `DFDDataFlowView`: a name label (middle, π/2, 15), a filled arrowhead, line style from the
+  `dfd.dataflow.lineStyle` preference (rounded rectilinear by default).
+
 ### Mind maps (observed for M5, 2026-10-14)
 
 From `extensions/essential/mindmap/` (`metamodel.json`, `mindmap-factory.js`, `elements.js`,
