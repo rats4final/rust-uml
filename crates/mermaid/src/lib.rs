@@ -1,12 +1,14 @@
 //! Mermaid diagram text → plain data, for importing into a model.
 //!
 //! Written from Mermaid's public syntax documentation. Covers what maps onto
-//! UML: `classDiagram`, `sequenceDiagram` and `stateDiagram(-v2)`. Styling
+//! UML: `classDiagram`, `sequenceDiagram` and `stateDiagram(-v2)`, and
+//! `flowchart`/`graph`, which map onto flowchart symbols. Styling
 //! (`style`, `classDef`, `:::`, `click`, …) is skipped silently; anything
 //! else that isn't understood is skipped with a warning, so an import never
 //! fails on one odd line. Structural mistakes (an unclosed block) are errors.
 
 pub mod class;
+pub mod flowchart;
 mod lines;
 pub mod sequence;
 pub mod state;
@@ -40,6 +42,7 @@ pub enum Diagram {
     Class(class::ClassDiagram),
     Sequence(sequence::SequenceDiagram),
     State(state::StateDiagram),
+    Flowchart(flowchart::Flowchart),
 }
 
 /// A parsed diagram, its title and what was skipped.
@@ -89,7 +92,11 @@ pub fn parse(text: &str) -> Result<Parsed, ParseError> {
     let Some((header, rest)) = body.split_first() else {
         return Err(err(0, "empty diagram"));
     };
-    let kind = header.text.split_whitespace().next().unwrap_or_default();
+    let kind = header
+        .text
+        .split(|c: char| c.is_whitespace() || c == ';')
+        .next()
+        .unwrap_or_default();
     let mut warnings = Vec::new();
     let (diagram, title2) = match kind {
         "classDiagram" | "classDiagram-v2" => {
@@ -104,11 +111,15 @@ pub fn parse(text: &str) -> Result<Parsed, ParseError> {
             let (d, t) = state::parse(rest, &mut warnings)?;
             (Diagram::State(d), t)
         }
-        "flowchart" | "graph" | "erDiagram" | "mindmap" | "requirementDiagram" => {
+        "flowchart" | "flowchart-elk" | "graph" => (
+            Diagram::Flowchart(flowchart::parse(header, rest, &mut warnings)?),
+            None,
+        ),
+        "erDiagram" | "mindmap" | "requirementDiagram" => {
             return Err(err(
                 header.number,
                 format!(
-                    "`{kind}` can't be imported yet: it needs a diagram family rust-uml doesn't have yet (class, sequence and state diagrams work)"
+                    "`{kind}` can't be imported yet: it needs a diagram family rust-uml doesn't have yet (class, sequence, state and flowchart diagrams work)"
                 ),
             ));
         }
@@ -116,7 +127,7 @@ pub fn parse(text: &str) -> Result<Parsed, ParseError> {
             return Err(err(
                 header.number,
                 format!(
-                    "`{kind}` is not a Mermaid diagram rust-uml can import (classDiagram, sequenceDiagram, stateDiagram)"
+                    "`{kind}` is not a Mermaid diagram rust-uml can import (classDiagram, sequenceDiagram, stateDiagram, flowchart)"
                 ),
             ));
         }
@@ -177,7 +188,7 @@ mod tests {
         let p = parse("---\ntitle: Shop\n---\n%% a comment\nclassDiagram\nclass A").unwrap();
         assert_eq!(p.title.as_deref(), Some("Shop"));
         assert!(matches!(p.diagram, Diagram::Class(_)));
-        let e = parse("flowchart TD\nA-->B").unwrap_err();
+        let e = parse("erDiagram\nA ||--o{ B : has").unwrap_err();
         assert!(e.message.contains("can't be imported yet"));
         assert!(parse("pie\n\"a\": 1").is_err());
         assert!(parse("  \n%% only a comment").is_err());

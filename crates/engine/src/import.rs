@@ -10,6 +10,7 @@ use std::collections::HashMap;
 
 use mdj::{Field, Id};
 use mermaid::class::{ClassDiagram, End};
+use mermaid::flowchart::{self, Flowchart, Shape, Stroke};
 use mermaid::sequence::{Arrow, Block, Event, NotePlace, SequenceDiagram};
 use mermaid::state::{Kind, Point, StateDiagram};
 use mermaid::{Diagram, Direction};
@@ -49,6 +50,7 @@ pub(crate) fn import_mermaid(s: &mut Session, p: &Value) -> Result<Value, Comman
         Diagram::Class(d) => b.class(d, name, parent),
         Diagram::Sequence(d) => b.sequence(d, name, parent),
         Diagram::State(d) => b.state(d, name, parent),
+        Diagram::Flowchart(d) => b.flowchart(d, name, parent),
     };
     let warnings = b.warnings;
     match built {
@@ -650,6 +652,77 @@ impl Builder<'_> {
 
     // -----------------------------------------------------------------------
 
+    /// Shapes become the closest flowchart symbol (StarUML's mapping for
+    /// the bracket shapes, extended to the named ones); links become flows.
+    fn flowchart(
+        &mut self,
+        d: &Flowchart,
+        name: Option<String>,
+        parent: Option<String>,
+    ) -> Result<Id, CommandError> {
+        let diagram = self.diagram("FCFlowchartDiagram", name, parent)?;
+        let mut items: Vec<Item> = Vec::new();
+        let mut edges: Vec<(usize, usize)> = Vec::new();
+        let mut lines: Vec<Line> = Vec::new();
+        let mut nodes: HashMap<&str, usize> = HashMap::new();
+
+        for node in &d.nodes {
+            let kind = symbol(&node.shape).unwrap_or_else(|| {
+                let shape = match &node.shape {
+                    Shape::Other(s) => s.clone(),
+                    s => format!("{s:?}").to_lowercase(),
+                };
+                self.warnings.push(format!(
+                    "`{}`: the `{shape}` shape has no flowchart symbol; drawn as a process",
+                    node.id
+                ));
+                "FCProcess"
+            });
+            let (_, view) = self.node(kind, Some(node.name()), None, ORIGIN)?;
+            nodes.insert(node.id.as_str(), items.len());
+            items.push(Item { view, within: None });
+        }
+
+        let mut restyled = false;
+        for link in &d.links {
+            let (Some(&a), Some(&b)) = (nodes.get(link.from.as_str()), nodes.get(link.to.as_str()))
+            else {
+                continue;
+            };
+            if a != b {
+                edges.push((a, b));
+            }
+            if link.stroke == Stroke::Invisible {
+                continue;
+            }
+            restyled |= link.stroke != Stroke::Solid
+                || link.tail != flowchart::End::None
+                || link.head != flowchart::End::Arrow;
+            let (tail, head) = (items[a].view.clone(), items[b].view.clone());
+            lines.push(Line::plain("FCFlow", tail, head, link.label.clone()));
+        }
+        if restyled {
+            self.warnings.push(
+                "flows are solid lines with one arrowhead: dotted, thick, two-way and arrowless link styles were not kept"
+                    .into(),
+            );
+        }
+
+        self.arrange(
+            &items,
+            &edges,
+            flow(d.direction),
+            Spacing {
+                node: 50.0,
+                layer: 50.0,
+            },
+        )?;
+        self.connect(lines)?;
+        Ok(diagram)
+    }
+
+    // -----------------------------------------------------------------------
+
     fn sequence(
         &mut self,
         d: &SequenceDiagram,
@@ -919,6 +992,37 @@ impl Builder<'_> {
     }
 }
 
+/// The flowchart symbol for a Mermaid shape, if one is close enough.
+fn symbol(shape: &Shape) -> Option<&'static str> {
+    Some(match shape {
+        Shape::Rect => "FCProcess",
+        Shape::Rounded => "FCAlternateProcess",
+        Shape::Stadium => "FCTerminator",
+        Shape::Subroutine => "FCPredefinedProcess",
+        Shape::Cylinder => "FCDatabase",
+        Shape::HorizontalCylinder => "FCDirectAccessStorage",
+        Shape::Circle | Shape::DoubleCircle | Shape::SmallCircle => "FCConnector",
+        Shape::Diamond => "FCDecision",
+        Shape::Hexagon => "FCPreparation",
+        Shape::LeanRight | Shape::LeanLeft => "FCData",
+        Shape::InvTrapezoid | Shape::Trapezoid => "FCManualOperation",
+        Shape::Document => "FCDocument",
+        Shape::Documents => "FCMultiDocument",
+        Shape::Delay => "FCDelay",
+        Shape::Display => "FCDisplay",
+        Shape::ManualInput => "FCManualInput",
+        Shape::PaperTape => "FCPunchedTape",
+        Shape::StoredData => "FCStoredData",
+        Shape::InternalStorage => "FCInternalStorage",
+        Shape::Extract => "FCExtract",
+        Shape::FlippedTriangle => "FCMerge",
+        Shape::Collate => "FCCollate",
+        Shape::CrossedCircle => "FCSummingJunction",
+        Shape::Card => "FCCard",
+        Shape::Odd | Shape::Other(_) => return None,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use serde_json::{Value, json};
@@ -1071,7 +1175,8 @@ class Gen~T~"#,
         assert!(!s.doc.can_undo());
 
         for bad in [
-            "flowchart TD\nA-->B",
+            "erDiagram\nA ||--o{ B : has",
+            "flowchart TD\nsubgraph x\nA-->B",
             "classDiagram\nclass A {",
             "",
             "sequenceDiagram\nloop forever\nA->>B: x",
@@ -1194,5 +1299,70 @@ class Gen~T~"#,
         assert!(find("New")["y"].as_f64() < find("Done")["y"].as_f64());
         let lines = d["lines"].as_array().unwrap();
         assert_eq!(lines.len(), 10, "9 transitions and a note link");
+    }
+
+    #[test]
+    fn flowchart_shapes_become_symbols_and_links_become_flows() {
+        let mut s = Session::default();
+        let r = import(
+            &mut s,
+            r#"flowchart TD
+    start([Start]) --> input[/Enter password/]
+    users[(Users)] -. lookup .-> check{Correct?}
+    input --> check
+    check -->|yes| open[Open session] --> stop([End])
+    check -- no --> err@{ shape: display, label: "Show error" }
+    err --> input
+    open --> open
+    open ~~~ odd>Odd one]
+    subgraph audit
+      log@{ shape: doc, label: Log }
+    end
+    open --> log"#,
+        );
+        let warnings: Vec<String> = r["warnings"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|w| w.as_str().unwrap().to_owned())
+            .collect();
+        assert_eq!(warnings.len(), 3, "{warnings:?}");
+        assert!(warnings.iter().any(|w| w.contains("`odd`")));
+        assert!(warnings.iter().any(|w| w.contains("subgraphs")));
+        assert!(warnings.iter().any(|w| w.contains("dotted")));
+
+        let d = inspect(&mut s);
+        assert_eq!(d["type"], "FCFlowchartDiagram");
+        let boxes = d["boxes"].as_array().unwrap();
+        assert!(overlapping(boxes).is_none(), "{:?}", overlapping(boxes));
+        let find = |n: &str| boxes.iter().find(|b| b["name"] == n).unwrap().clone();
+        let ty = |n: &str| find(n)["type"].as_str().unwrap().to_owned();
+        assert_eq!(ty("Start"), "FCTerminatorView");
+        assert_eq!(ty("Enter password"), "FCDataView");
+        assert_eq!(ty("Users"), "FCDatabaseView");
+        assert_eq!(ty("Correct?"), "FCDecisionView");
+        assert_eq!(ty("Open session"), "FCProcessView");
+        assert_eq!(ty("Show error"), "FCDisplayView");
+        assert_eq!(ty("Odd one"), "FCProcessView");
+        assert_eq!(ty("Log"), "FCDocumentView");
+        // Top-down: the start is above the decision, the decision above the end.
+        let y = |n: &str| find(n)["y"].as_f64().unwrap();
+        assert!(y("Start") < y("Correct?") && y("Correct?") < y("End"));
+
+        let lines = d["lines"].as_array().unwrap();
+        // 10 links; the invisible one isn't drawn.
+        assert_eq!(lines.len(), 9, "{lines:?}");
+        assert!(lines.iter().all(|l| l["type"] == "FCFlowView"));
+        let named: Vec<&str> = lines.iter().filter_map(|l| l["name"].as_str()).collect();
+        for label in ["lookup", "yes", "no"] {
+            assert!(named.contains(&label), "{named:?}");
+        }
+        let open = find("Open session")["view"].clone();
+        assert!(lines.iter().any(|l| l["tail"] == open && l["head"] == open));
+
+        Registry::default()
+            .run(&mut s, "edit.undo", &json!({}))
+            .unwrap();
+        assert!(!s.doc.can_undo(), "one undo step");
     }
 }

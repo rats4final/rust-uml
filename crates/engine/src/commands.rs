@@ -278,7 +278,7 @@ fn specs() -> Vec<CommandSpec> {
             label: "Import Mermaid",
             menu: None,
             shortcut: None,
-            params: r#"{"text": Mermaid classDiagram, sequenceDiagram or stateDiagram text, "name"?: diagram name (default: its title), "parent"?: model or package id} → {"diagram", "warnings": [skipped lines]}; one undo step"#,
+            params: r#"{"text": Mermaid classDiagram, sequenceDiagram, stateDiagram or flowchart text, "name"?: diagram name (default: its title), "parent"?: model or package id} → {"diagram", "warnings": [skipped lines]}; one undo step"#,
             enabled: always,
             run: crate::import::import_mermaid,
         },

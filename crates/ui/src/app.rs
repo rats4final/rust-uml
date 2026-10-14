@@ -45,6 +45,10 @@ const MERMAID_EXAMPLES: &[(&str, &str)] = &[
         "State",
         "stateDiagram-v2\n    [*] --> Draft\n    Draft --> Review : submit\n    Review --> Draft : changes\n    Review --> Published : approve\n    Published --> [*]",
     ),
+    (
+        "Flowchart",
+        "flowchart TD\n    start([Start]) --> pay[/Card details/]\n    pay --> ok{Approved?}\n    ok -->|yes| ship[Ship order] --> done([End])\n    ok -->|no| pay",
+    ),
 ];
 
 /// Work sent from outside the window (the desktop app's control channel),
@@ -571,7 +575,7 @@ impl UmlApp {
         egui::Modal::new(egui::Id::new("mermaid")).show(ctx, |ui| {
             ui.strong("Import Mermaid");
             ui.label(
-                "Paste a classDiagram, sequenceDiagram or stateDiagram. It becomes a new diagram.",
+                "Paste a classDiagram, sequenceDiagram, stateDiagram or flowchart. It becomes a new diagram.",
             );
             ui.horizontal(|ui| {
                 for (label, text) in MERMAID_EXAMPLES {
@@ -1158,12 +1162,12 @@ mod tests {
         h.get_by_role_and_label(Role::Button, "State example")
             .click();
         h.run();
-        h.state_mut().mermaid.as_mut().unwrap().text = "flowchart TD\nA-->B".into();
+        h.state_mut().mermaid.as_mut().unwrap().text = "erDiagram\nA ||--o{ B : has".into();
         h.run();
         h.get_by_role_and_label(Role::Button, "Import").click();
         h.run();
         let error = h.state().mermaid.as_ref().and_then(|m| m.error.clone());
-        assert!(error.is_some_and(|e| e.contains("flowchart")));
+        assert!(error.is_some_and(|e| e.contains("erDiagram")));
 
         h.get_by_role_and_label(Role::Button, "Class example")
             .click();
@@ -1180,6 +1184,21 @@ mod tests {
         h.key_press_modifiers(Modifiers::COMMAND, Key::Z);
         h.run();
         assert!(views_of_type(h.state(), "UMLClass").is_empty());
+
+        // A flowchart lands on flowchart symbols.
+        h.get_by_role_and_label(Role::Button, "File").click();
+        h.run();
+        h.get_by_role_and_label(Role::Button, "Import Mermaid…")
+            .click();
+        h.run();
+        h.get_by_role_and_label(Role::Button, "Flowchart example")
+            .click();
+        h.run();
+        h.get_by_role_and_label(Role::Button, "Import").click();
+        h.run();
+        assert!(h.state().mermaid.is_none(), "{:?}", h.state().status);
+        assert_eq!(views_of_type(h.state(), "FCDecision").len(), 1);
+        assert_eq!(views_of_type(h.state(), "FCTerminator").len(), 2);
     }
 
     #[test]

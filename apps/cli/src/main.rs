@@ -61,8 +61,8 @@ Example:
     (
         "import",
         "import <diagram.mmd>|- [--into model.mdj] [--name name] [-o out.mdj|out.svg|out.png]...",
-        "Turn Mermaid text (classDiagram, sequenceDiagram, stateDiagram) into a new diagram, laid out
-automatically, in a new model or added to --into. Lines that can't be imported are listed as
+        "Turn Mermaid text (classDiagram, sequenceDiagram, stateDiagram, flowchart) into a new diagram,
+laid out automatically, in a new model or added to --into. Lines that can't be imported are listed as
 warnings. -o works as in `run`; without -o the result is printed.
 
 Example:
