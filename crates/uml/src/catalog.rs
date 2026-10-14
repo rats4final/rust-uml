@@ -265,6 +265,22 @@ const fn control_node(id: &'static str, label: &'static str, size: (f64, f64)) -
     }
 }
 
+/// A data flow diagram element (`(type, view type)`); StarUML names new
+/// ones from the type without `DFD` (`Process1`).
+const fn dfd(
+    (id, view_type): (&'static str, &'static str),
+    label: &'static str,
+    base_name: &'static str,
+    labels: &'static [&'static str],
+    size: (f64, f64),
+) -> NodeSpec {
+    NodeSpec {
+        name_compartment: false,
+        labels,
+        ..node(id, label, id, view_type, base_name, size)
+    }
+}
+
 const ONE_REGION: &[(&str, &str)] = &[("regions", "UMLRegion")];
 const TWO_REGIONS: &[(&str, &str)] = &[("regions", "UMLRegion"), ("regions", "UMLRegion")];
 
@@ -749,6 +765,29 @@ pub const NODES: &[NodeSpec] = &[
         "Information Item",
         "UMLInformationItemView",
         "InformationItem",
+    ),
+    // Data flow diagrams (StarUML's dfd extension): each element shows its
+    // `id` and name; processes and data stores keep the id in a label of its own.
+    dfd(
+        ("DFDExternalEntity", "DFDExternalEntityView"),
+        "External Entity",
+        "ExternalEntity",
+        &["nameLabel"],
+        (100.0, 50.0),
+    ),
+    dfd(
+        ("DFDProcess", "DFDProcessView"),
+        "Process",
+        "Process",
+        &["nameLabel", "idLabel"],
+        (100.0, 60.0),
+    ),
+    dfd(
+        ("DFDDataStore", "DFDDataStoreView"),
+        "Data Store",
+        "DataStore",
+        &["nameLabel", "idLabel"],
+        (120.0, 40.0),
     ),
     // Mind maps (StarUML's mindmap extension): rounded boxes with a centred
     // name; StarUML names new ones from the type ("MMNode1").
@@ -1324,6 +1363,12 @@ pub const EDGES: &[EdgeSpec] = &[
         labels: EdgeLabels::Name,
         ..directed("FCFlow", "Flow", "FCFlow", "FCFlowView")
     },
+    // A data flow: a named arrow, rounded right angles by StarUML's preference.
+    EdgeSpec {
+        labels: EdgeLabels::Name,
+        line_style: line_style::ROUND_RECT,
+        ..directed("DFDDataFlow", "Data Flow", "DFDDataFlow", "DFDDataFlowView")
+    },
     // A plain line between mind map nodes (no arrowheads, no labels).
     EdgeSpec {
         labels: EdgeLabels::None,
@@ -1622,6 +1667,16 @@ pub const TOOL_GROUPS: &[ToolGroup] = &[
         ],
     },
     ToolGroup {
+        label: "Data Flow",
+        diagrams: &["DFDDiagram"],
+        tools: &[
+            "DFDExternalEntity",
+            "DFDProcess",
+            "DFDDataStore",
+            "DFDDataFlow",
+        ],
+    },
+    ToolGroup {
         label: "Mindmap",
         diagrams: &["MMMindmapDiagram"],
         tools: &["MMNode", "MMEdge"],
@@ -1723,6 +1778,7 @@ pub const DIAGRAMS: &[(&str, &str, &str)] = &[
     // StarUML names these from the type: "ERDDiagram1".
     ("ERDDiagram", "ER Diagram", "ERDDiagram"),
     ("MMMindmapDiagram", "Mindmap Diagram", "MMMindmapDiagram"),
+    ("DFDDiagram", "Data Flow Diagram", "DFDDiagram"),
 ];
 
 /// A tool, either kind.

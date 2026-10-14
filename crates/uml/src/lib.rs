@@ -821,6 +821,9 @@ mod tests {
                     "ERDEntity"
                 }
                 catalog::EdgeOwner::Source if spec.model_type == Some("MMEdge") => "MMNode",
+                catalog::EdgeOwner::Source if spec.model_type == Some("DFDDataFlow") => {
+                    "DFDProcess"
+                }
                 catalog::EdgeOwner::Source => "UMLClass",
             };
             let end_tool = if node_spec(end_tool)
@@ -902,6 +905,58 @@ mod tests {
         let spec = edge_spec("ERDRelationship").unwrap();
         assert!(
             doc.try_edit(|e| create_edge(e, &dgm, spec, &cv, &class))
+                .is_err()
+        );
+    }
+
+    #[test]
+    fn data_flow_diagrams_and_lower_levels() {
+        let mut doc = Document::new_project();
+        let dgm = diagram_of_type(&mut doc, "DFDDiagram");
+        let d = doc.get(&dgm).unwrap();
+        assert_eq!(d.name(), "DFDDiagram1");
+        let owner = d.parent.clone().unwrap();
+        let o = doc.get(&owner).unwrap();
+        assert_eq!(
+            (o.type_name.as_str(), o.name()),
+            ("DFDDataFlowModel", "DataFlowModel1")
+        );
+        let (customer, cv) = node(&mut doc, &dgm, "DFDExternalEntity", 0.0, 0.0, None);
+        let (process, pv) = node(&mut doc, &dgm, "DFDProcess", 200.0, 0.0, None);
+        let (_, sv) = node(&mut doc, &dgm, "DFDDataStore", 200.0, 200.0, None);
+        assert_eq!(doc.get(&customer).unwrap().name(), "ExternalEntity1");
+        assert_eq!(doc.get(&process).unwrap().name(), "Process1");
+        // The process view has an empty id label beside its name label.
+        let v = doc.get(&pv).unwrap();
+        let label = |k: &str| doc.get(v.ref_id(k).unwrap()).unwrap().str("text");
+        assert_eq!(label("nameLabel"), Some("Process1"));
+        assert_eq!(label("idLabel"), Some(""));
+
+        let (flow, fv) = edge(&mut doc, &dgm, "DFDDataFlow", &cv, &pv);
+        let flow = doc.get(flow.as_deref().unwrap()).unwrap();
+        assert_eq!(flow.parent.as_deref(), Some(customer.as_str()));
+        let fview = doc.get(&fv).unwrap();
+        assert!(fview.ref_id("nameLabel").is_some());
+        assert_eq!(
+            fview.num("lineStyle", -1.0),
+            mdj::values::line_style::ROUND_RECT as f64
+        );
+        edge(&mut doc, &dgm, "DFDDataFlow", &pv, &sv);
+
+        // A process holds its own lower-level diagram, with no new wrapper.
+        let level2 = doc
+            .try_edit(|e| create_diagram(e, &process, "DFDDiagram"))
+            .unwrap();
+        assert_eq!(doc.get(&level2).unwrap().parent, Some(process.clone()));
+        let (inner, _) = node(&mut doc, &level2, "DFDProcess", 0.0, 0.0, None);
+        assert_eq!(doc.get(&inner).unwrap().parent, Some(process));
+
+        // Only data flow elements can be joined.
+        let class_dgm = diagram_of_type(&mut doc, "UMLClassDiagram");
+        let (_, class) = node(&mut doc, &class_dgm, "UMLClass", 0.0, 0.0, None);
+        let spec = edge_spec("DFDDataFlow").unwrap();
+        assert!(
+            doc.try_edit(|e| create_edge(e, &dgm, spec, &pv, &class))
                 .is_err()
         );
     }

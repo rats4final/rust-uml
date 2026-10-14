@@ -109,6 +109,12 @@ fn unique_name(doc: &Document, parent: &str, base: &str) -> String {
 }
 
 const PACKAGE_LIKE: &[&str] = &["UMLPackage", "UMLModel", "UMLSubsystem", "UMLProfile"];
+const DFD_ELEMENTS: &[&str] = &[
+    "DFDDataFlowModel",
+    "DFDExternalEntity",
+    "DFDProcess",
+    "DFDDataStore",
+];
 /// Classifiers that can own parts and ports.
 const STRUCTURED: &[&str] = &[
     "UMLClass",
@@ -679,8 +685,10 @@ pub fn add_node_view(
     }
 
     for key in spec.labels {
+        // Other labels (a data flow element's `idLabel`) start empty.
         let name = model
             .and_then(|m| e.doc().get(m))
+            .filter(|_| *key == "nameLabel")
             .map(Element::name)
             .unwrap_or("")
             .to_owned();
@@ -867,9 +875,20 @@ pub fn create_edge_at(
                     spec.label
                 ));
             };
-            let is_node = |m: &str| e.doc().get(m).is_some_and(|el| el.type_name == "MMNode");
-            if model_type == "MMEdge" && !(is_node(&source) && is_node(&target)) {
+            let type_of = |m: &str| e.doc().get(m).map(|el| el.type_name.clone());
+            let both = |ok: &dyn Fn(&str) -> bool| {
+                [&source, &target]
+                    .iter()
+                    .all(|m| type_of(m).is_some_and(|t| ok(&t)))
+            };
+            if model_type == "MMEdge" && !both(&|t| t == "MMNode") {
                 return Err(format!("An {} joins two mind map nodes.", spec.label));
+            }
+            if model_type == "DFDDataFlow" && !both(&|t| DFD_ELEMENTS[1..].contains(&t)) {
+                return Err(format!(
+                    "A {} joins external entities, processes and data stores.",
+                    spec.label
+                ));
             }
             let mut rel = Element::new(e.new_id(), model_type)
                 .with("source", Field::Ref(source.clone()))
@@ -1617,6 +1636,8 @@ pub fn create_diagram(e: &mut Editor, parent: &str, diagram_type: &str) -> Resul
         ("FCFlowchartDiagram", p) if p != "FCFlowchart" => &[("FCFlowchart", "Flowchart")],
         ("ERDDiagram", p) if p != "ERDDataModel" => &[("ERDDataModel", "Data Model")],
         ("MMMindmapDiagram", p) if p != "MMMindmap" => &[("MMMindmap", "Mindmap")],
+        // Any data flow element can hold a diagram (a process's lower level).
+        ("DFDDiagram", p) if !DFD_ELEMENTS.contains(&p) => &[("DFDDataFlowModel", "DataFlowModel")],
         ("UMLInteractionOverviewDiagram", "UMLActivity") => &[],
         ("UMLInteractionOverviewDiagram", "UMLInteraction") => &[ACTIVITY],
         ("UMLInteractionOverviewDiagram", _) => &[INTERACTION, ACTIVITY],
