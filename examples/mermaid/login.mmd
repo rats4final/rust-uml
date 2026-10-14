@@ -1,0 +1,11 @@
+---
+title: Login
+---
+flowchart TD
+    start([Start]) --> input[/Enter password/]
+    users[(Users)] -->|lookup| check{Correct?}
+    input --> check
+    check -->|yes| open[Open session] --> stop([End])
+    check -->|no| error@{ shape: display, label: "Show error" }
+    error --> input
+    open --> audit@{ shape: doc, label: "Audit log" }
