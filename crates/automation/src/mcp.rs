@@ -526,7 +526,7 @@ const TOOLS: &[Tool] = &[
             let scene = render::build_scene(&s.session.doc, &d, s.session.fonts());
             let side = scene.bounds.w.max(scene.bounds.h).max(1.0);
             let scale = (max_side / side).min(2.0);
-            let png = render::to_png(&scene, scale as f32)?;
+            let png = render::to_png_with(&scene, scale as f32, s.session.icons())?;
             Ok(Reply::Image {
                 png,
                 note: format!(

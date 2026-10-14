@@ -12,6 +12,10 @@ use engine::{Registry, Session};
 use serde_json::{Value, json};
 
 fn main() -> std::process::ExitCode {
+    // Microsoft's Azure icons, if the user points at a downloaded copy.
+    if let Some(Err(e)) = automation::icons::icons_from_env() {
+        eprintln!("warning: Azure icons not loaded: {e}");
+    }
     match run(std::env::args().skip(1).collect()) {
         Ok(()) => std::process::ExitCode::SUCCESS,
         Err(e) => {

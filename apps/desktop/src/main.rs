@@ -1,10 +1,14 @@
 //! Desktop app for Linux, Windows and macOS.
 //!
-//! Usage: `rust-uml [model.mdj] [--screenshot out.png]
+//! Usage: `rust-uml [model.mdj] [--screenshot out.png] [--azure-icons <dir>]
 //!         [--control <port> --control-token-file <path> [--control-root <dir>]]`
 //!
 //! `--screenshot` captures the window once it has settled, writes a PNG and
 //! exits: a way to check the UI without someone watching the screen.
+//!
+//! `--azure-icons` points at Microsoft's Azure icon set, downloaded by the
+//! user (rust-uml doesn't ship it); else `RUST_UML_AZURE_ICONS`, else the
+//! folder last chosen with View ▸ Azure Icons Folder….
 //!
 //! `--control` lets agents drive the window over a loopback channel guarded by
 //! the token in `--control-token-file` (created if missing); agent file access
@@ -14,6 +18,7 @@
 #![cfg_attr(all(windows, not(debug_assertions)), windows_subsystem = "windows")]
 
 mod control;
+mod settings;
 
 use std::path::{Path, PathBuf};
 
@@ -22,13 +27,14 @@ use control::{Control, ControlArgs};
 use eframe::egui;
 use ui::{FileEvent, FileKind, FileService, UmlApp};
 
-const USAGE: &str = "usage: rust-uml [model.mdj] [--screenshot out.png] \
+const USAGE: &str = "usage: rust-uml [model.mdj] [--screenshot out.png] [--azure-icons <dir>] \
 [--control <port> --control-token-file <path> [--control-root <dir>]]";
 
 #[derive(Debug, Default, PartialEq, Eq)]
 struct Args {
     initial: Option<String>,
     screenshot: Option<String>,
+    azure_icons: Option<PathBuf>,
     control: Option<ControlArgs>,
 }
 
@@ -44,6 +50,7 @@ fn parse_args(words: impl IntoIterator<Item = String>) -> anyhow::Result<Args> {
         };
         match w.as_str() {
             "--screenshot" => args.screenshot = Some(value()?),
+            "--azure-icons" => args.azure_icons = Some(PathBuf::from(value()?)),
             "--control" => {
                 let v = value()?;
                 port = Some(
@@ -79,8 +86,18 @@ fn main() -> anyhow::Result<()> {
     let Args {
         initial,
         screenshot,
+        azure_icons,
         control,
     } = parse_args(std::env::args().skip(1))?;
+    // The flag, else the environment, else the folder chosen last time.
+    let icons = azure_icons
+        .or_else(|| std::env::var_os(automation::icons::ICONS_ENV).map(PathBuf::from))
+        .or_else(settings::azure_icons);
+    if let Some(dir) = icons
+        && let Err(e) = automation::icons::use_folder(&dir)
+    {
+        eprintln!("Azure icons not loaded: {e}");
+    }
     let control = control.as_ref().map(Control::bind).transpose()?;
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
@@ -174,6 +191,27 @@ impl FileService for NativeFiles {
         true
     }
 
+    fn has_icon_folder(&self) -> bool {
+        true
+    }
+
+    fn choose_icon_folder(&mut self) {
+        let Some(dir) = rfd::FileDialog::new()
+            .set_title("Folder with Microsoft's Azure icons")
+            .pick_folder()
+        else {
+            return;
+        };
+        self.events.push(match automation::icons::use_folder(&dir) {
+            Ok(0) => FileEvent::Failed(format!("No .svg icons in {}", dir.display())),
+            Ok(n) => {
+                settings::set_azure_icons(&dir);
+                FileEvent::IconsChanged(format!("Using {n} Azure icons from {}", dir.display()))
+            }
+            Err(e) => FileEvent::Failed(format!("Could not read the icons: {e}")),
+        });
+    }
+
     fn open_path(&mut self, path: &str) {
         let p = Path::new(path);
         self.events.push(match std::fs::read_to_string(p) {
@@ -201,6 +239,8 @@ mod tests {
         let a = parse(&["m.mdj", "--screenshot", "o.png"]).unwrap();
         assert_eq!(a.initial.as_deref(), Some("m.mdj"));
         assert_eq!(a.screenshot.as_deref(), Some("o.png"));
+        let a = parse(&["--azure-icons", "icons"]).unwrap();
+        assert_eq!(a.azure_icons, Some(PathBuf::from("icons")));
 
         let a = parse(&[
             "--control",
@@ -226,6 +266,7 @@ mod tests {
             &["--control-token-file", "t"],
             &["--control-root", "r"],
             &["--screenshot"],
+            &["--azure-icons"],
             &["--bogus"],
             &["a.mdj", "b.mdj"],
         ] {

@@ -12,6 +12,7 @@
 
 pub mod bridge;
 pub mod control;
+pub mod icons;
 pub mod mcp;
 pub mod script;
 pub mod workspace;
