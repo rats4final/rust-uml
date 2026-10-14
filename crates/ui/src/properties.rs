@@ -82,17 +82,40 @@ pub struct Properties {
     /// Text being edited, per (element, field). Committed on Enter or when
     /// focus leaves, so one edit is one undo step.
     buffers: HashMap<(String, String), String>,
+    /// The element shown last frame; when it changes, other elements'
+    /// buffers are dropped (their edits were committed as focus left them).
+    shown: Option<String>,
     /// Put the cursor in the name field on the next frame.
     pub focus_name: bool,
 }
 
 impl Properties {
+    /// The elements with text buffers (for tests).
+    #[cfg(test)]
+    pub(crate) fn buffered(&self) -> std::collections::HashSet<&str> {
+        self.buffers.keys().map(|(id, _)| id.as_str()).collect()
+    }
+
     pub fn show(&mut self, ui: &mut egui::Ui, s: &Session) -> Commands {
         let mut out = Vec::new();
         let Some(el) = s.selected_model() else {
             ui.weak("Nothing selected.");
+            self.buffers.clear();
+            self.shown = None;
             return out;
         };
+        if self.shown.as_deref() != Some(el.id.as_str()) {
+            // Keep only the new element's own fields and its parts' (ends,
+            // parameters), which this panel edits too.
+            let doc = &s.doc;
+            self.buffers.retain(|(id, _), _| {
+                id == &el.id
+                    || doc
+                        .get(id)
+                        .is_some_and(|e| e.parent.as_deref() == Some(el.id.as_str()))
+            });
+            self.shown = Some(el.id.clone());
+        }
         egui::ScrollArea::vertical()
             .auto_shrink(false)
             .show(ui, |ui| {

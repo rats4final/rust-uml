@@ -1418,6 +1418,37 @@ mod tests {
     }
 
     #[test]
+    fn properties_keep_text_only_for_what_they_show() {
+        let mut h = harness();
+        h.run();
+        let class = |h: &mut Harness<'static, UmlApp>, x: i64| {
+            h.state_mut()
+                .exec("node.create", json!({"kind": "Class", "x": x, "y": 40}));
+            h.run();
+            h.state().session.selection[0].clone()
+        };
+        let a = class(&mut h, 40);
+        let model_of = |h: &Harness<'static, UmlApp>, v: &str| {
+            h.state()
+                .session
+                .doc
+                .get(v)
+                .unwrap()
+                .ref_id("model")
+                .unwrap()
+                .to_owned()
+        };
+        let a_model = model_of(&h, &a);
+        assert!(h.state().properties.buffered().contains(a_model.as_str()));
+        let b = class(&mut h, 300);
+        let b_model = model_of(&h, &b);
+        h.run();
+        let kept = h.state().properties.buffered();
+        assert!(kept.contains(b_model.as_str()));
+        assert!(!kept.contains(a_model.as_str()), "{kept:?}");
+    }
+
+    #[test]
     fn mind_map_by_mouse() {
         let mut h = harness();
         h.run();
