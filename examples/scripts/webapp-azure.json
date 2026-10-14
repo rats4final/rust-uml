@@ -1,0 +1,34 @@
+[
+  {"cmd": "model.tree", "params": {}, "as": "new"},
+  {"cmd": "element.delete", "params": {"ids": ["$new.tree.children.0.children.0.id"]}},
+  {"cmd": "diagram.add", "params": {"type": "Azure Diagram", "name": "Web app", "parent": "$new.tree.id"}, "as": "dgm"},
+  {"cmd": "element.set", "params": {"id": "$dgm.id", "values": {"defaultDiagram": true}}},
+
+  {"cmd": "node.create", "params": {"kind": "Azure Service", "x": 40, "y": 150}, "as": "users"},
+  {"cmd": "element.set", "params": {"id": "$users.model", "values": {"icon": "Users.svg", "name": "Users"}}},
+  {"cmd": "node.create", "params": {"kind": "Azure Service", "x": 200, "y": 150}, "as": "door"},
+  {"cmd": "element.set", "params": {"id": "$door.model", "values": {"icon": "Front-Door-and-CDN-Profiles.svg", "name": "Front Door"}}},
+
+  {"cmd": "node.create", "params": {"kind": "Azure Group", "x": 340, "y": 40, "name": "Resource group"}, "as": "rg"},
+  {"cmd": "element.set", "params": {"id": "$rg.model", "values": {"dashed": true, "rounded": true}}},
+  {"cmd": "view.resize", "params": {"view": "$rg.view", "width": 460, "height": 300}},
+  {"cmd": "node.create", "params": {"kind": "Azure Service", "x": 390, "y": 150, "container": "$rg.view"}, "as": "app"},
+  {"cmd": "element.set", "params": {"id": "$app.model", "values": {"name": "App Service"}}},
+  {"cmd": "node.create", "params": {"kind": "Azure Service", "x": 560, "y": 70, "container": "$rg.view"}, "as": "sql"},
+  {"cmd": "element.set", "params": {"id": "$sql.model", "values": {"icon": "SQL-Database.svg", "name": "SQL Database"}}},
+  {"cmd": "node.create", "params": {"kind": "Azure Service", "x": 560, "y": 220, "container": "$rg.view"}, "as": "storage"},
+  {"cmd": "element.set", "params": {"id": "$storage.model", "values": {"icon": "Storage-Accounts.svg", "name": "Storage"}}},
+  {"cmd": "node.create", "params": {"kind": "Azure Service", "x": 700, "y": 150, "container": "$rg.view"}, "as": "vault"},
+  {"cmd": "element.set", "params": {"id": "$vault.model", "values": {"icon": "Key-Vaults.svg", "name": "Key Vault"}}},
+
+  {"cmd": "edge.create", "params": {"kind": "Azure Connector", "tail": "$users.view", "head": "$door.view", "name": "HTTPS"}},
+  {"cmd": "edge.create", "params": {"kind": "Azure Connector", "tail": "$door.view", "head": "$app.view"}},
+  {"cmd": "edge.create", "params": {"kind": "Azure Connector", "tail": "$app.view", "head": "$sql.view"}},
+  {"cmd": "edge.create", "params": {"kind": "Azure Connector", "tail": "$app.view", "head": "$storage.view"}},
+  {"cmd": "edge.create", "params": {"kind": "Azure Connector", "tail": "$app.view", "head": "$vault.view"}, "as": "secrets"},
+  {"cmd": "element.set", "params": {"id": "$secrets.model", "values": {"dashed": true}}},
+
+  {"cmd": "node.create", "params": {"kind": "Azure Callout", "x": 170, "y": 130}},
+  {"cmd": "node.create", "params": {"kind": "Azure Callout", "x": 520, "y": 70}, "as": "two"},
+  {"cmd": "element.set", "params": {"id": "$two.model", "values": {"name": "2"}}}
+]

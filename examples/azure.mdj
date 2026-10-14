@@ -1,0 +1,744 @@
+{
+	"_type": "Project",
+	"_id": "AAABoTyACNiRnYsk",
+	"name": "Untitled",
+	"ownedElements": [
+		{
+			"_type": "UMLModel",
+			"_id": "AAABoTyACNiRnrcy",
+			"_parent": {
+				"$ref": "AAABoTyACNiRnYsk"
+			},
+			"name": "Model",
+			"ownedElements": []
+		},
+		{
+			"_type": "AzureModel",
+			"_id": "AAABoTyACNmRoBc9",
+			"_parent": {
+				"$ref": "AAABoTyACNiRnYsk"
+			},
+			"name": "AzureModel1",
+			"ownedElements": [
+				{
+					"_type": "AzureDiagram",
+					"_id": "AAABoTyACNmRoQZT",
+					"_parent": {
+						"$ref": "AAABoTyACNmRoBc9"
+					},
+					"name": "Web app",
+					"defaultDiagram": true,
+					"ownedViews": [
+						{
+							"_type": "AzureServiceView",
+							"_id": "AAABoTyACNmRo5be",
+							"_parent": {
+								"$ref": "AAABoTyACNmRoQZT"
+							},
+							"model": {
+								"$ref": "AAABoTyACNmRosCf"
+							},
+							"font": "Arial;13;0",
+							"left": 40,
+							"top": 150,
+							"width": 48,
+							"height": 48,
+							"subViews": [
+								{
+									"_type": "NodeLabelView",
+									"_id": "AAABoTyACNmRpLhz",
+									"_parent": {
+										"$ref": "AAABoTyACNmRo5be"
+									},
+									"font": "Arial;13;0",
+									"parentStyle": true,
+									"hostNode": {
+										"$ref": "AAABoTyACNmRo5be"
+									},
+									"alpha": -1.5707963267948966,
+									"distance": 42.0,
+									"model": {
+										"$ref": "AAABoTyACNmRosCf"
+									}
+								}
+							],
+							"nameLabel": {
+								"$ref": "AAABoTyACNmRpLhz"
+							}
+						},
+						{
+							"_type": "AzureServiceView",
+							"_id": "AAABoTyACNmRpr+Q",
+							"_parent": {
+								"$ref": "AAABoTyACNmRoQZT"
+							},
+							"model": {
+								"$ref": "AAABoTyACNmRpUnD"
+							},
+							"font": "Arial;13;0",
+							"left": 200,
+							"top": 150,
+							"width": 48,
+							"height": 48,
+							"subViews": [
+								{
+									"_type": "NodeLabelView",
+									"_id": "AAABoTyACNmRpwTv",
+									"_parent": {
+										"$ref": "AAABoTyACNmRpr+Q"
+									},
+									"font": "Arial;13;0",
+									"parentStyle": true,
+									"hostNode": {
+										"$ref": "AAABoTyACNmRpr+Q"
+									},
+									"alpha": -1.5707963267948966,
+									"distance": 42.0,
+									"model": {
+										"$ref": "AAABoTyACNmRpUnD"
+									}
+								}
+							],
+							"nameLabel": {
+								"$ref": "AAABoTyACNmRpwTv"
+							}
+						},
+						{
+							"_type": "AzureGroupView",
+							"_id": "AAABoTyACNmRqZak",
+							"_parent": {
+								"$ref": "AAABoTyACNmRoQZT"
+							},
+							"model": {
+								"$ref": "AAABoTyACNmRqAEm"
+							},
+							"font": "Arial;13;0",
+							"left": 340,
+							"top": 40,
+							"width": 460,
+							"height": 300,
+							"subViews": [
+								{
+									"_type": "LabelView",
+									"_id": "AAABoTyACNmRqnKJ",
+									"_parent": {
+										"$ref": "AAABoTyACNmRqZak"
+									},
+									"font": "Arial;13;0",
+									"parentStyle": true,
+									"text": "Resource group"
+								}
+							],
+							"nameLabel": {
+								"$ref": "AAABoTyACNmRqnKJ"
+							},
+							"containedViews": [
+								{
+									"$ref": "AAABoTyACNqRrH7w"
+								},
+								{
+									"$ref": "AAABoTyACNqRr8mX"
+								},
+								{
+									"$ref": "AAABoTyACNuRspfu"
+								},
+								{
+									"$ref": "AAABoTyACNuRtRFa"
+								}
+							]
+						},
+						{
+							"_type": "AzureServiceView",
+							"_id": "AAABoTyACNqRrH7w",
+							"_parent": {
+								"$ref": "AAABoTyACNmRoQZT"
+							},
+							"model": {
+								"$ref": "AAABoTyACNqRq+4s"
+							},
+							"font": "Arial;13;0",
+							"left": 390,
+							"top": 150,
+							"width": 48,
+							"height": 48,
+							"containerView": {
+								"$ref": "AAABoTyACNmRqZak"
+							},
+							"subViews": [
+								{
+									"_type": "NodeLabelView",
+									"_id": "AAABoTyACNqRrSIN",
+									"_parent": {
+										"$ref": "AAABoTyACNqRrH7w"
+									},
+									"font": "Arial;13;0",
+									"parentStyle": true,
+									"hostNode": {
+										"$ref": "AAABoTyACNqRrH7w"
+									},
+									"alpha": -1.5707963267948966,
+									"distance": 42.0,
+									"model": {
+										"$ref": "AAABoTyACNqRq+4s"
+									}
+								}
+							],
+							"nameLabel": {
+								"$ref": "AAABoTyACNqRrSIN"
+							}
+						},
+						{
+							"_type": "AzureServiceView",
+							"_id": "AAABoTyACNqRr8mX",
+							"_parent": {
+								"$ref": "AAABoTyACNmRoQZT"
+							},
+							"model": {
+								"$ref": "AAABoTyACNqRrm8J"
+							},
+							"font": "Arial;13;0",
+							"left": 560,
+							"top": 70,
+							"width": 48,
+							"height": 48,
+							"containerView": {
+								"$ref": "AAABoTyACNmRqZak"
+							},
+							"subViews": [
+								{
+									"_type": "NodeLabelView",
+									"_id": "AAABoTyACNqRsAvE",
+									"_parent": {
+										"$ref": "AAABoTyACNqRr8mX"
+									},
+									"font": "Arial;13;0",
+									"parentStyle": true,
+									"hostNode": {
+										"$ref": "AAABoTyACNqRr8mX"
+									},
+									"alpha": -1.5707963267948966,
+									"distance": 42.0,
+									"model": {
+										"$ref": "AAABoTyACNqRrm8J"
+									}
+								}
+							],
+							"nameLabel": {
+								"$ref": "AAABoTyACNqRsAvE"
+							}
+						},
+						{
+							"_type": "AzureServiceView",
+							"_id": "AAABoTyACNuRspfu",
+							"_parent": {
+								"$ref": "AAABoTyACNmRoQZT"
+							},
+							"model": {
+								"$ref": "AAABoTyACNuRsf7T"
+							},
+							"font": "Arial;13;0",
+							"left": 560,
+							"top": 220,
+							"width": 48,
+							"height": 48,
+							"containerView": {
+								"$ref": "AAABoTyACNmRqZak"
+							},
+							"subViews": [
+								{
+									"_type": "NodeLabelView",
+									"_id": "AAABoTyACNuRs+FB",
+									"_parent": {
+										"$ref": "AAABoTyACNuRspfu"
+									},
+									"font": "Arial;13;0",
+									"parentStyle": true,
+									"hostNode": {
+										"$ref": "AAABoTyACNuRspfu"
+									},
+									"alpha": -1.5707963267948966,
+									"distance": 42.0,
+									"model": {
+										"$ref": "AAABoTyACNuRsf7T"
+									}
+								}
+							],
+							"nameLabel": {
+								"$ref": "AAABoTyACNuRs+FB"
+							}
+						},
+						{
+							"_type": "AzureServiceView",
+							"_id": "AAABoTyACNuRtRFa",
+							"_parent": {
+								"$ref": "AAABoTyACNmRoQZT"
+							},
+							"model": {
+								"$ref": "AAABoTyACNuRtKzD"
+							},
+							"font": "Arial;13;0",
+							"left": 700,
+							"top": 150,
+							"width": 48,
+							"height": 48,
+							"containerView": {
+								"$ref": "AAABoTyACNmRqZak"
+							},
+							"subViews": [
+								{
+									"_type": "NodeLabelView",
+									"_id": "AAABoTyACNuRtvf4",
+									"_parent": {
+										"$ref": "AAABoTyACNuRtRFa"
+									},
+									"font": "Arial;13;0",
+									"parentStyle": true,
+									"hostNode": {
+										"$ref": "AAABoTyACNuRtRFa"
+									},
+									"alpha": -1.5707963267948966,
+									"distance": 42.0,
+									"model": {
+										"$ref": "AAABoTyACNuRtKzD"
+									}
+								}
+							],
+							"nameLabel": {
+								"$ref": "AAABoTyACNuRtvf4"
+							}
+						},
+						{
+							"_type": "AzureConnectorView",
+							"_id": "AAABoTyACNuRuL+j",
+							"_parent": {
+								"$ref": "AAABoTyACNmRoQZT"
+							},
+							"font": "Arial;13;0",
+							"model": {
+								"$ref": "AAABoTyACNuRtzoX"
+							},
+							"head": {
+								"$ref": "AAABoTyACNmRpr+Q"
+							},
+							"tail": {
+								"$ref": "AAABoTyACNmRo5be"
+							},
+							"lineStyle": 2,
+							"points": "88:174;200:174",
+							"subViews": [
+								{
+									"_type": "EdgeLabelView",
+									"_id": "AAABoTyACNuRuRwc",
+									"_parent": {
+										"$ref": "AAABoTyACNuRuL+j"
+									},
+									"font": "Arial;13;0",
+									"parentStyle": true,
+									"model": {
+										"$ref": "AAABoTyACNuRtzoX"
+									},
+									"hostEdge": {
+										"$ref": "AAABoTyACNuRuL+j"
+									},
+									"edgePosition": 1,
+									"alpha": 1.5707963267948966,
+									"distance": 15.0
+								}
+							],
+							"nameLabel": {
+								"$ref": "AAABoTyACNuRuRwc"
+							}
+						},
+						{
+							"_type": "AzureConnectorView",
+							"_id": "AAABoTyACNuRu3cq",
+							"_parent": {
+								"$ref": "AAABoTyACNmRoQZT"
+							},
+							"font": "Arial;13;0",
+							"model": {
+								"$ref": "AAABoTyACNuRuock"
+							},
+							"head": {
+								"$ref": "AAABoTyACNqRrH7w"
+							},
+							"tail": {
+								"$ref": "AAABoTyACNmRpr+Q"
+							},
+							"lineStyle": 2,
+							"points": "248:174;390:174",
+							"subViews": [
+								{
+									"_type": "EdgeLabelView",
+									"_id": "AAABoTyACNuRvNtE",
+									"_parent": {
+										"$ref": "AAABoTyACNuRu3cq"
+									},
+									"font": "Arial;13;0",
+									"parentStyle": true,
+									"model": {
+										"$ref": "AAABoTyACNuRuock"
+									},
+									"hostEdge": {
+										"$ref": "AAABoTyACNuRu3cq"
+									},
+									"edgePosition": 1,
+									"alpha": 1.5707963267948966,
+									"distance": 15.0
+								}
+							],
+							"nameLabel": {
+								"$ref": "AAABoTyACNuRvNtE"
+							}
+						},
+						{
+							"_type": "AzureConnectorView",
+							"_id": "AAABoTyACNyRvnvp",
+							"_parent": {
+								"$ref": "AAABoTyACNmRoQZT"
+							},
+							"font": "Arial;13;0",
+							"model": {
+								"$ref": "AAABoTyACNyRvU3y"
+							},
+							"head": {
+								"$ref": "AAABoTyACNqRr8mX"
+							},
+							"tail": {
+								"$ref": "AAABoTyACNqRrH7w"
+							},
+							"lineStyle": 2,
+							"points": "438:174;499:174;499:94;560:94",
+							"subViews": [
+								{
+									"_type": "EdgeLabelView",
+									"_id": "AAABoTyACNyRv5Ne",
+									"_parent": {
+										"$ref": "AAABoTyACNyRvnvp"
+									},
+									"font": "Arial;13;0",
+									"parentStyle": true,
+									"model": {
+										"$ref": "AAABoTyACNyRvU3y"
+									},
+									"hostEdge": {
+										"$ref": "AAABoTyACNyRvnvp"
+									},
+									"edgePosition": 1,
+									"alpha": 1.5707963267948966,
+									"distance": 15.0
+								}
+							],
+							"nameLabel": {
+								"$ref": "AAABoTyACNyRv5Ne"
+							}
+						},
+						{
+							"_type": "AzureConnectorView",
+							"_id": "AAABoTyACNyRwSpf",
+							"_parent": {
+								"$ref": "AAABoTyACNmRoQZT"
+							},
+							"font": "Arial;13;0",
+							"model": {
+								"$ref": "AAABoTyACNyRwNP4"
+							},
+							"head": {
+								"$ref": "AAABoTyACNuRspfu"
+							},
+							"tail": {
+								"$ref": "AAABoTyACNqRrH7w"
+							},
+							"lineStyle": 2,
+							"points": "438:186;499:186;499:244;560:244",
+							"subViews": [
+								{
+									"_type": "EdgeLabelView",
+									"_id": "AAABoTyACNyRwu/L",
+									"_parent": {
+										"$ref": "AAABoTyACNyRwSpf"
+									},
+									"font": "Arial;13;0",
+									"parentStyle": true,
+									"model": {
+										"$ref": "AAABoTyACNyRwNP4"
+									},
+									"hostEdge": {
+										"$ref": "AAABoTyACNyRwSpf"
+									},
+									"edgePosition": 1,
+									"alpha": 1.5707963267948966,
+									"distance": 15.0
+								}
+							],
+							"nameLabel": {
+								"$ref": "AAABoTyACNyRwu/L"
+							}
+						},
+						{
+							"_type": "AzureConnectorView",
+							"_id": "AAABoTyACNyRxOuJ",
+							"_parent": {
+								"$ref": "AAABoTyACNmRoQZT"
+							},
+							"font": "Arial;13;0",
+							"model": {
+								"$ref": "AAABoTyACNyRwy7U"
+							},
+							"head": {
+								"$ref": "AAABoTyACNuRtRFa"
+							},
+							"tail": {
+								"$ref": "AAABoTyACNqRrH7w"
+							},
+							"lineStyle": 2,
+							"points": "438:162;700:162",
+							"subViews": [
+								{
+									"_type": "EdgeLabelView",
+									"_id": "AAABoTyACNyRxUwe",
+									"_parent": {
+										"$ref": "AAABoTyACNyRxOuJ"
+									},
+									"font": "Arial;13;0",
+									"parentStyle": true,
+									"model": {
+										"$ref": "AAABoTyACNyRwy7U"
+									},
+									"hostEdge": {
+										"$ref": "AAABoTyACNyRxOuJ"
+									},
+									"edgePosition": 1,
+									"alpha": 1.5707963267948966,
+									"distance": 15.0
+								}
+							],
+							"nameLabel": {
+								"$ref": "AAABoTyACNyRxUwe"
+							}
+						},
+						{
+							"_type": "AzureCalloutView",
+							"_id": "AAABoTyACNyRx41I",
+							"_parent": {
+								"$ref": "AAABoTyACNmRoQZT"
+							},
+							"model": {
+								"$ref": "AAABoTyACNyRxucG"
+							},
+							"font": "Arial;13;0",
+							"left": 170,
+							"top": 130,
+							"width": 24,
+							"height": 24,
+							"fillColor": "#000000",
+							"fontColor": "#ffffff",
+							"subViews": [
+								{
+									"_type": "LabelView",
+									"_id": "AAABoTyACNyRyNhS",
+									"_parent": {
+										"$ref": "AAABoTyACNyRx41I"
+									},
+									"font": "Arial;13;0",
+									"parentStyle": true,
+									"text": "1"
+								}
+							],
+							"nameLabel": {
+								"$ref": "AAABoTyACNyRyNhS"
+							}
+						},
+						{
+							"_type": "AzureCalloutView",
+							"_id": "AAABoTyACN2RyqAI",
+							"_parent": {
+								"$ref": "AAABoTyACNmRoQZT"
+							},
+							"model": {
+								"$ref": "AAABoTyACN2RyfVi"
+							},
+							"font": "Arial;13;0",
+							"left": 520,
+							"top": 70,
+							"width": 24,
+							"height": 24,
+							"fillColor": "#000000",
+							"fontColor": "#ffffff",
+							"subViews": [
+								{
+									"_type": "LabelView",
+									"_id": "AAABoTyACN2Ry19I",
+									"_parent": {
+										"$ref": "AAABoTyACN2RyqAI"
+									},
+									"font": "Arial;13;0",
+									"parentStyle": true,
+									"text": "2"
+								}
+							],
+							"nameLabel": {
+								"$ref": "AAABoTyACN2Ry19I"
+							}
+						}
+					]
+				},
+				{
+					"_type": "AzureService",
+					"_id": "AAABoTyACNmRosCf",
+					"_parent": {
+						"$ref": "AAABoTyACNmRoBc9"
+					},
+					"name": "Users",
+					"icon": "Users.svg",
+					"ownedElements": [
+						{
+							"_type": "AzureConnector",
+							"_id": "AAABoTyACNuRtzoX",
+							"_parent": {
+								"$ref": "AAABoTyACNmRosCf"
+							},
+							"source": {
+								"$ref": "AAABoTyACNmRosCf"
+							},
+							"target": {
+								"$ref": "AAABoTyACNmRpUnD"
+							},
+							"name": "HTTPS"
+						}
+					]
+				},
+				{
+					"_type": "AzureService",
+					"_id": "AAABoTyACNmRpUnD",
+					"_parent": {
+						"$ref": "AAABoTyACNmRoBc9"
+					},
+					"name": "Front Door",
+					"icon": "Front-Door-and-CDN-Profiles.svg",
+					"ownedElements": [
+						{
+							"_type": "AzureConnector",
+							"_id": "AAABoTyACNuRuock",
+							"_parent": {
+								"$ref": "AAABoTyACNmRpUnD"
+							},
+							"source": {
+								"$ref": "AAABoTyACNmRpUnD"
+							},
+							"target": {
+								"$ref": "AAABoTyACNqRq+4s"
+							}
+						}
+					]
+				},
+				{
+					"_type": "AzureGroup",
+					"_id": "AAABoTyACNmRqAEm",
+					"_parent": {
+						"$ref": "AAABoTyACNmRoBc9"
+					},
+					"name": "Resource group",
+					"dashed": true,
+					"rounded": true,
+					"ownedElements": [
+						{
+							"_type": "AzureService",
+							"_id": "AAABoTyACNqRq+4s",
+							"_parent": {
+								"$ref": "AAABoTyACNmRqAEm"
+							},
+							"name": "App Service",
+							"icon": "App-Services.svg",
+							"ownedElements": [
+								{
+									"_type": "AzureConnector",
+									"_id": "AAABoTyACNyRvU3y",
+									"_parent": {
+										"$ref": "AAABoTyACNqRq+4s"
+									},
+									"source": {
+										"$ref": "AAABoTyACNqRq+4s"
+									},
+									"target": {
+										"$ref": "AAABoTyACNqRrm8J"
+									}
+								},
+								{
+									"_type": "AzureConnector",
+									"_id": "AAABoTyACNyRwNP4",
+									"_parent": {
+										"$ref": "AAABoTyACNqRq+4s"
+									},
+									"source": {
+										"$ref": "AAABoTyACNqRq+4s"
+									},
+									"target": {
+										"$ref": "AAABoTyACNuRsf7T"
+									}
+								},
+								{
+									"_type": "AzureConnector",
+									"_id": "AAABoTyACNyRwy7U",
+									"_parent": {
+										"$ref": "AAABoTyACNqRq+4s"
+									},
+									"source": {
+										"$ref": "AAABoTyACNqRq+4s"
+									},
+									"target": {
+										"$ref": "AAABoTyACNuRtKzD"
+									},
+									"dashed": true
+								}
+							]
+						},
+						{
+							"_type": "AzureService",
+							"_id": "AAABoTyACNqRrm8J",
+							"_parent": {
+								"$ref": "AAABoTyACNmRqAEm"
+							},
+							"name": "SQL Database",
+							"icon": "SQL-Database.svg"
+						},
+						{
+							"_type": "AzureService",
+							"_id": "AAABoTyACNuRsf7T",
+							"_parent": {
+								"$ref": "AAABoTyACNmRqAEm"
+							},
+							"name": "Storage",
+							"icon": "Storage-Accounts.svg"
+						},
+						{
+							"_type": "AzureService",
+							"_id": "AAABoTyACNuRtKzD",
+							"_parent": {
+								"$ref": "AAABoTyACNmRqAEm"
+							},
+							"name": "Key Vault",
+							"icon": "Key-Vaults.svg"
+						}
+					]
+				},
+				{
+					"_type": "AzureCallout",
+					"_id": "AAABoTyACNyRxucG",
+					"_parent": {
+						"$ref": "AAABoTyACNmRoBc9"
+					},
+					"name": "1"
+				},
+				{
+					"_type": "AzureCallout",
+					"_id": "AAABoTyACN2RyfVi",
+					"_parent": {
+						"$ref": "AAABoTyACNmRoBc9"
+					},
+					"name": "2"
+				}
+			]
+		}
+	]
+}
