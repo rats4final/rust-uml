@@ -290,6 +290,23 @@ From `timingDiagramFn`, `_addTimingFrame`, `lifelineFn`, `timingStateFn`, `timeS
 - Time constraints (`{min..max}` label + link to a message or segment) and duration constraints
   (`{min..max}`, placed in the frame) exist too.
 
+### Mind maps (observed for M5, 2026-10-14)
+
+From `extensions/essential/mindmap/` (`metamodel.json`, `mindmap-factory.js`, `elements.js`,
+`mindmap-commands.js`, `toolbox/mindmap.json`, `preferences/mindmap.json`), in our words:
+
+- An `MMMindmapDiagram` lives in an `MMMindmap` (created as `Mindmap1` unless the parent is one);
+  the diagram is named from its type, `MMMindmapDiagram1`. Nodes go in the mind map's
+  `ownedElements` and are named from their type too (`MMNode1`).
+- `MMEdge` is a directed relationship between two `MMNode`s only, owned by its source.
+  Toolbox: Node and Edge.
+- `MMNodeView`: a `nameLabel` (centred) and `wordWrap` (default true); drawn as a rounded
+  rectangle (radius 14) with the name centred, 8 px padding at the sides and 6 above and below.
+  `MMEdgeView`: no labels, no end marks, solid; line style from the `mindmap.edge.lineStyle`
+  preference, oblique by default.
+- Quick edit on a node: rename, Add Node Left / Right (a new node beside it, with an oblique
+  edge from the new node to it).
+
 ### Entity-relationship diagrams (observed for M5, 2026-10-14)
 
 From `extensions/essential/erd/` (`metamodel.json`, `erd-factory.js`, `elements.js`,
@@ -413,6 +430,10 @@ scope for "the installed app".
   entity becomes that end's cardinality (`||` 1, `|o` 0..1, `}o` 0..*, `}|` 1..*). It means to
   set `identifying` from `--` vs `..` but compares the wrong value, so every imported
   relationship comes out non-identifying (dotted).
+- **Mind map** (observed 2026-10-14): one `MMMindmap` holding the diagram and an `MMNode` per
+  Mermaid node (name = its text, or the id); for each child an `MMEdge` from the child (source,
+  tail) to its parent (target, head), owned by the parent. Laid out top-down with the generic
+  layered layout; Mermaid's node shapes are dropped.
 - **Flowchart** (observed 2026-10-14): one `FCFlowchart` holding the diagram and every node.
   Bracket shapes map to symbols: `[ ]` process, `( )` alternate process, `([ ])` terminator,
   `[[ ]]` predefined process, `[( )]` database, `(( ))` connector, `{ }` decision, `{{ }}`
@@ -426,7 +447,9 @@ are drawn as package boxes, and flowcharts also read Mermaid's newer named shape
 (`A@{ shape: doc }`) onto the matching symbols (document, delay, manual input, display, …);
 `[\ \]` becomes data and `[/ \]` manual operation (the closest symbols), and `((( )))` a
 connector. ER relationships keep `--` identifying and `..` non-identifying, and `varchar(255)`
-is split into type and length. Mind map and requirement imports wait for those families.
+is split into type and length. Mind maps are laid out as mind maps (root in the middle,
+branches to both sides) rather than top-down, and their edges are owned by the child, as the
+toolbox and StarUML's own add-node buttons create them. The requirement import waits for SysML.
 
 ## 6. Unknowns / limits of this evidence
 

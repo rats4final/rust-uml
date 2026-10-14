@@ -2,6 +2,18 @@
 
 Newest first. Terse: what landed, numbers, what's still open.
 
+## 2026-10-14 — M5: mind maps
+
+- Mind map diagrams: nodes are rounded boxes whose names wrap to the box, joined by plain edges;
+  the diagram lives in a Mindmap, as in StarUML.
+- Mermaid `mindmap` import (dialog has a Mind map example; CLI and MCP too): nesting by
+  indentation, the bracket shapes (kept as rounded boxes, one warning), `<br>`, markdown
+  strings, one root. Laid out as a mind map: root in the middle, branches split left and right
+  by height, each subtree centred on its node (StarUML lays them out top-down).
+- `examples/mindmap.mdj` (in the release archives) from `examples/scripts/trip-mindmap.json`;
+  sample `examples/mermaid/trip.mmd`. 161 tests.
+- Open: Add Node Left/Right quick edits; check in StarUML. M5 left: DFD, C4, Azure.
+
 ## 2026-10-14 — M5: ER diagrams
 
 - ER diagrams: entities with a keys / name / type column table, one-to-one, one-to-many and

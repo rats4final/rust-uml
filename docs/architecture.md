@@ -25,7 +25,7 @@ File ▸ Save                     (ui → FileService)  → Document::to_json_st
 | Crate | Layer | Knows about | Doesn't know about |
 |---|---|---|---|
 | `mdj` | L0 | JSON shape of `.mdj`: `_type`, `_id`, `_parent`, `{"$ref"}`, nested children; `Points`/`Font` encodings; undo | UML, drawing, files on disk |
-| `mermaid` | L0 | Mermaid class, sequence, state, flowchart and ER syntax | UML, the model |
+| `mermaid` | L0 | Mermaid class, sequence, state, flowchart, ER and mind map syntax | UML, the model |
 | `uml` | L1 | Which element and view types make a class diagram, and how StarUML nests them | Pixels |
 | `render` | L2 | Text metrics (Liberation Sans = Arial metrics), box layout, edge routing, SVG/PNG | Windows, input |
 | `engine` | L3 | Sessions, selection, the command list, parameter validation | egui |

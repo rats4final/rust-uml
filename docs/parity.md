@@ -1,6 +1,6 @@
 # Parity with StarUML 7.1.1
 
-Status line: **v0.6.0: every UML diagram type. M5: flowcharts and ER diagrams, each with Mermaid import.** Updated 2026-10-14.
+Status line: **v0.6.0: every UML diagram type. M5: flowcharts, ER diagrams and mind maps, each with Mermaid import.** Updated 2026-10-14.
 
 Each row comes from the evidence in [`evidence.md`](evidence.md). "Paid" marks features StarUML
 locks behind a licence (see evidence §4: only exports are locked, by watermark).
@@ -17,7 +17,7 @@ Legend: ✅ done · 🟡 partial · ⬜ not started
 | Files saved here open in StarUML | ✅ | `examples/shapes.mdj` opened in StarUML 7.1.1 (2026-10-12): all boxes, rows, keywords, arrows and labels correct |
 | StarUML-edited files reopen here | ✅ | Owner edited `shapes.mdj` in StarUML (new abstract/active class, renamed literal); reopens and round-trips unchanged |
 | StarUML v1 (`.uml`) import | ⬜ | `extensions/default/staruml-v1` |
-| Mermaid import | 🟡 | ✅ class, sequence, state, flowchart and ER (File ▸ Import Mermaid…, `rust-uml-cli import`, MCP `mermaid_import`), laid out automatically, one undo step. ⬜ mind map, requirement (need those families). Composite states stay nested (StarUML flattens them); flowcharts also read Mermaid's named shapes (`A@{ shape: doc }`), which StarUML doesn't |
+| Mermaid import | 🟡 | ✅ class, sequence, state, flowchart, ER and mind map (File ▸ Import Mermaid…, `rust-uml-cli import`, MCP `mermaid_import`), laid out automatically, one undo step. ⬜ requirement (needs SysML, M4). Composite states stay nested (StarUML flattens them); flowcharts also read Mermaid's named shapes (`A@{ shape: doc }`), which StarUML doesn't |
 
 ## Export (paid in StarUML: watermarks)
 
@@ -52,7 +52,7 @@ Legend: ✅ done · 🟡 partial · ⬜ not started
 | ERD | ERD | | ✅ Entities with a keys / name / type column table, one-to-one / one-to-many / many-to-many relationships with crow's-foot ends by cardinality, dotted when non-identifying; column and cardinality editing in the properties panel; Mermaid `erDiagram` import. Not yet: Suppress Columns menu item (the view flag is drawn), validation rules ERD001/ERD002, column quick-edit syntax |
 | DFD | DFD | | ⬜ |
 | Flowchart | Flowchart | | ✅ All 27 of StarUML's symbols and labelled flows; lines end on diamond and circle outlines; Mermaid `flowchart`/`graph` import |
-| Mind map | Mind map | | ⬜ |
+| Mind map | Mind map | | ✅ Nodes (rounded boxes, names wrapped to the box) and plain edges, only between nodes; Mermaid `mindmap` import laid out with the root in the middle and branches to both sides. Not yet: the Add Node Left/Right quick-edit buttons |
 
 ## Editing
 

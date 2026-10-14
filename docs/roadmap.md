@@ -1,6 +1,6 @@
 # Roadmap and handoff
 
-**Read this to pick up the work.** Status as of 2026-10-14: v0.6.0 (all UML diagram types, live app control); since then flowcharts and ER diagrams, each with its Mermaid import (M5).
+**Read this to pick up the work.** Status as of 2026-10-14: v0.6.0 (all UML diagram types, live app control); since then flowcharts, ER diagrams and mind maps, each with its Mermaid import (M5).
 Order of reading for a new agent/session: `AGENTS.md` → this file → `docs/parity.md` → `log/devlog.md`.
 
 ## 1. Where things stand
@@ -130,7 +130,7 @@ keys inside rust-uml). Guide for users: `docs/agents.md`.
    lines only after layout, and squashes it into one undo step (`Document::squash_undo_since`;
    `command_batch` uses it too). File ▸ Import Mermaid…, `rust-uml-cli import`, MCP
    `mermaid_import`. Mappings follow StarUML's (`docs/evidence.md`, Mermaid section). Samples in
-   `examples/mermaid/`. Flowcharts and ER added in M5. Left: mind map/requirement (need their families),
+   `examples/mermaid/`. Flowcharts, ER and mind maps added in M5. Left: requirement (needs SysML),
    automatic sequence numbers, Auto Layout as a menu command (the layout exists).
    **Not yet checked in StarUML:** open an imported model in StarUML 7.1.1.
 4. ✅ **Live app control:** `rust-uml --control <port> --control-token-file <path>
@@ -201,7 +201,15 @@ and Azure last (provider icons: check their licence first).
   `examples/erd.mdj` from `examples/scripts/shop-erd.json`, sample `examples/mermaid/shop.mmd`.
   Left: Suppress Columns menu item, ERD validation rules, column quick-edit syntax.
   **Not yet checked in StarUML.**
-- ⬜ Mind map, DFD, C4, Azure.
+- ✅ **Mind map** (2026-10-14): `MMNode` (rounded box, `layout` wraps the name to the box) and
+  `MMEdge` (plain line, no labels, oblique, nodes only); `create_diagram` wraps the diagram in a
+  `Mindmap`. Mermaid `mindmap` import (`mermaid::mindmap`; `mermaid::Line` now keeps each line's
+  indentation): one node per line, a line from each child to its parent as StarUML draws them,
+  laid out by `engine::import::mind_layout` (root in the middle, branches split left/right by
+  height, iterative). Shapes become rounded boxes, with one warning. Example `examples/mindmap.mdj`
+  from `examples/scripts/trip-mindmap.json`, sample `examples/mermaid/trip.mmd`.
+  Left: Add Node Left/Right quick edits. **Not yet checked in StarUML.**
+- ⬜ DFD, C4, Azure.
 
 ### M6 — Editing depth
 
