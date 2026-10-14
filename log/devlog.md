@@ -2,6 +2,17 @@
 
 Newest first. Terse: what landed, numbers, what's still open.
 
+## 2026-10-14 — M5: Mermaid flowchart import
+
+- `flowchart`/`graph` text imports onto flowchart symbols (File ▸ Import Mermaid…, CLI, MCP):
+  StarUML's shape mapping, plus Mermaid's named shapes (`A@{ shape: doc }`) for document, delay,
+  manual input, display and the other ISO symbols. Chains, `A & B --> C`, `-- text -->`,
+  `-->|text|`, dotted/thick/two-way links, link ids, entity codes.
+- Warned, not failed: subgraphs (flattened), link styles (flows are solid arrows), shapes with no
+  symbol (drawn as a process). Invisible `~~~` links only steer the layout.
+- Import dialog has a Flowchart example; sample `examples/mermaid/login.mmd`. 146 tests.
+- Open: check an imported flowchart in StarUML; ERD next.
+
 ## 2026-10-13 — M5: flowcharts
 
 - Flowchart diagrams with StarUML's 27 symbols and labelled flows (filled arrowheads); names placed

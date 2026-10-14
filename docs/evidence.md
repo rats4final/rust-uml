@@ -378,8 +378,19 @@ scope for "the installed app".
 - **State:** one state machine with one region; all states flattened into it (composites are not
   nested); `<<choice>>`/`<<fork>>`/`<<join>>` pseudostates; transition label → name; notes linked.
 
-rust-uml follows these mappings, except that composite states keep their nesting and namespaces
-are drawn as package boxes. Flowchart, ER, mind map and requirement imports wait for those families.
+- **Flowchart** (observed 2026-10-14): one `FCFlowchart` holding the diagram and every node.
+  Bracket shapes map to symbols: `[ ]` process, `( )` alternate process, `([ ])` terminator,
+  `[[ ]]` predefined process, `[( )]` database, `(( ))` connector, `{ }` decision, `{{ }}`
+  preparation, `[/ /]` data, `[\ /]` manual operation; the rest (`>…]`, `[\ \]`, `[/ \]`,
+  `((( )))`) fall back to process. Name = the text, or the id when there is none. Every link is
+  one `FCFlow` named by its text, whatever its style; subgraphs are ignored. Laid out with
+  node, edge and rank spacing 50.
+
+rust-uml follows these mappings, except that composite states keep their nesting, namespaces
+are drawn as package boxes, and flowcharts also read Mermaid's newer named shapes
+(`A@{ shape: doc }`) onto the matching symbols (document, delay, manual input, display, …);
+`[\ \]` becomes data and `[/ \]` manual operation (the closest symbols), and `((( )))` a
+connector. ER, mind map and requirement imports wait for those families.
 
 ## 6. Unknowns / limits of this evidence
 

@@ -107,7 +107,7 @@ diagram."*
 | `diagram_inspect {diagram?}` | boxes and lines with view ids, model ids, names and positions |
 | `render_preview {diagram?, max_side?}` | the diagram as a PNG image, so the agent can look at its work |
 | `diagram_export {path, diagram?, scale?}` | write `.svg`/`.png` into the workspace |
-| `mermaid_import {text, name?}` | a Mermaid class, sequence or state diagram → a laid-out diagram |
+| `mermaid_import {text, name?}` | a Mermaid class, sequence, state or flowchart diagram → a laid-out diagram |
 | `command_list {filter?, enabled_only?}` | every command and its parameters |
 | `command_run {id, params?}` | run one command |
 | `command_batch {steps, atomic?}` | run a script (all-or-nothing by default) |

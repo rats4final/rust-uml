@@ -1,6 +1,6 @@
 # Roadmap and handoff
 
-**Read this to pick up the work.** Status as of 2026-10-13: v0.6.0 (all UML diagram types, live app control); since then flowcharts (M5).
+**Read this to pick up the work.** Status as of 2026-10-14: v0.6.0 (all UML diagram types, live app control); since then flowcharts and their Mermaid import (M5).
 Order of reading for a new agent/session: `AGENTS.md` → this file → `docs/parity.md` → `log/devlog.md`.
 
 ## 1. Where things stand
@@ -130,7 +130,7 @@ keys inside rust-uml). Guide for users: `docs/agents.md`.
    lines only after layout, and squashes it into one undo step (`Document::squash_undo_since`;
    `command_batch` uses it too). File ▸ Import Mermaid…, `rust-uml-cli import`, MCP
    `mermaid_import`. Mappings follow StarUML's (`docs/evidence.md`, Mermaid section). Samples in
-   `examples/mermaid/`. Left: flowchart/ER/mind map/requirement (need their families),
+   `examples/mermaid/`. Flowcharts added in M5. Left: ER/mind map/requirement (need their families),
    automatic sequence numbers, Auto Layout as a menu command (the layout exists).
    **Not yet checked in StarUML:** open an imported model in StarUML 7.1.1.
 4. ✅ **Live app control:** `rust-uml --control <port> --control-token-file <path>
@@ -183,8 +183,13 @@ and Azure last (provider icons: check their licence first).
   (`cubic`, `quadratic`). Lines now end on diamond and oval outlines (`clip_to_outlines`), which
   helps UML use cases and decision nodes too. Look-ups match ids before labels, and a label
   shared by several families resolves by the open diagram's toolbox. Example
-  `examples/flowchart.mdj` from `examples/scripts/login-flowchart.json`. Next: Mermaid
-  `flowchart`/`graph` import onto these symbols.
+  `examples/flowchart.mdj` from `examples/scripts/login-flowchart.json`.
+- ✅ **Mermaid flowchart import** (2026-10-14): `mermaid::flowchart` reads `flowchart`/`graph`
+  (bracket shapes, `A@{ shape: …, label: … }`, chains, `&` groups, every link form, link ids,
+  entity codes); `engine::import` maps shapes to symbols (`symbol`), StarUML's mapping for the
+  bracket shapes, extended to the named ones. Subgraphs are flattened and link styles dropped,
+  each with a warning; `~~~` links only steer the layout. Sample `examples/mermaid/login.mmd`.
+  **Not yet checked in StarUML.**
 - ⬜ ERD, Mind map, DFD, C4, Azure.
 
 ### M6 — Editing depth
