@@ -1,6 +1,6 @@
 # Parity with StarUML 7.1.1
 
-Status line: **M3b done: every UML diagram type has StarUML's tools** (timing constraints aside). Updated 2026-10-13.
+Status line: **v0.6.0: every UML diagram type. M5 started: flowcharts.** Updated 2026-10-13.
 
 Each row comes from the evidence in [`evidence.md`](evidence.md). "Paid" marks features StarUML
 locks behind a licence (see evidence §4: only exports are locked, by watermark).
@@ -51,7 +51,7 @@ Legend: ✅ done · 🟡 partial · ⬜ not started
 | C4 | C4 | | ⬜ |
 | ERD | ERD | | ⬜ |
 | DFD | DFD | | ⬜ |
-| Flowchart | Flowchart | | ⬜ |
+| Flowchart | Flowchart | | ✅ All 27 of StarUML's symbols and labelled flows; lines end on diamond and circle outlines. Not yet: Mermaid flowchart import |
 | Mind map | Mind map | | ⬜ |
 
 ## Editing

@@ -1,6 +1,6 @@
 # Roadmap and handoff
 
-**Read this to pick up the work.** Status as of 2026-10-13: v0.6.0 (all UML diagram types, live app control).
+**Read this to pick up the work.** Status as of 2026-10-13: v0.6.0 (all UML diagram types, live app control); since then flowcharts (M5).
 Order of reading for a new agent/session: `AGENTS.md` → this file → `docs/parity.md` → `log/devlog.md`.
 
 ## 1. Where things stand
@@ -172,9 +172,20 @@ their `viewFor…DiagramFn` in `uml-factory.js` (communication messages create a
 lifelines plus a message; see `messageFn`). Toolbox groups `uml.communication`, `uml.timing`,
 `uml.interaction-overview`, `uml.information-flow` in `toolbox/uml.json`.
 
-### M5 — Remaining families
+### M5 — Remaining families (in progress)
 
-Azure, C4, ERD, DFD, Flowchart, Mind map.
+Order chosen 2026-10-13: Flowchart, ERD, Mind map (each unlocks a Mermaid import), then DFD, C4,
+and Azure last (provider icons: check their licence first).
+
+- ✅ **Flowchart** (2026-10-13): 27 symbol rows (`catalog::flowchart`), `FCFlow` with a name label
+  only (`EdgeLabels::Name`), `FCFlowchart` wrapper. `render::layout::Flow` lists the symbols:
+  minimum sizes and label bands per symbol; `scene::draw_flowchart` draws them, curves sampled
+  (`cubic`, `quadratic`). Lines now end on diamond and oval outlines (`clip_to_outlines`), which
+  helps UML use cases and decision nodes too. Look-ups match ids before labels, and a label
+  shared by several families resolves by the open diagram's toolbox. Example
+  `examples/flowchart.mdj` from `examples/scripts/login-flowchart.json`. Next: Mermaid
+  `flowchart`/`graph` import onto these symbols.
+- ⬜ ERD, Mind map, DFD, C4, Azure.
 
 ### M6 — Editing depth
 

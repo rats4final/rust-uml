@@ -2,6 +2,17 @@
 
 Newest first. Terse: what landed, numbers, what's still open.
 
+## 2026-10-13 — M5: flowcharts
+
+- Flowchart diagrams with StarUML's 27 symbols and labelled flows (filled arrowheads); names placed
+  per symbol as StarUML does; curved symbols drawn from sampled Bézier curves.
+- Lines end on diamond and oval outlines instead of their boxes (flowchart decisions and circles,
+  UML use cases, decision/initial/final nodes).
+- Catalog look-ups: ids before labels; labels shared across families ("Decision", "Connector")
+  resolve by what the open diagram's toolbox offers.
+- `examples/flowchart.mdj` (shipped in the release archives). 140 tests.
+- Open: Mermaid flowchart import; ERD, mind map, DFD, C4, Azure.
+
 ## 2026-10-13 — v0.6.0: all UML diagram types, live app control
 
 - Release notes for communication, timing, interaction overview and information flow diagrams

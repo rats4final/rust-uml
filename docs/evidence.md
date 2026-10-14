@@ -290,6 +290,27 @@ From `timingDiagramFn`, `_addTimingFrame`, `lifelineFn`, `timingStateFn`, `timeS
 - Time constraints (`{min..max}` label + link to a message or segment) and duration constraints
   (`{min..max}`, placed in the frame) exist too.
 
+### Flowcharts (observed for M5, 2026-10-13)
+
+From `extensions/essential/flowchart/` (`metamodel.json`, `flowchart-factory.js`, `elements.js`,
+`toolbox/flowchart.json`), in our words:
+
+- A `FCFlowchartDiagram` lives in a `FCFlowchart` (created as `FlowchartN` unless the parent is
+  one). Elements go in the flowchart's `ownedElements`.
+- 27 symbols, each `FC<Name>` with view `FC<Name>View` (an `FCGeneralNodeView`: one `nameLabel`
+  `LabelView`, `wordWrap` true by default): Process, Terminator, Decision, Delay, Predefined
+  Process, Alternate Process, Data, Document, Multi-Document, Preparation, Display, Manual Input,
+  Manual Operation, Card, Punched Tape, Connector, Off-Page Connector, Or, Summing Junction,
+  Collate, Sort, Merge, Extract, Stored Data, Database, Direct Access Storage, Internal Storage.
+  Names come from the type without `FC` (`Process1`); Manual Input/Operation use `Input`/
+  `Operation`, the connectors `C`/`P`; Or, Summing Junction, Collate, Sort, Merge and Extract get
+  no name.
+- `FCFlow` (directed relationship, owned by its source) with an `FCFlowView`: a solid line ending
+  in a filled arrowhead, and only a `nameLabel` (middle, π/2, 15 px).
+- Drawing: the standard ISO 5807 shapes; the name 10 px below the top, inset per symbol (e.g.
+  past a parallelogram's slant, below a database's rim), centred for diamonds and circles; boxes
+  at least the name plus 10 px padding (a decision twice the name, junctions 30 × 30).
+
 ## 4. Free vs. paid — exactly what is locked
 
 The only place the license is checked for features is **`src/engine/diagram-export.js`**, in the
