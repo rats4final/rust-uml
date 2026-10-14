@@ -105,6 +105,7 @@ impl Properties {
                         .trim_end_matches("View"),
                 );
                 ui.add_space(4.0);
+                quick_edits(ui, s, &mut out);
                 if el.type_name.ends_with("View") {
                     // A shape without a model element (note, text): its own text.
                     ui.label("Text");
@@ -589,6 +590,52 @@ impl Properties {
         }
         r
     }
+}
+
+/// StarUML's quick-edit buttons for the selected box: add a mind map node
+/// beside it, or an entity related to it.
+fn quick_edits(ui: &mut egui::Ui, s: &Session, out: &mut Commands) {
+    let Some(view) = s.selection.first().and_then(|id| s.doc.get(id)) else {
+        return;
+    };
+    let buttons: &[(&str, &str, Value)] = match view.type_name.as_str() {
+        "MMNodeView" => &[
+            ("Add node left", "mindmap.add-node", json!({"side": "left"})),
+            (
+                "Add node right",
+                "mindmap.add-node",
+                json!({"side": "right"}),
+            ),
+        ],
+        "ERDEntityView" => &[
+            (
+                "+ One to one",
+                "erd.add-related",
+                json!({"kind": "one-to-one"}),
+            ),
+            (
+                "+ One to many",
+                "erd.add-related",
+                json!({"kind": "one-to-many"}),
+            ),
+            (
+                "+ Many to many",
+                "erd.add-related",
+                json!({"kind": "many-to-many"}),
+            ),
+        ],
+        _ => return,
+    };
+    ui.horizontal_wrapped(|ui| {
+        for (label, command, params) in buttons {
+            if ui.button(*label).clicked() {
+                let mut params = params.clone();
+                params["view"] = json!(view.id);
+                out.push((command, params));
+            }
+        }
+    });
+    ui.add_space(4.0);
 }
 
 fn feature_row(ui: &mut egui::Ui, id: &str, text: &str, out: &mut Commands) {

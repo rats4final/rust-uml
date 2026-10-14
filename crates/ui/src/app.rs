@@ -139,6 +139,8 @@ pub struct UmlApp {
     confirm: Option<Discard>,
     path_prompt: Option<PathPrompt>,
     mermaid: Option<MermaidPrompt>,
+    /// Results of Model ▸ Validate Model: (element id, text), while shown.
+    problems: Option<Vec<(String, String)>>,
     /// Scene of the active diagram, keyed by document revision.
     scene: Option<(u64, String, Scene)>,
     title: String,
@@ -163,6 +165,7 @@ impl UmlApp {
             confirm: None,
             path_prompt: None,
             mermaid: None,
+            problems: None,
             scene: None,
             title: String::new(),
             screenshot: None,
@@ -464,6 +467,13 @@ impl UmlApp {
                         }
                     }
                 });
+                ui.separator();
+                if ui.button("Validate Model").clicked() {
+                    self.validate();
+                }
+            });
+            ui.menu_button("Format", |ui| {
+                self.command_button(ui, "view.suppress-columns");
             });
             ui.menu_button("View", |ui| {
                 if ui.button("Zoom In").clicked() {
@@ -487,6 +497,65 @@ impl UmlApp {
                 ui.label("Not affiliated with or endorsed by MKLabs (StarUML).");
             });
         });
+    }
+
+    /// Run `model.validate` and show what it found.
+    fn validate(&mut self) {
+        match self
+            .registry
+            .run(&mut self.session, "model.validate", &json!({}))
+        {
+            Ok(r) => {
+                let list = r["problems"]
+                    .as_array()
+                    .map(|ps| {
+                        ps.iter()
+                            .map(|p| {
+                                let field = |k: &str| p[k].as_str().unwrap_or_default();
+                                (
+                                    field("id").to_owned(),
+                                    format!(
+                                        "{}: {} ({})",
+                                        field("name"),
+                                        field("message"),
+                                        field("rule")
+                                    ),
+                                )
+                            })
+                            .collect()
+                    })
+                    .unwrap_or_default();
+                self.problems = Some(list);
+            }
+            Err(e) => self.status = e.to_string(),
+        }
+    }
+
+    fn problems_window(&mut self, ctx: &egui::Context) {
+        let Some(problems) = &self.problems else {
+            return;
+        };
+        let mut open = true;
+        let mut select = None;
+        egui::Window::new("Validation")
+            .open(&mut open)
+            .default_width(380.0)
+            .show(ctx, |ui| {
+                if problems.is_empty() {
+                    ui.label("No problems found.");
+                }
+                for (id, text) in problems {
+                    if ui.link(text).on_hover_text("Select it").clicked() {
+                        select = Some(id.clone());
+                    }
+                }
+            });
+        if let Some(id) = select {
+            self.exec("edit.select", json!({ "ids": [id] }));
+        }
+        if !open {
+            self.problems = None;
+        }
     }
 
     fn command_button(&mut self, ui: &mut egui::Ui, id: &str) {
@@ -765,6 +834,7 @@ impl eframe::App for UmlApp {
         self.confirm_dialog(&ctx);
         self.path_dialog(&ctx);
         self.mermaid_dialog(&ctx);
+        self.problems_window(&ctx);
         if self.session.active_diagram != diagram_before {
             self.canvas.request_fit();
         }
@@ -1296,6 +1366,55 @@ mod tests {
             "DFDProcessView"
         );
         assert_eq!(views_of_type(app, "DFDDataFlowView").len(), 1);
+    }
+
+    #[test]
+    fn quick_edits_format_and_validation_from_the_ui() {
+        let mut h = harness();
+        h.run();
+        h.state_mut()
+            .exec("diagram.add", json!({"type": "MMMindmapDiagram"}));
+        h.run();
+        h.get_by_role_and_label(Role::Button, "Node").click();
+        h.run();
+        let at = h.state().canvas.to_screen(render::Point::new(200.0, 120.0));
+        click(&mut h, at);
+        h.get_by_role_and_label(Role::Button, "Add node right")
+            .click();
+        h.run();
+        assert_eq!(views_of_type(h.state(), "MMNodeView").len(), 2);
+        assert_eq!(views_of_type(h.state(), "MMEdgeView").len(), 1);
+
+        h.state_mut()
+            .exec("diagram.add", json!({"type": "ERDDiagram"}));
+        h.run();
+        h.get_by_role_and_label(Role::Button, "Entity").click();
+        h.run();
+        let at = h.state().canvas.to_screen(render::Point::new(80.0, 80.0));
+        click(&mut h, at);
+        let entity = h.state().session.selection[0].clone();
+        h.get_by_role_and_label(Role::Button, "+ Many to many")
+            .click();
+        h.run();
+        assert_eq!(views_of_type(h.state(), "ERDEntityView").len(), 2);
+
+        h.state_mut().exec("edit.select", json!({"ids": [entity]}));
+        h.run();
+        h.get_by_role_and_label(Role::Button, "Format").click();
+        h.run();
+        h.get_by_role_and_label(Role::Button, "Suppress Columns")
+            .click();
+        h.run();
+        let doc = &h.state().session.doc;
+        assert!(doc.get(&entity).unwrap().bool("suppressColumns", false));
+
+        h.get_by_role_and_label(Role::Button, "Model").click();
+        h.run();
+        h.get_by_role_and_label(Role::Button, "Validate Model")
+            .click();
+        h.run();
+        assert_eq!(h.state().problems.as_ref().map(Vec::len), Some(0));
+        h.get_by_label("No problems found.");
     }
 
     #[test]
