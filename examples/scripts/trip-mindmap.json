@@ -1,0 +1,6 @@
+[
+  {"cmd": "model.tree", "params": {}, "as": "new"},
+  {"cmd": "element.delete", "params": {"ids": ["$new.tree.children.0.children.0.id"]}},
+  {"cmd": "import.mermaid", "as": "trip", "params": {"name": "Trip planning", "text": "mindmap\n  root((Trip to Lisbon))\n    Before\n      Book flights\n      Book a hotel near the old town\n      Travel insurance\n    Pack\n      Passport\n      Charger and adapter\n      Comfortable shoes\n    See\n      Belém Tower\n      Alfama<br/>and the castle\n      Sintra day trip\n    Eat\n      Pastéis de nata\n      Seafood\n    Budget"}},
+  {"cmd": "element.set", "params": {"id": "$trip.diagram", "values": {"defaultDiagram": true}}}
+]
