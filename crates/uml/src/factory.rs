@@ -109,6 +109,14 @@ fn unique_name(doc: &Document, parent: &str, base: &str) -> String {
 }
 
 const PACKAGE_LIKE: &[&str] = &["UMLPackage", "UMLModel", "UMLSubsystem", "UMLProfile"];
+const C4_ELEMENTS: &[&str] = &[
+    "C4Model",
+    "C4Person",
+    "C4SoftwareSystem",
+    "C4Container",
+    "C4Component",
+    "C4Element",
+];
 const DFD_ELEMENTS: &[&str] = &[
     "DFDDataFlowModel",
     "DFDExternalEntity",
@@ -926,6 +934,9 @@ pub fn create_edge_at(
             if model_type == "MMEdge" && !both(&|t| t == "MMNode") {
                 return Err(format!("An {} joins two mind map nodes.", spec.label));
             }
+            if model_type == "C4Relationship" && !both(&|t| C4_ELEMENTS.contains(&t)) {
+                return Err(format!("A {} joins two C4 elements.", spec.label));
+            }
             if model_type == "DFDDataFlow" && !both(&|t| DFD_ELEMENTS[1..].contains(&t)) {
                 return Err(format!(
                     "A {} joins external entities, processes and data stores.",
@@ -1308,7 +1319,12 @@ pub fn add_edge_view(
     if matches!(spec.labels, EdgeLabels::Name | EdgeLabels::NameAndEndNames) {
         labels.push(("nameLabel", edge_position::MIDDLE, PI / 2.0, 15.0));
     }
-    if spec.labels == EdgeLabels::NameAndEndNames {
+    if spec.labels == EdgeLabels::DescriptionAndTechnology {
+        labels.extend([
+            ("descriptionLabel", edge_position::MIDDLE, PI / 2.0, 15.0),
+            ("technologyLabel", edge_position::MIDDLE, -PI / 2.0, 15.0),
+        ]);
+    } else if spec.labels == EdgeLabels::NameAndEndNames {
         labels.extend([
             ("tailNameLabel", edge_position::TAIL, PI / 6.0, 30.0),
             ("headNameLabel", edge_position::HEAD, -PI / 6.0, 30.0),
@@ -1678,6 +1694,9 @@ pub fn create_diagram(e: &mut Editor, parent: &str, diagram_type: &str) -> Resul
         ("FCFlowchartDiagram", p) if p != "FCFlowchart" => &[("FCFlowchart", "Flowchart")],
         ("ERDDiagram", p) if p != "ERDDataModel" => &[("ERDDataModel", "Data Model")],
         ("MMMindmapDiagram", p) if p != "MMMindmap" => &[("MMMindmap", "Mindmap")],
+        // As StarUML: a C4 model only when added to the project itself; in a
+        // package or a C4 element (a system's containers) the diagram goes in it.
+        ("C4Diagram", "Project") => &[("C4Model", "C4Model")],
         // Any data flow element can hold a diagram (a process's lower level).
         ("DFDDiagram", p) if !DFD_ELEMENTS.contains(&p) => &[("DFDDataFlowModel", "DataFlowModel")],
         ("UMLInteractionOverviewDiagram", "UMLActivity") => &[],

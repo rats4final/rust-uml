@@ -265,6 +265,54 @@ const fn control_node(id: &'static str, label: &'static str, size: (f64, f64)) -
     }
 }
 
+const C4_LABELS: &[&str] = &["nameLabel", "technologyLabel", "descriptionLabel"];
+// StarUML's default fill colours (`c4.<kind>.fillColor` preferences).
+const C4_PERSON: &[(&str, Init)] = &[("fillColor", Init::Str("#38bcff"))];
+const C4_SYSTEM: &[(&str, Init)] = &[("fillColor", Init::Str("#6dceff"))];
+const C4_CONTAINER: &[(&str, Init)] = &[("fillColor", Init::Str("#a3e0ff"))];
+const C4_COMPONENT: &[(&str, Init)] = &[("fillColor", Init::Str("#d8f2ff"))];
+// Container kinds the toolbox creates (`C4ContainerKind`; new containers are `etc`).
+const ETC: &[(&str, Init)] = &[("kind", Init::Str("etc"))];
+const DATABASE: &[(&str, Init)] = &[("kind", Init::Str("database"))];
+const WEB_APP: &[(&str, Init)] = &[("kind", Init::Str("client-webapp"))];
+const DESKTOP_APP: &[(&str, Init)] = &[("kind", Init::Str("desktop-app"))];
+const MOBILE_APP: &[(&str, Init)] = &[("kind", Init::Str("mobile-app"))];
+
+/// A C4 element (`(type, view type)`) with its three labels. New ones are
+/// named after their type, as StarUML does (`C4Person1`).
+const fn c4(
+    (model_type, view_type): (&'static str, &'static str),
+    label: &'static str,
+    view_fields: &'static [(&'static str, Init)],
+    size: (f64, f64),
+) -> NodeSpec {
+    NodeSpec {
+        name_compartment: false,
+        labels: C4_LABELS,
+        view_fields,
+        ..node(model_type, label, model_type, view_type, model_type, size)
+    }
+}
+
+/// A container tool: a `C4Container` of the given kind.
+const fn c4_container(
+    id: &'static str,
+    label: &'static str,
+    kind: &'static [(&'static str, Init)],
+) -> NodeSpec {
+    NodeSpec {
+        id,
+        label,
+        model_fields: kind,
+        ..c4(
+            ("C4Container", "C4ContainerView"),
+            label,
+            C4_CONTAINER,
+            (160.0, 100.0),
+        )
+    }
+}
+
 /// A data flow diagram element (`(type, view type)`); StarUML names new
 /// ones from the type without `DFD` (`Process1`).
 const fn dfd(
@@ -766,6 +814,42 @@ pub const NODES: &[NodeSpec] = &[
         "UMLInformationItemView",
         "InformationItem",
     ),
+    // C4 (StarUML's c4 extension): name, technology and description labels;
+    // StarUML names new elements from the type ("C4Person1") and fills each
+    // kind with its preference colour.
+    c4(
+        ("C4Person", "C4PersonView"),
+        "Person",
+        C4_PERSON,
+        (120.0, 140.0),
+    ),
+    c4(
+        ("C4SoftwareSystem", "C4SoftwareSystemView"),
+        "Software System",
+        C4_SYSTEM,
+        (160.0, 100.0),
+    ),
+    c4_container("C4Container", "Container", ETC),
+    c4_container("C4ContainerDatabase", "Container (Database)", DATABASE),
+    c4_container("C4ContainerWebApp", "Container (Web App)", WEB_APP),
+    c4_container(
+        "C4ContainerDesktopApp",
+        "Container (Desktop App)",
+        DESKTOP_APP,
+    ),
+    c4_container("C4ContainerMobileApp", "Container (Mobile App)", MOBILE_APP),
+    c4(
+        ("C4Component", "C4ComponentView"),
+        "Component",
+        C4_COMPONENT,
+        (160.0, 100.0),
+    ),
+    c4(
+        ("C4Element", "C4ElementView"),
+        "Element",
+        &[],
+        (160.0, 100.0),
+    ),
     // Data flow diagrams (StarUML's dfd extension): each element shows its
     // `id` and name; processes and data stores keep the id in a label of its own.
     dfd(
@@ -999,6 +1083,8 @@ pub enum EdgeLabels {
     Name,
     /// A name label and a name label at each end (ERD relationships).
     NameAndEndNames,
+    /// A description label above the line and a technology label below (C4).
+    DescriptionAndTechnology,
     /// name, stereotype, property (UMLGeneralEdgeView).
     General,
     /// General + role name, multiplicity and property at each end.
@@ -1363,6 +1449,16 @@ pub const EDGES: &[EdgeSpec] = &[
         labels: EdgeLabels::Name,
         ..directed("FCFlow", "Flow", "FCFlow", "FCFlowView")
     },
+    // A C4 relationship: a dotted arrow with its description and technology.
+    EdgeSpec {
+        labels: EdgeLabels::DescriptionAndTechnology,
+        ..directed(
+            "C4Relationship",
+            "Relationship",
+            "C4Relationship",
+            "C4RelationshipView",
+        )
+    },
     // A data flow: a named arrow, rounded right angles by StarUML's preference.
     EdgeSpec {
         labels: EdgeLabels::Name,
@@ -1667,6 +1763,22 @@ pub const TOOL_GROUPS: &[ToolGroup] = &[
         ],
     },
     ToolGroup {
+        label: "C4 Model",
+        diagrams: &["C4Diagram"],
+        tools: &[
+            "C4Person",
+            "C4SoftwareSystem",
+            "C4Container",
+            "C4ContainerDatabase",
+            "C4ContainerWebApp",
+            "C4ContainerDesktopApp",
+            "C4ContainerMobileApp",
+            "C4Component",
+            "C4Element",
+            "C4Relationship",
+        ],
+    },
+    ToolGroup {
         label: "Data Flow",
         diagrams: &["DFDDiagram"],
         tools: &[
@@ -1779,6 +1891,7 @@ pub const DIAGRAMS: &[(&str, &str, &str)] = &[
     ("ERDDiagram", "ER Diagram", "ERDDiagram"),
     ("MMMindmapDiagram", "Mindmap Diagram", "MMMindmapDiagram"),
     ("DFDDiagram", "Data Flow Diagram", "DFDDiagram"),
+    ("C4Diagram", "C4 Diagram", "C4Diagram"),
 ];
 
 /// A tool, either kind.
@@ -1928,6 +2041,20 @@ pub fn tool_groups(diagram_type: &str) -> impl Iterator<Item = &'static ToolGrou
 /// The spec whose view type is `view_type` (first match).
 pub fn node_spec_for_view(view_type: &str) -> Option<&'static NodeSpec> {
     NODES.iter().find(|s| s.view_type == view_type)
+}
+
+/// The row that draws an existing element of `model_type` on a
+/// `diagram_type` diagram: the tool named after the type if there is one
+/// (`C4Container`, not `C4ContainerDatabase`), else any row creating that type.
+pub fn node_spec_for_model(model_type: &str, diagram_type: &str) -> Option<&'static NodeSpec> {
+    node_spec_on(model_type, diagram_type)
+        .filter(|s| s.model_type == Some(model_type))
+        .or_else(|| {
+            let rows = || NODES.iter().filter(|s| s.model_type == Some(model_type));
+            rows()
+                .find(|s| s.diagrams.contains(&diagram_type))
+                .or_else(|| rows().find(|s| s.diagrams.is_empty()))
+        })
 }
 
 #[cfg(test)]

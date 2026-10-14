@@ -9,7 +9,8 @@ mod text;
 
 pub use catalog::{
     DIAGRAMS, EDGES, EdgeSpec, NODES, NodeSpec, TOOL_GROUPS, Tool, ToolGroup, edge_spec,
-    edge_spec_on, node_spec, node_spec_for_view, node_spec_on, tool, tool_groups, tool_on,
+    edge_spec_on, node_spec, node_spec_for_model, node_spec_for_view, node_spec_on, tool,
+    tool_groups, tool_on,
 };
 pub use delete::{delete_elements, delete_views};
 pub use factory::{
@@ -825,6 +826,9 @@ mod tests {
                 catalog::EdgeOwner::Source if spec.model_type == Some("DFDDataFlow") => {
                     "DFDProcess"
                 }
+                catalog::EdgeOwner::Source if spec.model_type == Some("C4Relationship") => {
+                    "C4SoftwareSystem"
+                }
                 catalog::EdgeOwner::Source => "UMLClass",
             };
             let end_tool = if node_spec(end_tool)
@@ -907,6 +911,68 @@ mod tests {
         assert!(
             doc.try_edit(|e| create_edge(e, &dgm, spec, &cv, &class))
                 .is_err()
+        );
+    }
+
+    #[test]
+    fn c4_models_containers_and_relationships() {
+        let mut doc = Document::new_project();
+        // Under the project: a C4 model is made for it.
+        let root = doc.root().to_owned();
+        let context = doc
+            .try_edit(|e| create_diagram(e, &root, "C4Diagram"))
+            .unwrap();
+        let d = doc.get(&context).unwrap();
+        assert_eq!(d.name(), "C4Diagram1");
+        let owner = d.parent.clone().unwrap();
+        let o = doc.get(&owner).unwrap();
+        assert_eq!((o.type_name.as_str(), o.name()), ("C4Model", "C4Model1"));
+        // In a package: no wrapper, as StarUML.
+        let in_model = diagram_of_type(&mut doc, "C4Diagram");
+        let model = doc.get(doc.root()).unwrap().children("ownedElements")[0].clone();
+        assert_eq!(doc.get(&in_model).unwrap().parent, Some(model));
+
+        let (person, pv) = node(&mut doc, &context, "C4Person", 0.0, 0.0, None);
+        let (system, sv) = node(&mut doc, &context, "C4SoftwareSystem", 0.0, 200.0, None);
+        assert_eq!(doc.get(&person).unwrap().name(), "C4Person1");
+        assert_eq!(doc.get(&pv).unwrap().str("fillColor"), Some("#38bcff"));
+        let v = doc.get(&pv).unwrap();
+        for key in ["nameLabel", "technologyLabel", "descriptionLabel"] {
+            assert!(v.ref_id(key).is_some(), "{key}");
+        }
+        // Container tools are containers of a kind.
+        let (db, dv) = node(&mut doc, &context, "C4ContainerDatabase", 300.0, 0.0, None);
+        let db = doc.get(&db).unwrap();
+        assert_eq!(
+            (db.type_name.as_str(), db.str("kind")),
+            ("C4Container", Some("database"))
+        );
+        assert_eq!(db.name(), "C4Container1");
+        assert_eq!(doc.get(&dv).unwrap().str("fillColor"), Some("#a3e0ff"));
+
+        let (rel, rv) = edge(&mut doc, &context, "C4Relationship", &pv, &sv);
+        let rel = doc.get(rel.as_deref().unwrap()).unwrap();
+        assert_eq!(rel.parent.as_deref(), Some(person.as_str()));
+        let view = doc.get(&rv).unwrap();
+        assert!(
+            view.ref_id("descriptionLabel").is_some() && view.ref_id("technologyLabel").is_some()
+        );
+        assert!(view.ref_id("nameLabel").is_none());
+
+        // A diagram inside the system holds its containers.
+        let inside = doc
+            .try_edit(|e| create_diagram(e, &system, "C4Diagram"))
+            .unwrap();
+        assert_eq!(doc.get(&inside).unwrap().parent, Some(system.clone()));
+        let (api, _) = node(&mut doc, &inside, "C4Container", 0.0, 0.0, None);
+        assert_eq!(doc.get(&api).unwrap().parent, Some(system));
+        assert_eq!(
+            node_spec_for_model("C4Container", "C4Diagram").map(|s| s.id),
+            Some("C4Container")
+        );
+        assert_eq!(
+            node_spec_for_model("UMLPseudostate", "UMLStatechartDiagram").map(|s| s.view_type),
+            Some("UMLPseudostateView")
         );
     }
 
