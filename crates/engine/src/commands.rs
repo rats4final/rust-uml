@@ -87,6 +87,42 @@ fn has_selection(s: &Session) -> bool {
 fn specs() -> Vec<CommandSpec> {
     vec![
         CommandSpec {
+            id: "mindmap.add-node",
+            label: "Add Node",
+            menu: None,
+            shortcut: None,
+            params: r#"{"view"?: mind map node view (default: the selection), "side"?: "right" (default) | "left"} → {"model", "view", "edge"}; a new node beside it, joined by an edge from the new node; one undo step"#,
+            enabled: has_selection,
+            run: crate::quick_edit::add_mind_node,
+        },
+        CommandSpec {
+            id: "erd.add-related",
+            label: "Add Related Entity",
+            menu: None,
+            shortcut: None,
+            params: r#"{"view"?: entity view (default: the selection), "kind"?: "one-to-one" | "one-to-many" (default) | "many-to-many"} → {"model", "view", "edge"}; a new entity to the right, related from this one; one undo step"#,
+            enabled: has_selection,
+            run: crate::quick_edit::add_related_entity,
+        },
+        CommandSpec {
+            id: "view.suppress-columns",
+            label: "Suppress Columns",
+            menu: Some("Format"),
+            shortcut: None,
+            params: r#"{} — hides the columns of the selected entities, or shows them if all are hidden → {"suppressed", "views"}; one undo step"#,
+            enabled: crate::quick_edit::has_entity_selected,
+            run: crate::quick_edit::suppress_columns,
+        },
+        CommandSpec {
+            id: "model.validate",
+            label: "Validate Model",
+            menu: Some("Model"),
+            shortcut: None,
+            params: r#"{} → {"problems": [{"id", "name", "rule", "message"}]} (StarUML's ERD rules: ERD001 primary key not nullable, ERD002 foreign key's entity related)"#,
+            enabled: always,
+            run: crate::validate::validate,
+        },
+        CommandSpec {
             id: "file.new",
             label: "New",
             menu: Some("File"),
@@ -224,7 +260,7 @@ fn specs() -> Vec<CommandSpec> {
             label: "Set Property",
             menu: None,
             shortcut: None,
-            params: r#"{"id": element id, "key": field name, "value": string|bool|number|null} or {"id", "values": {field: value, …}} (one undo step)"#,
+            params: r#"{"id": element id, "key": field name, "value": string|bool|number|null|{"$ref": element id}} or {"id", "values": {field: value, …}} (one undo step); {"$ref": id} stores a reference, as StarUML files do (e.g. an ERD column's referenceTo)"#,
             enabled: always,
             run: set_property,
         },
@@ -337,19 +373,19 @@ fn specs() -> Vec<CommandSpec> {
 
 // ---------------------------------------------------------------------------
 
-fn get<'a>(doc: &'a Document, id: &str) -> Result<&'a Element, CommandError> {
+pub(crate) fn get<'a>(doc: &'a Document, id: &str) -> Result<&'a Element, CommandError> {
     doc.get(id)
         .ok_or_else(|| CommandError::Param(format!("no element `{id}`")))
 }
 
-fn active(s: &Session) -> Result<Id, CommandError> {
+pub(crate) fn active(s: &Session) -> Result<Id, CommandError> {
     s.active_diagram
         .clone()
         .ok_or_else(|| CommandError::Disabled("no open diagram".into()))
 }
 
 /// A top-level node view of the active diagram.
-fn node_view<'a>(s: &'a Session, id: &str) -> Result<&'a Element, CommandError> {
+pub(crate) fn node_view<'a>(s: &'a Session, id: &str) -> Result<&'a Element, CommandError> {
     let el = get(&s.doc, id)?;
     let in_diagram = s.active_diagram.as_deref() == el.parent.as_deref();
     if in_diagram && render::node_layout(&s.doc, el, s.fonts()).is_some() {
@@ -813,6 +849,8 @@ pub(crate) fn set_property(s: &mut Session, p: &Value) -> Result<Value, CommandE
         for (key, value) in pairs {
             if value.is_null() {
                 e.unset(&id, &key);
+            } else if let Some(target) = as_ref(&value) {
+                e.set(&id, &key, Field::Ref(target.to_owned()));
             } else {
                 e.set(&id, &key, Field::Value(value));
             }
@@ -829,6 +867,14 @@ pub(crate) fn set_property(s: &mut Session, p: &Value) -> Result<Value, CommandE
     })
 }
 
+/// `{"$ref": id}`: a reference to another element.
+fn as_ref(value: &Value) -> Option<&str> {
+    match value.as_object() {
+        Some(o) if o.len() == 1 => o.get("$ref")?.as_str(),
+        _ => None,
+    }
+}
+
 /// Whether `element.set` may write `value` to field `key` of element `id`.
 fn check_property(doc: &Document, id: &str, key: &str, value: &Value) -> Result<(), CommandError> {
     let el = get(doc, id)?;
@@ -836,6 +882,15 @@ fn check_property(doc: &Document, id: &str, key: &str, value: &Value) -> Result<
         return Err(CommandError::Param(format!(
             "`{key}` cannot be set directly"
         )));
+    }
+    if let Some(target) = as_ref(value) {
+        get(doc, target)?;
+        return match el.get(key) {
+            None | Some(Field::Ref(_) | Field::Value(_)) => Ok(()),
+            Some(_) => Err(CommandError::Param(format!(
+                "`{key}` holds structure and cannot be set directly"
+            ))),
+        };
     }
     let structural = match el.get(key) {
         None | Some(Field::Value(_)) => false,
@@ -1679,6 +1734,9 @@ mod tests {
             json!({"kind": "DFDProcess", "x": 0, "y": 0, "container": real[1]}),
             json!({"kind": "DFDDataFlow", "tail": real[0], "head": real[1]}),
             json!({"id": real[1], "values": {"id": 7}}),
+            json!({"id": real[1], "values": {"referenceTo": {"$ref": "missing"}}}),
+            json!({"id": real[1], "values": {"name": {"$ref": real[0]}}}),
+            json!({"id": real[0], "key": "ownedElements", "value": {"$ref": real[1]}}),
             json!({"type": "MMMindmapDiagram"}),
             json!({"kind": "MMNode", "x": 0, "y": 0, "container": real[1]}),
             json!({"kind": "MMEdge", "tail": real[0], "head": real[1]}),

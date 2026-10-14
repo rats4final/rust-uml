@@ -12,7 +12,9 @@
 mod commands;
 mod import;
 mod params;
+mod quick_edit;
 mod session;
+mod validate;
 
 pub use commands::{CommandError, CommandSpec, Registry};
 pub use session::Session;
