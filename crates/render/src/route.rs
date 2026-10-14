@@ -127,6 +127,28 @@ pub fn reflow(
 
     let mut reroute: Vec<(Id, String)> = Vec::new();
     let mut shift_activation: Vec<(Id, f64)> = Vec::new();
+    // Where right-angle lines already touch each box side, so a newly routed
+    // one can start beside them instead of on top of them.
+    let mut taken = Taken::default();
+    for id in &views {
+        let Some(v) = doc.get(id) else { continue };
+        let style = v.num("lineStyle", absent::LINE_STYLE as f64) as i64;
+        if !is_orthogonal(style) {
+            continue;
+        }
+        let (Some(tail), Some(head)) = (v.ref_id("tail"), v.ref_id("head")) else {
+            continue;
+        };
+        let stored: Vec<Point> = parse_points(v.str("points").unwrap_or(""))
+            .into_iter()
+            .map(|(x, y)| Point::new(x, y))
+            .collect();
+        let rerouted = stored.len() < 2 || touched.contains(tail) || touched.contains(head);
+        if rerouted && !keep.contains(id) {
+            continue;
+        }
+        taken.add_ends(tail, head, &stored, &rects);
+    }
     for id in &views {
         let Some(v) = doc.get(id) else { continue };
         let (Some(tail), Some(head)) = (v.ref_id("tail"), v.ref_id("head")) else {
@@ -171,10 +193,12 @@ pub fn reflow(
         }
         let interior = stored.get(1..stored.len().saturating_sub(1)).unwrap_or(&[]);
         let style = v.num("lineStyle", absent::LINE_STYLE as f64) as i64;
-        let pts: Vec<(f64, f64)> = route(tr, hr, interior, style)
-            .into_iter()
-            .map(|p| (p.x, p.y))
-            .collect();
+        let mut pts = route(tr, hr, interior, style);
+        if is_orthogonal(style) && tail != head {
+            taken.spread(tail, head, &mut pts, &rects);
+            taken.add_ends(tail, head, &pts, &rects);
+        }
+        let pts: Vec<(f64, f64)> = pts.into_iter().map(|p| (p.x, p.y)).collect();
         reroute.push((id.clone(), format_points(&pts)));
     }
 
@@ -187,6 +211,142 @@ pub fn reflow(
     }
     for (id, left) in shift_activation {
         e.set(&id, "left", Field::int(left.round() as i64));
+    }
+}
+
+fn is_orthogonal(style: i64) -> bool {
+    style == line_style::RECTILINEAR || style == line_style::ROUND_RECT
+}
+
+/// Space kept between lines touching one side of a box, and from its
+/// corners: room for end marks such as crow's feet side by side.
+const SPREAD: f64 = 20.0;
+
+/// Positions ever further from `along`, `toward` (+1/-1) first, in steps
+/// small enough to find any gap of `SPREAD` between taken spots.
+fn nearby(along: f64, toward: f64) -> impl Iterator<Item = f64> {
+    (1..200).flat_map(move |k| [toward, -toward].map(|d| along + d * 4.0 * f64::from(k)))
+}
+
+/// A side of a box: which box, and 0 left, 1 right, 2 top, 3 bottom.
+type Side = (Id, u8);
+
+/// Points along box sides where lines already touch.
+#[derive(Default)]
+struct Taken {
+    at: HashMap<Side, Vec<f64>>,
+}
+
+/// The side of `r` that `p` lies on, and `p`'s position along it.
+fn side_of(r: &Rect, p: Point) -> Option<(u8, f64)> {
+    const EPS: f64 = 0.5;
+    if (p.x - r.x).abs() < EPS {
+        Some((0, p.y))
+    } else if (p.x - r.right()).abs() < EPS {
+        Some((1, p.y))
+    } else if (p.y - r.y).abs() < EPS {
+        Some((2, p.x))
+    } else if (p.y - r.bottom()).abs() < EPS {
+        Some((3, p.x))
+    } else {
+        None
+    }
+}
+
+impl Taken {
+    fn add_ends(&mut self, tail: &str, head: &str, pts: &[Point], rects: &HashMap<Id, Rect>) {
+        for (bx, p) in [(tail, pts.first()), (head, pts.last())] {
+            let (Some(r), Some(p)) = (rects.get(bx), p) else {
+                continue;
+            };
+            if let Some((side, along)) = side_of(r, *p) {
+                self.at
+                    .entry((bx.to_owned(), side))
+                    .or_default()
+                    .push(along);
+            }
+        }
+    }
+
+    fn is_free(&self, bx: &str, side: u8, along: f64) -> bool {
+        self.at
+            .get(&(bx.to_owned(), side))
+            .is_none_or(|v| v.iter().all(|a| (a - along).abs() >= SPREAD - 0.5))
+    }
+
+    /// The free spot on a side nearest `along`, within `lo..=hi`, trying
+    /// the `toward` direction (+1/-1: where the line is heading) first.
+    fn free_near(
+        &self,
+        bx: &str,
+        side: u8,
+        along: f64,
+        (lo, hi): (f64, f64),
+        toward: f64,
+    ) -> Option<f64> {
+        if self.is_free(bx, side, along) {
+            return Some(along);
+        }
+        nearby(along, toward).find(|&a| a >= lo && a <= hi && self.is_free(bx, side, a))
+    }
+
+    /// Move a freshly routed right-angle line's ends off spots already taken
+    /// on their box sides, keeping every segment axis-aligned: an end that
+    /// turns at once moves with its first bend; a straight line moves whole,
+    /// if both boxes still face each other there.
+    fn spread(&self, tail: &str, head: &str, pts: &mut [Point], rects: &HashMap<Id, Rect>) {
+        let (Some(tr), Some(hr)) = (rects.get(tail), rects.get(head)) else {
+            return;
+        };
+        let n = pts.len();
+        if n < 2 {
+            return;
+        }
+        // Range of positions along a side, clear of the corners.
+        let range = |r: &Rect, side: u8| match side {
+            0 | 1 => (r.y + SPREAD, r.bottom() - SPREAD),
+            _ => (r.x + SPREAD, r.right() - SPREAD),
+        };
+        let set = |p: &mut Point, side: u8, along: f64| match side {
+            0 | 1 => p.y = along,
+            _ => p.x = along,
+        };
+        if n == 2 {
+            let (Some((ts, ta)), Some((hs, _))) = (side_of(tr, pts[0]), side_of(hr, pts[1])) else {
+                return;
+            };
+            if self.is_free(tail, ts, ta) && self.is_free(head, hs, ta) {
+                return;
+            }
+            let (t_lo, t_hi) = range(tr, ts);
+            let (h_lo, h_hi) = range(hr, hs);
+            let (lo, hi) = (t_lo.max(h_lo), t_hi.min(h_hi));
+            let moved = nearby(ta, 1.0).find(|&a| {
+                a >= lo && a <= hi && self.is_free(tail, ts, a) && self.is_free(head, hs, a)
+            });
+            if let Some(a) = moved {
+                set(&mut pts[0], ts, a);
+                set(&mut pts[1], hs, a);
+            }
+            return;
+        }
+        for (bx, r, end, far) in [(tail, tr, 0, n - 1), (head, hr, n - 1, 0)] {
+            let next = if end == 0 { 1 } else { n - 2 };
+            let Some((side, along)) = side_of(r, pts[end]) else {
+                continue;
+            };
+            let other = match side {
+                0 | 1 => pts[far].y,
+                _ => pts[far].x,
+            };
+            let toward = if other < along { -1.0 } else { 1.0 };
+            if let Some(a) = self.free_near(bx, side, along, range(r, side), toward)
+                && a != along
+            {
+                set(&mut pts[end], side, a);
+                set(&mut pts[next], side, a);
+            }
+        }
     }
 }
 
@@ -206,6 +366,39 @@ mod tests {
             for w in pts.windows(2) {
                 assert!(w[0].x == w[1].x || w[0].y == w[1].y, "{pts:?}");
             }
+        }
+    }
+
+    #[test]
+    fn lines_from_one_side_start_apart() {
+        let rects: HashMap<Id, Rect> = [
+            ("a", Rect::new(0.0, 100.0, 100.0, 120.0)),
+            ("up", Rect::new(300.0, 0.0, 100.0, 50.0)),
+            ("down", Rect::new(300.0, 300.0, 100.0, 50.0)),
+            ("level", Rect::new(300.0, 110.0, 100.0, 120.0)),
+        ]
+        .into_iter()
+        .map(|(k, r)| (k.to_owned(), r))
+        .collect();
+        let mut taken = Taken::default();
+        let mut starts = Vec::new();
+        for to in ["up", "down", "level"] {
+            let mut pts = route(&rects["a"], &rects[to], &[], line_style::ROUND_RECT);
+            taken.spread("a", to, &mut pts, &rects);
+            taken.add_ends("a", to, &pts, &rects);
+            for w in pts.windows(2) {
+                assert!(w[0].x == w[1].x || w[0].y == w[1].y, "{pts:?}");
+            }
+            assert_eq!(pts[0].x, 100.0, "leaves a's right side");
+            starts.push(pts[0].y);
+        }
+        // The line going down moved down, not up.
+        assert!(starts[1] > starts[0], "{starts:?}");
+        for (i, a) in starts.iter().enumerate() {
+            for b in &starts[i + 1..] {
+                assert!((a - b).abs() >= SPREAD - 0.5, "{starts:?}");
+            }
+            assert!(*a > 100.0 && *a < 220.0, "on the side: {starts:?}");
         }
     }
 
