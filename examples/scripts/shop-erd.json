@@ -1,0 +1,41 @@
+[
+  {"cmd": "model.tree", "params": {}, "as": "new"},
+  {"cmd": "element.delete", "params": {"ids": ["$new.tree.children.0.children.0.id"]}},
+  {"cmd": "diagram.add", "params": {"type": "ER Diagram", "name": "Shop"}, "as": "dgm"},
+  {"cmd": "element.set", "params": {"id": "$dgm.id", "values": {"defaultDiagram": true}}},
+  {"cmd": "node.create", "params": {"kind": "Entity", "x": 40, "y": 40, "name": "Customer"}, "as": "customer"},
+  {"cmd": "feature.add", "params": {"classifier": "$customer.model", "kind": "column", "name": "id"}, "as": "c_id"},
+  {"cmd": "element.set", "params": {"id": "$c_id.id", "values": {"type": "INTEGER", "primaryKey": true}}},
+  {"cmd": "feature.add", "params": {"classifier": "$customer.model", "kind": "column", "name": "email"}, "as": "c_email"},
+  {"cmd": "element.set", "params": {"id": "$c_email.id", "values": {"type": "VARCHAR", "length": "120", "unique": true}}},
+  {"cmd": "feature.add", "params": {"classifier": "$customer.model", "kind": "column", "name": "name"}, "as": "c_name"},
+  {"cmd": "element.set", "params": {"id": "$c_name.id", "values": {"type": "VARCHAR", "length": "80"}}},
+
+  {"cmd": "node.create", "params": {"kind": "Entity", "x": 340, "y": 40, "name": "Order"}, "as": "order"},
+  {"cmd": "feature.add", "params": {"classifier": "$order.model", "kind": "column", "name": "id"}, "as": "o_id"},
+  {"cmd": "element.set", "params": {"id": "$o_id.id", "values": {"type": "INTEGER", "primaryKey": true}}},
+  {"cmd": "feature.add", "params": {"classifier": "$order.model", "kind": "column", "name": "customer_id"}, "as": "o_cust"},
+  {"cmd": "element.set", "params": {"id": "$o_cust.id", "values": {"type": "INTEGER", "foreignKey": true}}},
+  {"cmd": "feature.add", "params": {"classifier": "$order.model", "kind": "column", "name": "placed_at"}, "as": "o_at"},
+  {"cmd": "element.set", "params": {"id": "$o_at.id", "values": {"type": "DATETIME"}}},
+  {"cmd": "feature.add", "params": {"classifier": "$order.model", "kind": "column", "name": "note"}, "as": "o_note"},
+  {"cmd": "element.set", "params": {"id": "$o_note.id", "values": {"type": "TEXT", "nullable": true}}},
+
+  {"cmd": "node.create", "params": {"kind": "Entity", "x": 340, "y": 260, "name": "OrderLine"}, "as": "line"},
+  {"cmd": "feature.add", "params": {"classifier": "$line.model", "kind": "column", "name": "order_id"}, "as": "l_order"},
+  {"cmd": "element.set", "params": {"id": "$l_order.id", "values": {"type": "INTEGER", "primaryKey": true, "foreignKey": true}}},
+  {"cmd": "feature.add", "params": {"classifier": "$line.model", "kind": "column", "name": "product_id"}, "as": "l_product"},
+  {"cmd": "element.set", "params": {"id": "$l_product.id", "values": {"type": "INTEGER", "primaryKey": true, "foreignKey": true}}},
+  {"cmd": "feature.add", "params": {"classifier": "$line.model", "kind": "column", "name": "quantity"}, "as": "l_qty"},
+  {"cmd": "element.set", "params": {"id": "$l_qty.id", "values": {"type": "INTEGER"}}},
+
+  {"cmd": "node.create", "params": {"kind": "Entity", "x": 40, "y": 260, "name": "Product"}, "as": "product"},
+  {"cmd": "feature.add", "params": {"classifier": "$product.model", "kind": "column", "name": "id"}, "as": "p_id"},
+  {"cmd": "element.set", "params": {"id": "$p_id.id", "values": {"type": "INTEGER", "primaryKey": true}}},
+  {"cmd": "feature.add", "params": {"classifier": "$product.model", "kind": "column", "name": "price"}, "as": "p_price"},
+  {"cmd": "element.set", "params": {"id": "$p_price.id", "values": {"type": "DECIMAL", "length": "10,2"}}},
+
+  {"cmd": "edge.create", "params": {"kind": "One to Many Relationship", "tail": "$customer.view", "head": "$order.view", "name": "places"}},
+  {"cmd": "edge.create", "params": {"kind": "One to Many Relationship", "tail": "$order.view", "head": "$line.view", "name": "contains"}},
+  {"cmd": "edge.create", "params": {"kind": "One to Many Relationship", "tail": "$product.view", "head": "$line.view"}}
+]

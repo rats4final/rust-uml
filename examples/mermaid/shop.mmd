@@ -1,0 +1,31 @@
+---
+title: Shop data
+---
+erDiagram
+    direction LR
+    CUSTOMER ||--o{ ORDER : places
+    ORDER ||--|{ ORDER_LINE : contains
+    PRODUCT ||--o{ ORDER_LINE : "appears in"
+    CUSTOMER |o..o{ COUPON : redeems
+    CUSTOMER {
+        int id PK
+        varchar(120) email UK "used to log in"
+        varchar(80) name
+    }
+    ORDER {
+        int id PK
+        int customer_id FK
+        datetime placed_at
+    }
+    ORDER_LINE {
+        int order_id PK, FK
+        int product_id PK, FK
+        int quantity
+    }
+    PRODUCT {
+        int id PK
+        decimal(10,2) price
+    }
+    COUPON {
+        varchar(20) code PK
+    }
