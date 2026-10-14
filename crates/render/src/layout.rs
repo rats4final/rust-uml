@@ -28,6 +28,11 @@ pub(crate) const ICON_SPACE: f64 = 22.0;
 const PORT_SIZE: f64 = 14.0;
 /// Corner radius of states and actions (StarUML: 10).
 pub(crate) const ROUND: f64 = 10.0;
+/// Corner radius of mind map nodes (StarUML: 14).
+pub(crate) const MIND_ROUND: f64 = 14.0;
+/// Padding around a mind map node's name (StarUML: 8 at the sides, 6 above and below).
+const MIND_PAD_X: f64 = 8.0;
+const MIND_PAD_Y: f64 = 6.0;
 /// Width of a swimlane's name band.
 pub(crate) const LANE_HEADER: f64 = 24.0;
 /// Height of an actor's stick figure (StarUML: 55).
@@ -134,6 +139,8 @@ pub enum Shape {
     },
     /// A flowchart symbol, filling the box.
     Flowchart(Flow),
+    /// A mind map node: a box with well-rounded corners.
+    MindNode,
 }
 
 /// The flowchart symbols (StarUML's flowchart extension, ISO 5807 shapes).
@@ -611,6 +618,52 @@ pub fn node_layout(doc: &Document, view: &Element, fonts: &Fonts) -> Option<Node
             dashed: false,
             icon: None,
             outside,
+            dividers: Vec::new(),
+        });
+    }
+
+    // Mind map nodes: the name centred, wrapped to the box unless `wordWrap`
+    // is off (on by default).
+    if view.type_name == "MMNodeView" {
+        let name = model.map(|m| m.name().to_owned()).unwrap_or_default();
+        let wraps = view.bool("wordWrap", true);
+        let widest_word = name
+            .split(['\n', ' '])
+            .map(|w| fonts.width(w, size, false, false))
+            .fold(0.0, f64::max);
+        let lines: Vec<String> = if wraps {
+            let room = (stored.w - 2.0 * MIND_PAD_X).max(widest_word);
+            wrap(&name, room, fonts, size)
+        } else {
+            name.split('\n').map(str::to_owned).collect()
+        };
+        let widest = lines
+            .iter()
+            .map(|l| fonts.width(l, size, false, false))
+            .fold(0.0, f64::max);
+        let min_w = ((if wraps { widest_word } else { widest }) + 2.0 * MIND_PAD_X).ceil();
+        let text_h = lines.len() as f64 * line_h;
+        let min_h = (text_h + 2.0 * MIND_PAD_Y).ceil();
+        let rect = Rect::new(stored.x, stored.y, stored.w.max(min_w), stored.h.max(min_h));
+        let top = rect.y + (rect.h - text_h) / 2.0;
+        return Some(NodeLayout {
+            rect,
+            min_w,
+            min_h,
+            shape: Shape::MindNode,
+            compartments: vec![Compartment {
+                lines: lines.into_iter().map(TextLine::centered).collect(),
+                rect: Rect::new(rect.x, top - PAD_Y, rect.w, text_h + 2.0 * PAD_Y),
+            }],
+            separators: false,
+            font_size: size,
+            fill,
+            line,
+            text,
+            active: false,
+            dashed: false,
+            icon: None,
+            outside: Vec::new(),
             dividers: Vec::new(),
         });
     }

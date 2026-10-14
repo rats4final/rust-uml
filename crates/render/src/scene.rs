@@ -6,8 +6,8 @@ use mdj::{Document, Element, Id};
 
 use crate::geom::{Color, Point, Rect};
 use crate::layout::{
-    ACTIVE_INSET, Flow, HAlign, ICON_SPACE, Icon, NODE_DEPTH, NOTE_FOLD, NodeLayout, ROUND, Shape,
-    Symbol, TEXT_PAD_X, TEXT_PAD_Y, node_layout,
+    ACTIVE_INSET, Flow, HAlign, ICON_SPACE, Icon, MIND_ROUND, NODE_DEPTH, NOTE_FOLD, NodeLayout,
+    ROUND, Shape, Symbol, TEXT_PAD_X, TEXT_PAD_Y, node_layout,
 };
 use crate::route;
 use crate::text::Fonts;
@@ -601,6 +601,12 @@ fn draw_node(scene: &mut Scene, l: &NodeLayout, fonts: &Fonts) {
         Shape::RoundRect => scene.prims.push(Prim::RoundRect {
             rect: r,
             radius: ROUND,
+            fill,
+            stroke,
+        }),
+        Shape::MindNode => scene.prims.push(Prim::RoundRect {
+            rect: r,
+            radius: MIND_ROUND,
             fill,
             stroke,
         }),
