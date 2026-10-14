@@ -98,7 +98,7 @@ impl Properties {
             .show(ui, |ui| {
                 let t = el.type_name.as_str();
                 ui.heading(
-                    ["UML", "ERD", "FC", "MM"]
+                    ["UML", "ERD", "FC", "MM", "DFD"]
                         .iter()
                         .find_map(|p| t.strip_prefix(p))
                         .unwrap_or(t)
@@ -423,6 +423,10 @@ impl Properties {
                     check(ui, el, k, l, false, out);
                     ui.end_row();
                 }
+            }
+            // Shown on the shape, e.g. `1.2` for a process.
+            "DFDExternalEntity" | "DFDProcess" | "DFDDataStore" => {
+                self.field(ui, el, "ID", "id", el.str("id").unwrap_or(""), out);
             }
             "ERDColumn" => {
                 self.field(ui, el, "Type", "type", el.str("type").unwrap_or(""), out);

@@ -1271,6 +1271,34 @@ mod tests {
     }
 
     #[test]
+    fn data_flow_diagram_by_mouse() {
+        let mut h = harness();
+        h.run();
+        h.state_mut()
+            .exec("diagram.add", json!({"type": "DFDDiagram"}));
+        h.run();
+        let mut place = |tool: &str, x: f64, y: f64| {
+            h.get_by_role_and_label(Role::Button, tool).click();
+            h.run();
+            let at = h.state().canvas.to_screen(render::Point::new(x, y));
+            click(&mut h, at);
+            h.state().session.selection[0].clone()
+        };
+        let customer = place("External Entity", 60.0, 80.0);
+        let process = place("Process", 320.0, 80.0);
+        h.get_by_role_and_label(Role::Button, "Data Flow").click();
+        h.run();
+        let (from, to) = (center_of(&h, &customer), center_of(&h, &process));
+        drag(&mut h, from, to);
+        let app = h.state();
+        assert_eq!(
+            app.session.doc.get(&process).unwrap().type_name,
+            "DFDProcessView"
+        );
+        assert_eq!(views_of_type(app, "DFDDataFlowView").len(), 1);
+    }
+
+    #[test]
     fn mind_map_by_mouse() {
         let mut h = harness();
         h.run();
