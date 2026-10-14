@@ -3,7 +3,7 @@
 use std::collections::HashSet;
 use std::f64::consts::PI;
 
-use mdj::values::{DEFAULT_FONT, align, edge_position, format_points, line_style};
+use mdj::values::{DEFAULT_FONT, align, edge_position, format_points};
 use mdj::{Document, Editor, Element, Field, Id};
 
 use crate::catalog::{
@@ -793,6 +793,7 @@ pub fn compartment_items(compartment_type: &str) -> Option<(&'static str, &'stat
         "UMLSlotCompartmentView" => Some(("slots", "UMLSlotView")),
         "UMLDecompositionCompartmentView" => Some(("regions", "UMLRegionView")),
         "UMLInteractionOperandCompartmentView" => Some(("operands", "UMLInteractionOperandView")),
+        "ERDColumnCompartmentView" => Some(("columns", "ERDColumnView")),
         _ => None,
     }
 }
@@ -889,6 +890,10 @@ pub fn create_edge_at(
                     spec.label
                 ));
             };
+            let is_entity = |m: &str| e.doc().get(m).is_some_and(|el| el.type_name == "ERDEntity");
+            if model_type == "ERDRelationship" && !(is_entity(&tail) && is_entity(&head)) {
+                return Err(format!("A {} joins two entities.", spec.label));
+            }
             let (tail, head) = if spec.owner == EdgeOwner::TailRole {
                 match (role_of(e.doc(), &tail), role_of(e.doc(), &head)) {
                     (Some(t), Some(h)) => (t, h),
@@ -906,6 +911,12 @@ pub fn create_edge_at(
             let mut end2 = Element::new(e.new_id(), end_type).with("reference", Field::Ref(head));
             if head_navigable != "unspecified" {
                 end2 = end2.with("navigable", Field::str(head_navigable));
+            }
+            for (k, v) in spec.end_fields[0] {
+                end1 = end1.with(k, init(*v));
+            }
+            for (k, v) in spec.end_fields[1] {
+                end2 = end2.with(k, init(*v));
             }
             rel.single(0, "end1", end1);
             rel.single(0, "end2", end2);
@@ -1223,15 +1234,21 @@ pub fn add_edge_view(
     let root = root
         .with("head", Field::Ref(head_view.to_owned()))
         .with("tail", Field::Ref(tail_view.to_owned()))
-        .with("lineStyle", Field::int(line_style::OBLIQUE))
+        .with("lineStyle", Field::int(spec.line_style))
         .with("points", Field::str(format_points(&[])));
     let root_id = root.id.clone();
     let mut t = Tree::new(root);
 
     let mut labels: Vec<(&str, i64, f64, f64)> = Vec::new();
-    if spec.labels == EdgeLabels::Name {
+    if matches!(spec.labels, EdgeLabels::Name | EdgeLabels::NameAndEndNames) {
         labels.push(("nameLabel", edge_position::MIDDLE, PI / 2.0, 15.0));
-    } else if spec.labels != EdgeLabels::None {
+    }
+    if spec.labels == EdgeLabels::NameAndEndNames {
+        labels.extend([
+            ("tailNameLabel", edge_position::TAIL, PI / 6.0, 30.0),
+            ("headNameLabel", edge_position::HEAD, -PI / 6.0, 30.0),
+        ]);
+    } else if !matches!(spec.labels, EdgeLabels::None | EdgeLabels::Name) {
         labels.extend([
             ("nameLabel", edge_position::MIDDLE, PI / 2.0, 15.0),
             ("stereotypeLabel", edge_position::MIDDLE, PI / 2.0, 30.0),
@@ -1309,6 +1326,19 @@ pub fn edge_spec_of(doc: &Document, edge_view: &Element) -> Option<&'static Edge
                 "UMLAssociation"
             }
         }
+        // Told apart by cardinality, as the toolbox creates them.
+        "ERDRelationshipView" => {
+            let many = |k: &str| {
+                end(k)
+                    .and_then(|e| e.str("cardinality"))
+                    .is_some_and(|c| c.ends_with('*'))
+            };
+            match (many("end1"), many("end2")) {
+                (true, true) => "ERDRelationshipManyToMany",
+                (_, true) | (true, _) => "ERDRelationshipOneToMany",
+                _ => "ERDRelationship",
+            }
+        }
         "UMLLinkView" if nav("end1") == "navigable" || nav("end2") == "navigable" => {
             "UMLDirectedLink"
         }
@@ -1359,6 +1389,8 @@ pub enum FeatureKind {
     Slot,
     /// An operand of a combined fragment (alt/par/…).
     Operand,
+    /// A column of an ERD entity.
+    Column,
 }
 
 impl FeatureKind {
@@ -1369,6 +1401,7 @@ impl FeatureKind {
             FeatureKind::Literal => "literals",
             FeatureKind::Slot => "slots",
             FeatureKind::Operand => "operands",
+            FeatureKind::Column => "columns",
         }
     }
     fn model_type(self) -> &'static str {
@@ -1378,6 +1411,7 @@ impl FeatureKind {
             FeatureKind::Literal => "UMLEnumerationLiteral",
             FeatureKind::Slot => "UMLSlot",
             FeatureKind::Operand => "UMLInteractionOperand",
+            FeatureKind::Column => "ERDColumn",
         }
     }
     fn compartment_key(self) -> &'static str {
@@ -1387,6 +1421,7 @@ impl FeatureKind {
             FeatureKind::Literal => "enumerationLiteralCompartment",
             FeatureKind::Slot => "slotCompartment",
             FeatureKind::Operand => "operandCompartment",
+            FeatureKind::Column => "columnCompartment",
         }
     }
     fn row_view(self) -> &'static str {
@@ -1396,6 +1431,7 @@ impl FeatureKind {
             FeatureKind::Literal => "UMLEnumerationLiteralView",
             FeatureKind::Slot => "UMLSlotView",
             FeatureKind::Operand => "UMLInteractionOperandView",
+            FeatureKind::Column => "ERDColumnView",
         }
     }
     fn base_name(self) -> &'static str {
@@ -1405,6 +1441,8 @@ impl FeatureKind {
             FeatureKind::Literal => "literal",
             FeatureKind::Slot => "slot",
             FeatureKind::Operand => "operand",
+            // StarUML: the type name without `ERD`.
+            FeatureKind::Column => "Column",
         }
     }
 
@@ -1415,6 +1453,7 @@ impl FeatureKind {
             "literal" => FeatureKind::Literal,
             "slot" => FeatureKind::Slot,
             "operand" => FeatureKind::Operand,
+            "column" => FeatureKind::Column,
             _ => return None,
         })
     }
@@ -1424,6 +1463,7 @@ impl FeatureKind {
         match self {
             FeatureKind::Literal => model_type == "UMLEnumeration",
             FeatureKind::Operand => model_type == "UMLCombinedFragment",
+            FeatureKind::Column => model_type == "ERDEntity",
             FeatureKind::Slot => matches!(
                 model_type,
                 "UMLObject" | "UMLArtifactInstance" | "UMLComponentInstance" | "UMLNodeInstance"
@@ -1571,6 +1611,7 @@ pub fn create_diagram(e: &mut Editor, parent: &str, diagram_type: &str) -> Resul
             &[INTERACTION]
         }
         ("FCFlowchartDiagram", p) if p != "FCFlowchart" => &[("FCFlowchart", "Flowchart")],
+        ("ERDDiagram", p) if p != "ERDDataModel" => &[("ERDDataModel", "Data Model")],
         ("UMLInteractionOverviewDiagram", "UMLActivity") => &[],
         ("UMLInteractionOverviewDiagram", "UMLInteraction") => &[ACTIVITY],
         ("UMLInteractionOverviewDiagram", _) => &[INTERACTION, ACTIVITY],

@@ -18,9 +18,9 @@ pub use factory::{
     edge_spec_of, owner_for_new_elements, return_parameter, target_for, views_of, with_contained,
 };
 pub use text::{
-    attribute_text, flow_text, instance_text, message_text, numbered_message_text, operation_text,
-    part_text, slot_text, stereotype_text, transition_text, typed_name, var_text,
-    visibility_symbol,
+    attribute_text, column_keys, column_type, flow_text, instance_text, message_text,
+    numbered_message_text, operation_text, part_text, slot_text, stereotype_text, transition_text,
+    typed_name, var_text, visibility_symbol,
 };
 
 #[cfg(test)]
@@ -817,6 +817,9 @@ mod tests {
                 catalog::EdgeOwner::SourceInteraction | catalog::EdgeOwner::TailRole => {
                     "UMLLifeline"
                 }
+                catalog::EdgeOwner::Source if spec.model_type == Some("ERDRelationship") => {
+                    "ERDEntity"
+                }
                 catalog::EdgeOwner::Source => "UMLClass",
             };
             let end_tool = if node_spec(end_tool)
@@ -844,6 +847,62 @@ mod tests {
             let got = edge_spec_of(&reloaded, reloaded.get(&ev).unwrap()).map(|s| s.id);
             assert_eq!(got, Some(spec.id));
         }
+    }
+
+    #[test]
+    fn er_diagrams_entities_columns_and_relationships() {
+        let mut doc = Document::new_project();
+        let dgm = diagram_of_type(&mut doc, "ERDDiagram");
+        let d = doc.get(&dgm).unwrap();
+        assert_eq!(d.name(), "ERDDiagram1");
+        let owner = d.parent.clone().unwrap();
+        let o = doc.get(&owner).unwrap();
+        assert_eq!(
+            (o.type_name.as_str(), o.name()),
+            ("ERDDataModel", "Data Model1")
+        );
+
+        let (customer, cv) = node(&mut doc, &dgm, "ERDEntity", 0.0, 0.0, None);
+        let (_, ov) = node(&mut doc, &dgm, "ERDEntity", 300.0, 0.0, None);
+        assert_eq!(doc.get(&customer).unwrap().parent, Some(owner));
+        assert_eq!(doc.get(&customer).unwrap().name(), "Entity1");
+        let column = doc.edit(|e| add_feature(e, &customer, FeatureKind::Column));
+        assert_eq!(doc.get(&column).unwrap().type_name, "ERDColumn");
+        assert_eq!(doc.get(&column).unwrap().name(), "Column1");
+        let comp = doc
+            .get(doc.get(&cv).unwrap().ref_id("columnCompartment").unwrap())
+            .unwrap();
+        let row = doc.get(&comp.children("subViews")[0]).unwrap();
+        assert_eq!(row.type_name, "ERDColumnView");
+        assert!(FeatureKind::Column.allowed_on("ERDEntity"));
+        assert!(!FeatureKind::Column.allowed_on("UMLClass"));
+        assert!(!FeatureKind::Attribute.allowed_on("ERDEntity"));
+
+        // One to many: only the "many" end is written (`1` is the default).
+        let (rel, rv) = edge(&mut doc, &dgm, "ERDRelationshipOneToMany", &cv, &ov);
+        let rel = doc.get(&rel.unwrap()).unwrap();
+        let end = |k: &str| doc.get(&rel.children(k)[0]).unwrap();
+        assert_eq!(end("end1").type_name, "ERDRelationshipEnd");
+        assert_eq!(end("end1").str("cardinality"), None);
+        assert_eq!(end("end2").str("cardinality"), Some("0..*"));
+        let view = doc.get(&rv).unwrap();
+        assert_eq!(
+            view.num("lineStyle", -1.0),
+            mdj::values::line_style::ROUND_RECT as f64
+        );
+        for key in ["nameLabel", "tailNameLabel", "headNameLabel"] {
+            assert!(view.ref_id(key).is_some(), "{key}");
+        }
+        assert!(view.ref_id("stereotypeLabel").is_none());
+
+        // Only entities can be related.
+        let class_dgm = diagram_of_type(&mut doc, "UMLClassDiagram");
+        let (_, class) = node(&mut doc, &class_dgm, "UMLClass", 0.0, 0.0, None);
+        let spec = edge_spec("ERDRelationship").unwrap();
+        assert!(
+            doc.try_edit(|e| create_edge(e, &dgm, spec, &cv, &class))
+                .is_err()
+        );
     }
 
     #[test]

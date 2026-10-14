@@ -212,6 +212,46 @@ pub fn flow_text(flow: &Element) -> String {
     }
 }
 
+/// An ERD column's keys, as StarUML lists them: `PK`, `FK`, and for
+/// columns that aren't primary keys `N` (nullable) and `U` (unique).
+pub fn column_keys(column: &Element) -> String {
+    let flag = |k: &str| column.bool(k, false);
+    let primary = flag("primaryKey");
+    let keys = [
+        (primary, "PK"),
+        (flag("foreignKey"), "FK"),
+        (!primary && flag("nullable"), "N"),
+        (!primary && flag("unique"), "U"),
+    ];
+    keys.iter()
+        .filter(|(on, _)| *on)
+        .map(|(_, k)| *k)
+        .collect::<Vec<_>>()
+        .join(",")
+}
+
+/// An ERD column's type with its length: `VARCHAR(20)`.
+pub fn column_type(column: &Element) -> String {
+    let ty = column.str("type").unwrap_or("");
+    // StarUML stores the length as text, but its own column editor writes 0.
+    let length = match column.str("length") {
+        Some(s) => s.to_owned(),
+        None => {
+            let n = column.num("length", 0.0);
+            if n == 0.0 {
+                String::new()
+            } else {
+                n.to_string()
+            }
+        }
+    };
+    if length.is_empty() {
+        ty.to_owned()
+    } else {
+        format!("{ty}({length})")
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -261,6 +301,25 @@ mod tests {
         .unwrap();
         assert_eq!(message_text(doc.get("M").unwrap()), "[ok] 2: pay(amount)");
         assert_eq!(message_text(doc.get("R").unwrap()), "receipt");
+    }
+
+    #[test]
+    fn column_keys_and_types() {
+        let doc = Document::from_json_str(
+            r#"{"_type":"Project","_id":"P","ownedElements":[
+              {"_type":"ERDColumn","_id":"A","primaryKey":true,"nullable":true,"type":"INTEGER"},
+              {"_type":"ERDColumn","_id":"B","foreignKey":true,"nullable":true,"unique":true,
+               "type":"VARCHAR","length":"20"},
+              {"_type":"ERDColumn","_id":"C","length":0}]}"#,
+        )
+        .unwrap();
+        let get = |id: &str| doc.get(id).unwrap();
+        assert_eq!(column_keys(get("A")), "PK");
+        assert_eq!(column_keys(get("B")), "FK,N,U");
+        assert_eq!(column_keys(get("C")), "");
+        assert_eq!(column_type(get("A")), "INTEGER");
+        assert_eq!(column_type(get("B")), "VARCHAR(20)");
+        assert_eq!(column_type(get("C")), "");
     }
 
     #[test]

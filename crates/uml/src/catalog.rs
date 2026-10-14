@@ -3,6 +3,8 @@
 //! so behaviour can be compared tool by tool. Field names and type names are
 //! the file format (see docs/evidence.md); notation lives in `render`.
 
+use mdj::values::line_style;
+
 /// Where a new model element goes in its owner.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Slot {
@@ -748,6 +750,21 @@ pub const NODES: &[NodeSpec] = &[
         "UMLInformationItemView",
         "InformationItem",
     ),
+    // Entity-relationship diagrams (StarUML's ERD extension): an entity has
+    // a bold name and a table of columns.
+    NodeSpec {
+        name_compartment: false,
+        labels: &["nameLabel"],
+        compartments: &[("columnCompartment", "ERDColumnCompartmentView")],
+        ..node(
+            "ERDEntity",
+            "Entity",
+            "ERDEntity",
+            "ERDEntityView",
+            "Entity",
+            (100.0, 40.0),
+        )
+    },
     // Flowcharts (StarUML's flowchart extension). Names come from the type
     // ("Process1"); connectors are named C and P; junction symbols have none.
     flowchart(
@@ -927,6 +944,8 @@ pub enum EdgeLabels {
     None,
     /// Only a name label (flowchart flows: FCGeneralEdgeView).
     Name,
+    /// A name label and a name label at each end (ERD relationships).
+    NameAndEndNames,
     /// name, stereotype, property (UMLGeneralEdgeView).
     General,
     /// General + role name, multiplicity and property at each end.
@@ -962,6 +981,11 @@ pub struct EdgeSpec {
     pub owner: EdgeOwner,
     /// Values written into the new model element (e.g. a message's sort).
     pub model_fields: &'static [(&'static str, Init)],
+    /// Values written into the `end1` and `end2` of an undirected relationship
+    /// (an ERD relationship's cardinalities).
+    pub end_fields: [&'static [(&'static str, Init)]; 2],
+    /// `lineStyle` of a new view (`mdj::values::line_style`).
+    pub line_style: i64,
     /// Diagram types this row is for (see [`NodeSpec::diagrams`]). Empty: any.
     pub diagrams: &'static [&'static str],
 }
@@ -981,6 +1005,8 @@ const fn directed(
         labels: EdgeLabels::General,
         owner: EdgeOwner::Source,
         model_fields: &[],
+        end_fields: [&[], &[]],
+        line_style: line_style::OBLIQUE,
         diagrams: &[],
     }
 }
@@ -1007,6 +1033,8 @@ const fn undirected(
         labels: EdgeLabels::Ends,
         owner: EdgeOwner::Source,
         model_fields: &[],
+        end_fields: [&[], &[]],
+        line_style: line_style::OBLIQUE,
         diagrams: &[],
     }
 }
@@ -1042,6 +1070,32 @@ const fn message(
         owner: EdgeOwner::SourceInteraction,
         model_fields: sort,
         ..directed(id, label, "UMLMessage", "UMLSeqMessageView")
+    }
+}
+
+/// An ERD relationship end's `cardinality` for "many" (the metamodel default is `1`).
+const MANY: &[(&str, Init)] = &[("cardinality", Init::Str("0..*"))];
+
+/// An ERD relationship: entities at both ends, the given end cardinalities.
+/// StarUML's preference draws these with rounded right angles.
+const fn erd_relationship(
+    id: &'static str,
+    label: &'static str,
+    end_fields: [&'static [(&'static str, Init)]; 2],
+) -> EdgeSpec {
+    EdgeSpec {
+        labels: EdgeLabels::NameAndEndNames,
+        end_fields,
+        line_style: line_style::ROUND_RECT,
+        ..undirected(
+            id,
+            label,
+            "ERDRelationship",
+            "ERDRelationshipView",
+            "ERDRelationshipEnd",
+            "none",
+            "unspecified",
+        )
     }
 }
 
@@ -1256,6 +1310,17 @@ pub const EDGES: &[EdgeSpec] = &[
         labels: EdgeLabels::Name,
         ..directed("FCFlow", "Flow", "FCFlow", "FCFlowView")
     },
+    erd_relationship("ERDRelationship", "One to One Relationship", [&[], &[]]),
+    erd_relationship(
+        "ERDRelationshipOneToMany",
+        "One to Many Relationship",
+        [&[], MANY],
+    ),
+    erd_relationship(
+        "ERDRelationshipManyToMany",
+        "Many to Many Relationship",
+        [MANY, MANY],
+    ),
     role_connector("UMLConnector", "Connector"),
     role_connector("UMLSelfConnector", "Self Connector"),
     comm_message("UMLForwardMessage", "Forward Message"),
@@ -1269,6 +1334,8 @@ pub const EDGES: &[EdgeSpec] = &[
         labels: EdgeLabels::None,
         owner: EdgeOwner::Source,
         model_fields: &[],
+        end_fields: [&[], &[]],
+        line_style: line_style::OBLIQUE,
         diagrams: &[],
     },
     EdgeSpec {
@@ -1280,6 +1347,8 @@ pub const EDGES: &[EdgeSpec] = &[
         labels: EdgeLabels::None,
         owner: EdgeOwner::Source,
         model_fields: &[],
+        end_fields: [&[], &[]],
+        line_style: line_style::OBLIQUE,
         diagrams: &[],
     },
 ];
@@ -1534,6 +1603,16 @@ pub const TOOL_GROUPS: &[ToolGroup] = &[
         ],
     },
     ToolGroup {
+        label: "Entity-Relationship",
+        diagrams: &["ERDDiagram"],
+        tools: &[
+            "ERDEntity",
+            "ERDRelationship",
+            "ERDRelationshipOneToMany",
+            "ERDRelationshipManyToMany",
+        ],
+    },
+    ToolGroup {
         label: "Timing",
         diagrams: TIMING,
         tools: &[
@@ -1617,6 +1696,8 @@ pub const DIAGRAMS: &[(&str, &str, &str)] = &[
         "Flowchart Diagram",
         "FlowchartDiagram",
     ),
+    // StarUML names these from the type: "ERDDiagram1".
+    ("ERDDiagram", "ER Diagram", "ERDDiagram"),
 ];
 
 /// A tool, either kind.
