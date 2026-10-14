@@ -2,6 +2,11 @@
 
 Newest first. Terse: what landed, numbers, what's still open.
 
+## 2026-10-14 — v0.8.0: DFD, C4, Azure, polish
+
+- Release notes for data flow, C4 and Azure diagrams (Azure icons downloaded by the user) and the
+  polish pass. Workspace version 0.8.0.
+
 ## 2026-10-14 — M5 complete: Azure
 
 - Azure diagrams: groups (solid/dashed, square/rounded) holding services, services as icons with

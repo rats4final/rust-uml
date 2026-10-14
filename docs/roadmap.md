@@ -1,19 +1,19 @@
 # Roadmap and handoff
 
-**Read this to pick up the work.** Status as of 2026-10-14: v0.7.0 (flowcharts, ER diagrams and mind maps, each with its Mermaid import); M5 continues with DFD, C4 and Azure.
+**Read this to pick up the work.** Status as of 2026-10-14: v0.8.0 (every diagram family StarUML offers for free, plus a polish pass); next is M6, editing depth.
 Order of reading for a new agent/session: `AGENTS.md` → this file → `docs/parity.md` → `log/devlog.md`.
 
 ## 1. Where things stand
 
-- **Released:** v0.7.0 (pre-release) — https://github.com/rats4final/rust-uml/releases
+- **Released:** v0.8.0 (pre-release) — https://github.com/rats4final/rust-uml/releases
   Linux x64, Windows x64, macOS arm64 + x64, web zip. Web app live at
   https://rats4final.github.io/rust-uml/ (redeploys on every push to `main`).
 - **Works:** class diagrams, all six UML structural diagram types, and use case, statechart,
   activity, sequence, communication, timing, interaction overview and information flow diagrams
-  (every UML diagram type), flowcharts, ER diagrams and mind maps, with StarUML's toolbox groups (see `rust-uml-cli tools`; rows in
+  (every UML diagram type), flowcharts, ER, mind map, data flow, C4 and Azure diagrams, with StarUML's toolbox groups (see `rust-uml-cli tools`; rows in
   `crates/uml/src/catalog.rs`). Properties panel, undo/redo, lossless `.mdj` save, SVG/PNG export
   without watermarks.
-- **Verified:** 161 tests (incl. mouse-driven UI tests and a real-file round trip of all 14 model files
+- **Verified:** 185 tests (incl. mouse-driven UI tests and a real-file round trip of all 14 model files
   shipped with StarUML); CI green on Linux, Windows, macOS; Windows exe launched natively; web build
   screenshotted in Chromium; StarUML interop proven both ways for class diagrams (M1.5).
   **Not verified:** macOS app actually launching (no Mac); other diagram families with StarUML.

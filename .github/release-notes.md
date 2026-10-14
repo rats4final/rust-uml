@@ -2,28 +2,34 @@ Preview of **rust-uml**: an independent, open-source UML modeler written in Rust
 saves StarUML `.mdj` files. Not affiliated with MKLabs/StarUML. What changed in each version:
 `log/devlog.md`.
 
-**New in v0.7.0:** flowcharts, ER diagrams and mind maps, each with Mermaid import.
-- **Flowcharts:** all 27 ISO flowchart symbols StarUML offers (process, decision, terminator,
-  data, document, database, manual input, display, connectors, …) and labelled flows.
-- **ER diagrams:** entities with a keys / name / type column table, one-to-one, one-to-many and
-  many-to-many relationships with crow's-foot ends, dotted when non-identifying. Edit column
-  types, lengths and keys and each end's cardinality in the properties panel.
-- **Mind maps:** rounded nodes whose names wrap, joined by plain lines.
-- **Mermaid import** now also reads `flowchart`/`graph`, `erDiagram` and `mindmap` (File ▸ Import
-  Mermaid…, `rust-uml-cli import`, MCP `mermaid_import`). Flowchart shapes land on the matching
-  symbols, including Mermaid's newer `A@{ shape: doc }` form; ER relationships keep their
-  cardinalities and identifying/non-identifying lines; mind maps are laid out with the root in
-  the middle and branches to both sides. What can't be kept (subgraphs, link styles, mind map
-  node shapes) is listed as a warning.
-- Help ▸ About and the MCP server now report the real version (they said 0.1.0 before).
-- New examples: `flowchart.mdj`, `erd.mdj`, `mindmap.mdj`, and Mermaid samples `login.mmd`,
-  `shop.mmd`, `trip.mmd`.
-- Known gap: right-angle lines leaving the same side of a box start from the same point, so on
-  busy ER diagrams their end marks can overlap.
+**New in v0.8.0:** data flow, C4 and Azure diagrams (every diagram family StarUML offers for
+free is now in), and a polish pass.
+- **Data flow diagrams:** external entities, processes with an ID band, data stores open on the
+  right, named data flows. A process can hold its lower-level diagram.
+- **C4:** people, software systems, containers (database cylinder, web, desktop and mobile app
+  looks, λ / `>_` / `#_` badges), components, elements, and dotted relationships with a
+  description and `[technology]`, in StarUML's blues. A diagram inside a system shows the system
+  as its dashed boundary.
+- **Azure:** groups (solid or dashed, square or rounded), services, numbered callouts,
+  connectors. **Service icons are not included:** Microsoft only allows its Azure icons to be
+  distributed for diagrams and documentation, so download them from
+  <https://learn.microsoft.com/azure/architecture/icons/>, unzip, and choose the folder with
+  View ▸ Azure Icons Folder… (or `--azure-icons <folder>`, or `RUST_UML_AZURE_ICONS` for the CLI
+  and MCP server). Without them, services show their initials. StarUML's Azure files find their
+  icons by name.
+- **Lines and labels:** right-angle lines leaving one side of a box start apart; rounded and
+  curved line styles are drawn as such; labels no longer sit across their own line; C4
+  relationship descriptions wrap.
+- **Editing:** Format ▸ Suppress Columns (ER), Model ▸ Validate Model (StarUML's ER rules), and
+  quick-edit buttons in the properties panel: add a mind map node left or right, add a related
+  entity. Renaming keeps the label text saved in the file up to date.
+- **For scripts and agents:** `view.add` shows an existing element on a diagram; `element.set`
+  accepts `{"$ref": id}` to set a reference.
+- New examples: `dfd.mdj`, `c4.mdj`, `azure.mdj`.
 
 **What works:** every UML diagram type StarUML offers (class, the six structural ones, use case,
 statechart, activity, sequence, communication, timing, interaction overview, information flow),
-plus flowcharts, ER diagrams and mind maps, with StarUML's tool sets, properties panel, undo/redo, lossless save (verified both ways with
+plus flowcharts, ER, mind map, data flow, C4 and Azure diagrams, with StarUML's tool sets, properties panel, undo/redo, lossless save (verified both ways with
 StarUML 7.1.1 for class diagrams), SVG/PNG export with no watermarks, scripting, Mermaid import
 and an MCP server. Full checklist: `docs/parity.md`.
 
@@ -37,8 +43,9 @@ and an MCP server. Full checklist: `docs/parity.md`.
 | Linux (x64) | `…-linux-x86_64.tar.gz` | `tar xzf …` then `./rust-uml`. |
 | Browser | `…-web.zip`, or the hosted copy on GitHub Pages | Serve the folder with any static web server. |
 
-Each archive also contains `rust-uml-cli`, six example models: `shapes.mdj`,
-`structures.mdj`, `behaviour.mdj`, `flowchart.mdj`, `erd.mdj` and `mindmap.mdj` (try
+Each archive also contains `rust-uml-cli`, nine example models: `shapes.mdj`,
+`structures.mdj`, `behaviour.mdj`, `flowchart.mdj`, `erd.mdj`, `mindmap.mdj`, `dfd.mdj`,
+`c4.mdj` and `azure.mdj` (try
 `rust-uml behaviour.mdj`, then pick diagrams in the Model Explorer), and Mermaid and script
 samples under `examples/`.
 

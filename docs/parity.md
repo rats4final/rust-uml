@@ -1,6 +1,6 @@
 # Parity with StarUML 7.1.1
 
-Status line: **v0.7.0: every UML diagram type, plus flowcharts, ER diagrams and mind maps, each with Mermaid import. Since then: data flow, C4 and Azure diagrams (every free family).** Updated 2026-10-14.
+Status line: **v0.8.0: every UML diagram type and every free StarUML family (flowchart, ER, mind map, DFD, C4, Azure), with Mermaid import for six kinds.** Updated 2026-10-14.
 
 Each row comes from the evidence in [`evidence.md`](evidence.md). "Paid" marks features StarUML
 locks behind a licence (see evidence §4: only exports are locked, by watermark).
