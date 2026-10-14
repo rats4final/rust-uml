@@ -6,7 +6,7 @@ use mdj::{Document, Element, Id};
 
 use crate::geom::{Color, Point, Rect};
 use crate::layout::{
-    ACTIVE_INSET, HAlign, ICON_SPACE, Icon, NODE_DEPTH, NOTE_FOLD, NodeLayout, ROUND, Shape,
+    ACTIVE_INSET, Flow, HAlign, ICON_SPACE, Icon, NODE_DEPTH, NOTE_FOLD, NodeLayout, ROUND, Shape,
     Symbol, TEXT_PAD_X, TEXT_PAD_Y, node_layout,
 };
 use crate::route;
@@ -236,7 +236,7 @@ fn build_scene_at(doc: &Document, diagram: &str, fonts: &Fonts, depth: usize) ->
         } else if let Some(points) = if view.type_name == "UMLTimingMessageView" {
             timing_message_points(doc, view, &rects)
         } else {
-            edge_points(view, &rects)
+            edge_points(view, &rects).map(|pts| clip_to_outlines(view, pts, &layouts))
         } {
             let label_boxes = draw_edge(&mut scene, doc, view, &points, fonts);
             for r in label_boxes {
@@ -642,6 +642,7 @@ fn draw_node(scene: &mut Scene, l: &NodeLayout, fonts: &Fonts) {
                 stroke,
             });
         }
+        Shape::Flowchart(flow) => draw_flowchart(scene, flow, r, fill, stroke),
         Shape::Lollipop { circle } => {
             scene.prims.push(Prim::Ellipse {
                 rect: circle,
@@ -713,6 +714,360 @@ fn draw_node(scene: &mut Scene, l: &NodeLayout, fonts: &Fonts) {
             text: label.line.text.clone(),
             style: s,
         });
+    }
+}
+
+/// Points along a cubic Bézier curve from `a` (excluded) to `d`.
+fn cubic(a: Point, b: Point, c: Point, d: Point) -> Vec<Point> {
+    (1..=16)
+        .map(|i| {
+            let t = f64::from(i) / 16.0;
+            let u = 1.0 - t;
+            let (k0, k1, k2, k3) = (u * u * u, 3.0 * u * u * t, 3.0 * u * t * t, t * t * t);
+            Point::new(
+                k0 * a.x + k1 * b.x + k2 * c.x + k3 * d.x,
+                k0 * a.y + k1 * b.y + k2 * c.y + k3 * d.y,
+            )
+        })
+        .collect()
+}
+
+/// Points along a quadratic Bézier curve from `a` (excluded) to `c`.
+fn quadratic(a: Point, b: Point, c: Point) -> Vec<Point> {
+    // The same curve as a cubic with control points two thirds of the way.
+    let third = |p: Point, q: Point| {
+        Point::new(p.x + (q.x - p.x) * 2.0 / 3.0, p.y + (q.y - p.y) * 2.0 / 3.0)
+    };
+    cubic(a, third(a, b), third(c, b), c)
+}
+
+/// Draw a flowchart symbol filling `r` (shapes after ISO 5807, sized as
+/// StarUML draws them).
+fn draw_flowchart(scene: &mut Scene, flow: Flow, r: Rect, fill: Option<Color>, stroke: Color) {
+    let (x1, y1, x2, y2) = (r.x, r.y, r.right(), r.bottom());
+    let (xm, ym) = (r.center().x, r.center().y);
+    let p = Point::new;
+    let polygon = |scene: &mut Scene, points: Vec<Point>| {
+        scene.prims.push(Prim::Polygon {
+            points,
+            fill,
+            stroke,
+        });
+    };
+    let line = |scene: &mut Scene, points: Vec<Point>| {
+        scene.prims.push(Prim::Line {
+            points,
+            stroke,
+            dashed: false,
+        });
+    };
+    let ellipse = |scene: &mut Scene, rect: Rect| {
+        scene.prims.push(Prim::Ellipse {
+            rect,
+            fill,
+            stroke,
+            dashed: false,
+        });
+    };
+    let boxed = |scene: &mut Scene, radius: f64| {
+        scene.prims.push(if radius > 0.0 {
+            Prim::RoundRect {
+                rect: r,
+                radius,
+                fill,
+                stroke,
+            }
+        } else {
+            Prim::Rect {
+                rect: r,
+                fill,
+                stroke,
+                dashed: false,
+            }
+        });
+    };
+    // A page with a wavy bottom edge.
+    let document = |r: Rect| {
+        let h = (r.h / 6.0).floor();
+        let g = (r.w / 3.0).floor();
+        let mut pts = vec![p(r.x, r.y), p(r.right(), r.y), p(r.right(), r.bottom())];
+        pts.extend(cubic(
+            p(r.right(), r.bottom()),
+            p(r.right() - g, r.bottom() - 2.0 * h),
+            p(r.x + g, r.bottom() + 1.5 * h),
+            p(r.x, r.bottom() - h),
+        ));
+        pts
+    };
+    // Kappa: control-point distance for a quarter ellipse.
+    const K: f64 = 0.552_284_8;
+    use Flow::*;
+    match flow {
+        Process => boxed(scene, 0.0),
+        Terminator => boxed(scene, r.w.min(r.h) / 2.0),
+        AlternateProcess => boxed(scene, 10.0),
+        Decision => polygon(scene, vec![p(x1, ym), p(xm, y1), p(x2, ym), p(xm, y2)]),
+        Delay => {
+            let rad = r.h / 2.0;
+            let cx = x2 - rad;
+            let mut pts = vec![p(x1, y1), p(cx, y1)];
+            pts.extend((1..=16).map(|i| {
+                let a = -std::f64::consts::FRAC_PI_2 + std::f64::consts::PI * f64::from(i) / 16.0;
+                p(cx + rad * a.cos(), ym + rad * a.sin())
+            }));
+            pts.push(p(x1, y2));
+            polygon(scene, pts);
+        }
+        PredefinedProcess => {
+            boxed(scene, 0.0);
+            for x in [x1 + 5.0, x2 - 5.0] {
+                line(scene, vec![p(x, y1), p(x, y2)]);
+            }
+        }
+        InternalStorage => {
+            boxed(scene, 0.0);
+            line(scene, vec![p(x1 + 10.0, y1), p(x1 + 10.0, y2)]);
+            line(scene, vec![p(x1, y1 + 10.0), p(x2, y1 + 10.0)]);
+        }
+        Data => {
+            let g = (r.w / 6.0).floor();
+            polygon(
+                scene,
+                vec![p(x1 + g, y1), p(x2, y1), p(x2 - g, y2), p(x1, y2)],
+            );
+        }
+        Document => polygon(scene, document(r)),
+        MultiDocument => {
+            // Three pages, the front one bottom-right.
+            for k in 0..3 {
+                let o = 5.0 * f64::from(k);
+                polygon(
+                    scene,
+                    document(Rect::new(x1 + o, y1 + o, r.w - 10.0, r.h - 10.0)),
+                );
+            }
+        }
+        Preparation => {
+            let g = (r.w / 6.0).floor();
+            polygon(
+                scene,
+                vec![
+                    p(x1, ym),
+                    p(x1 + g, y1),
+                    p(x2 - g, y1),
+                    p(x2, ym),
+                    p(x2 - g, y2),
+                    p(x1 + g, y2),
+                ],
+            );
+        }
+        Display => {
+            let g = (r.w / 6.0).floor();
+            let mut pts = vec![p(x1, ym), p(x1 + g, y1), p(x2 - g, y1)];
+            pts.extend(quadratic(p(x2 - g, y1), p(x2, y1), p(x2, ym)));
+            pts.extend(quadratic(p(x2, ym), p(x2, y2), p(x2 - g, y2)));
+            pts.push(p(x1 + g, y2));
+            polygon(scene, pts);
+        }
+        ManualInput => {
+            let g = (r.h / 6.0).floor();
+            polygon(scene, vec![p(x1, y1 + g), p(x2, y1), p(x2, y2), p(x1, y2)]);
+        }
+        ManualOperation => {
+            let g = (r.w / 6.0).floor();
+            polygon(
+                scene,
+                vec![p(x1, y1), p(x2, y1), p(x2 - g, y2), p(x1 + g, y2)],
+            );
+        }
+        Card => {
+            let g = (r.w / 8.0).floor();
+            polygon(
+                scene,
+                vec![
+                    p(x1 + g, y1),
+                    p(x2, y1),
+                    p(x2, y2),
+                    p(x1, y2),
+                    p(x1, y1 + g),
+                ],
+            );
+        }
+        PunchedTape => {
+            let h = (r.h / 6.0).floor();
+            let g = (r.w / 3.0).floor();
+            let mut pts = vec![p(x1, y1)];
+            pts.extend(cubic(
+                p(x1, y1),
+                p(x1 + g, y1 + 2.0 * h),
+                p(x2 - g, y1 - 1.5 * h),
+                p(x2, y1 + h),
+            ));
+            pts.push(p(x2, y2));
+            pts.extend(cubic(
+                p(x2, y2),
+                p(x2 - g, y2 - 2.0 * h),
+                p(x1 + g, y2 + 1.5 * h),
+                p(x1, y2 - h),
+            ));
+            polygon(scene, pts);
+        }
+        Connector => ellipse(scene, r),
+        OffPageConnector => {
+            let g = (r.h / 4.0).floor();
+            polygon(
+                scene,
+                vec![
+                    p(x1, y1),
+                    p(x2, y1),
+                    p(x2, y2 - g),
+                    p(xm, y2),
+                    p(x1, y2 - g),
+                ],
+            );
+        }
+        Or => {
+            ellipse(scene, r);
+            line(scene, vec![p(xm, y1), p(xm, y2)]);
+            line(scene, vec![p(x1, ym), p(x2, ym)]);
+        }
+        SummingJunction => {
+            ellipse(scene, r);
+            let d = (std::f64::consts::SQRT_2 * r.w / 4.0).round();
+            line(scene, vec![p(xm - d, ym - d), p(xm + d, ym + d)]);
+            line(scene, vec![p(xm + d, ym - d), p(xm - d, ym + d)]);
+        }
+        Collate => polygon(scene, vec![p(x1, y1), p(x2, y1), p(x1, y2), p(x2, y2)]),
+        Sort => {
+            polygon(scene, vec![p(x1, ym), p(xm, y1), p(x2, ym), p(xm, y2)]);
+            line(scene, vec![p(x1, ym), p(x2, ym)]);
+        }
+        Merge => polygon(scene, vec![p(x1, y1), p(x2, y1), p(xm, y2)]),
+        Extract => polygon(scene, vec![p(xm, y1), p(x2, y2), p(x1, y2)]),
+        StoredData => {
+            // Rounded on the left, hollowed on the right.
+            let g = (r.w / 8.0).floor();
+            let (ox, oy) = (g * K, r.h / 2.0 * K);
+            let mut pts = vec![p(x2, y1)];
+            pts.extend(cubic(
+                p(x2, y1),
+                p(x2 - ox, y1),
+                p(x2 - g, ym - oy),
+                p(x2 - g, ym),
+            ));
+            pts.extend(cubic(
+                p(x2 - g, ym),
+                p(x2 - g, ym + oy),
+                p(x2 - ox, y2),
+                p(x2, y2),
+            ));
+            pts.push(p(x1 + g, y2));
+            pts.extend(cubic(
+                p(x1 + g, y2),
+                p(x1 + g - ox, y2),
+                p(x1, ym + oy),
+                p(x1, ym),
+            ));
+            pts.extend(cubic(
+                p(x1, ym),
+                p(x1, ym - oy),
+                p(x1 + g - ox, y1),
+                p(x1 + g, y1),
+            ));
+            polygon(scene, pts);
+        }
+        Database => {
+            // A standing cylinder, with the front of its top rim.
+            let g = (r.h / 8.0).floor();
+            let (ox, oy) = (r.w / 2.0 * K, g * K);
+            let mut pts = vec![p(x1, y1 + g)];
+            pts.extend(cubic(
+                p(x1, y1 + g),
+                p(x1, y1 + g - oy),
+                p(xm - ox, y1),
+                p(xm, y1),
+            ));
+            pts.extend(cubic(
+                p(xm, y1),
+                p(xm + ox, y1),
+                p(x2, y1 + g - oy),
+                p(x2, y1 + g),
+            ));
+            pts.push(p(x2, y2 - g));
+            pts.extend(cubic(
+                p(x2, y2 - g),
+                p(x2, y2 - g + oy),
+                p(xm + ox, y2),
+                p(xm, y2),
+            ));
+            pts.extend(cubic(
+                p(xm, y2),
+                p(xm - ox, y2),
+                p(x1, y2 - g + oy),
+                p(x1, y2 - g),
+            ));
+            polygon(scene, pts);
+            let mut rim = vec![p(x1, y1 + g)];
+            rim.extend(cubic(
+                p(x1, y1 + g),
+                p(x1, y1 + g + oy),
+                p(xm - ox, y1 + 2.0 * g),
+                p(xm, y1 + 2.0 * g),
+            ));
+            rim.extend(cubic(
+                p(xm, y1 + 2.0 * g),
+                p(xm + ox, y1 + 2.0 * g),
+                p(x2, y1 + g + oy),
+                p(x2, y1 + g),
+            ));
+            line(scene, rim);
+        }
+        DirectAccessStorage => {
+            // A lying cylinder, with the front of its right end.
+            let g = (r.w / 8.0).floor();
+            let (ox, oy) = (g * K, r.h / 2.0 * K);
+            let mut pts = vec![p(x2 - g, y1)];
+            pts.extend(cubic(
+                p(x2 - g, y1),
+                p(x2 - g + ox, y1),
+                p(x2, ym - oy),
+                p(x2, ym),
+            ));
+            pts.extend(cubic(
+                p(x2, ym),
+                p(x2, ym + oy),
+                p(x2 - g + ox, y2),
+                p(x2 - g, y2),
+            ));
+            pts.push(p(x1 + g, y2));
+            pts.extend(cubic(
+                p(x1 + g, y2),
+                p(x1 + g - ox, y2),
+                p(x1, ym + oy),
+                p(x1, ym),
+            ));
+            pts.extend(cubic(
+                p(x1, ym),
+                p(x1, ym - oy),
+                p(x1 + g - ox, y1),
+                p(x1 + g, y1),
+            ));
+            polygon(scene, pts);
+            let mut end = vec![p(x2 - g, y1)];
+            end.extend(cubic(
+                p(x2 - g, y1),
+                p(x2 - g - ox, y1),
+                p(x2 - 2.0 * g, ym - oy),
+                p(x2 - 2.0 * g, ym),
+            ));
+            end.extend(cubic(
+                p(x2 - 2.0 * g, ym),
+                p(x2 - 2.0 * g, ym + oy),
+                p(x2 - g - ox, y2),
+                p(x2 - g, y2),
+            ));
+            line(scene, end);
+        }
     }
 }
 
@@ -917,6 +1272,71 @@ pub(crate) fn line_part_rect(layout: &NodeLayout) -> Option<Rect> {
     ))
 }
 
+/// The outline a line should end on, when it isn't the box itself.
+#[derive(Debug, Clone, Copy, PartialEq)]
+enum Outline {
+    Diamond,
+    Ellipse,
+}
+
+fn outline_of(shape: Shape) -> Option<Outline> {
+    match shape {
+        Shape::Flowchart(Flow::Decision | Flow::Sort) | Shape::Symbol(Symbol::Diamond) => {
+            Some(Outline::Diamond)
+        }
+        Shape::Flowchart(Flow::Connector | Flow::Or | Flow::SummingJunction)
+        | Shape::Ellipse
+        | Shape::Symbol(
+            Symbol::Dot
+            | Symbol::BullsEye
+            | Symbol::CircleX
+            | Symbol::Ring
+            | Symbol::SmallDot
+            | Symbol::History { .. },
+        ) => Some(Outline::Ellipse),
+        _ => None,
+    }
+}
+
+/// Move `p` (on or outside box `r`) in toward `r`'s centre until it lies on
+/// the outline; a point already inside the outline stays.
+fn clip_point(p: Point, r: Rect, outline: Outline) -> Point {
+    let c = r.center();
+    let (dx, dy) = (p.x - c.x, p.y - c.y);
+    let (a, b) = (r.w / 2.0, r.h / 2.0);
+    if a <= 0.0 || b <= 0.0 {
+        return p;
+    }
+    let k = match outline {
+        Outline::Diamond => dx.abs() / a + dy.abs() / b,
+        Outline::Ellipse => ((dx / a).powi(2) + (dy / b).powi(2)).sqrt(),
+    };
+    if k <= 1.0 {
+        return p;
+    }
+    Point::new(c.x + dx / k, c.y + dy / k)
+}
+
+/// End a line on its boxes' outlines where they are diamonds or ovals, not
+/// on the boxes around them.
+fn clip_to_outlines(
+    view: &Element,
+    mut pts: Vec<Point>,
+    layouts: &HashMap<&str, NodeLayout>,
+) -> Vec<Point> {
+    let outline = |key: &str| {
+        let l = layouts.get(view.ref_id(key)?)?;
+        Some((l.rect, outline_of(l.shape)?))
+    };
+    if let (Some((r, o)), Some(first)) = (outline("tail"), pts.first_mut()) {
+        *first = clip_point(*first, r, o);
+    }
+    if let (Some((r, o)), Some(last)) = (outline("head"), pts.last_mut()) {
+        *last = clip_point(*last, r, o);
+    }
+    pts
+}
+
 fn edge_points(view: &Element, rects: &HashMap<&str, Rect>) -> Option<Vec<Point>> {
     let tail = rects.get(view.ref_id("tail")?)?;
     let head = rects.get(view.ref_id("head")?)?;
@@ -968,7 +1388,9 @@ fn edge_style(doc: &Document, view: &Element) -> (bool, EndMark, EndMark) {
         };
         return (false, mark("end1"), mark("end2"));
     }
-    let (dashed, head) = if t == "UMLInformationFlowView" {
+    let (dashed, head) = if t == "FCFlowView" {
+        (false, EndMark::FilledTriangle)
+    } else if t == "UMLInformationFlowView" {
         (true, EndMark::OpenArrow)
     } else if t.contains("Generalization") {
         (false, EndMark::HollowTriangle)
@@ -1777,6 +2199,90 @@ mod tests {
         assert!(turned);
         let svg = crate::to_svg(&scene);
         assert!(svg.contains("rotate(-90"), "turned in SVG too");
+    }
+
+    #[test]
+    fn flowchart_symbols() {
+        let mut doc = Document::new_project();
+        let model = doc.get(doc.root()).unwrap().children("ownedElements")[0].clone();
+        let on = "FCFlowchartDiagram";
+        let dgm = doc
+            .try_edit(|e| uml::create_diagram(e, &model, on))
+            .unwrap();
+        // Every symbol draws something and is clickable, name or not.
+        let mut views = Vec::new();
+        for (i, spec) in uml::NODES
+            .iter()
+            .filter(|s| s.id.starts_with("FC"))
+            .enumerate()
+        {
+            let (_, v) = doc
+                .try_edit(|e| {
+                    uml::create_node(
+                        e,
+                        &dgm,
+                        spec,
+                        (i % 6) as f64 * 200.0,
+                        (i / 6) as f64 * 150.0,
+                        None,
+                    )
+                })
+                .unwrap();
+            views.push(v);
+        }
+        assert_eq!(views.len(), 27);
+        let spec = uml::edge_spec_on("FCFlow", on).unwrap();
+        doc.try_edit(|e| uml::create_edge(e, &dgm, spec, &views[0], &views[1]))
+            .unwrap();
+        let scene = build_scene(&doc, &dgm, &Fonts::default());
+        for v in &views {
+            assert!(scene.node_rect(v).is_some(), "{v}");
+        }
+        // The decision is a diamond with its name in the middle.
+        let decision = scene.node_rect(&views[2]).unwrap();
+        let diamond = scene.prims.iter().any(|p| {
+            matches!(p, Prim::Polygon { points, .. }
+                if points.len() == 4 && points[1] == Point::new(decision.center().x, decision.y))
+        });
+        assert!(diamond);
+        let label = scene
+            .prims
+            .iter()
+            .find_map(|p| match p {
+                Prim::Text { text, rect, .. } if text == "Decision1" => Some(*rect),
+                _ => None,
+            })
+            .unwrap();
+        assert!((label.center().y - decision.center().y).abs() < 1.0);
+        // A database's name sits below its rim.
+        let db = scene.node_rect(&views[24]).unwrap();
+        let db_label = scene
+            .prims
+            .iter()
+            .find_map(|p| match p {
+                Prim::Text { text, rect, .. } if text == "Database1" => Some(*rect),
+                _ => None,
+            })
+            .unwrap();
+        assert!(db_label.y >= db.y + 10.0 + 2.0 * (db.h / 8.0).floor());
+        // Flows end in a filled arrowhead.
+        assert!(scene.prims.iter().any(|p| matches!(
+            p,
+            Prim::Polygon { points, fill: Some(Color::BLACK), .. } if points.len() == 3
+        )));
+    }
+
+    #[test]
+    fn lines_end_on_diamonds_and_ovals() {
+        let r = Rect::new(0.0, 0.0, 100.0, 60.0);
+        // From the right-hand corner of the box toward the centre.
+        let on_box = Point::new(100.0, 60.0);
+        let d = clip_point(on_box, r, Outline::Diamond);
+        assert!(((d.x - 50.0).abs() / 50.0 + (d.y - 30.0).abs() / 30.0 - 1.0).abs() < 1e-9);
+        let e = clip_point(Point::new(100.0, 30.0), r, Outline::Ellipse);
+        assert_eq!(e, Point::new(100.0, 30.0), "already on the oval");
+        let inside = Point::new(55.0, 32.0);
+        assert_eq!(clip_point(inside, r, Outline::Diamond), inside);
     }
 
     #[test]

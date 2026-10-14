@@ -132,6 +132,123 @@ pub enum Shape {
     Frame {
         tag: Rect,
     },
+    /// A flowchart symbol, filling the box.
+    Flowchart(Flow),
+}
+
+/// The flowchart symbols (StarUML's flowchart extension, ISO 5807 shapes).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Flow {
+    Process,
+    Terminator,
+    Decision,
+    Delay,
+    PredefinedProcess,
+    AlternateProcess,
+    Data,
+    Document,
+    MultiDocument,
+    Preparation,
+    Display,
+    ManualInput,
+    ManualOperation,
+    Card,
+    PunchedTape,
+    Connector,
+    OffPageConnector,
+    Or,
+    SummingJunction,
+    Collate,
+    Sort,
+    Merge,
+    Extract,
+    StoredData,
+    Database,
+    DirectAccessStorage,
+    InternalStorage,
+}
+
+impl Flow {
+    /// The symbol a view type (`FCProcessView`, …) draws.
+    pub fn of_view(view_type: &str) -> Option<Flow> {
+        use Flow::*;
+        Some(match view_type.strip_prefix("FC")?.strip_suffix("View")? {
+            "Process" => Process,
+            "Terminator" => Terminator,
+            "Decision" => Decision,
+            "Delay" => Delay,
+            "PredefinedProcess" => PredefinedProcess,
+            "AlternateProcess" => AlternateProcess,
+            "Data" => Data,
+            "Document" => Document,
+            "MultiDocument" => MultiDocument,
+            "Preparation" => Preparation,
+            "Display" => Display,
+            "ManualInput" => ManualInput,
+            "ManualOperation" => ManualOperation,
+            "Card" => Card,
+            "PunchedTape" => PunchedTape,
+            "Connector" => Connector,
+            "OffPageConnector" => OffPageConnector,
+            "Or" => Or,
+            "SummingJunction" => SummingJunction,
+            "Collate" => Collate,
+            "Sort" => Sort,
+            "Merge" => Merge,
+            "Extract" => Extract,
+            "StoredData" => StoredData,
+            "Database" => Database,
+            "DirectAccessStorage" => DirectAccessStorage,
+            "InternalStorage" => InternalStorage,
+            _ => return None,
+        })
+    }
+
+    /// Smallest box for a name `w` × `h`: StarUML pads the name by 10 px
+    /// (a decision or merge needs twice the name; junctions are 30). Where a
+    /// symbol keeps its name off a curve or edge, the box grows so the name
+    /// still fits there.
+    fn min_size(self, w: f64, h: f64) -> (f64, f64) {
+        use Flow::*;
+        let (pw, ph) = (w + 20.0, h + 20.0);
+        match self {
+            Decision => ((2.0 * w).max(50.0), (2.0 * h).max(30.0)),
+            Merge | Extract => ((2.0 * w).max(30.0), (2.0 * h).max(25.0)),
+            Connector => (w.max(30.0), h.max(30.0)),
+            Or | SummingJunction | Collate | Sort => (30.0, 30.0),
+            Data | Preparation | Display => (pw * 1.5, ph),
+            StoredData | Delay => (pw / 0.75, ph),
+            DirectAccessStorage => (pw / 0.625, ph),
+            Database => (pw, ph * 1.6),
+            PredefinedProcess => (pw + 5.0, ph),
+            InternalStorage | MultiDocument => (pw + 10.0, ph + 10.0),
+            _ => (pw, ph),
+        }
+    }
+
+    /// Where the name goes in box `r`: the band's left edge and width, and
+    /// the top of the text (as StarUML arranges each symbol's name).
+    fn label_band(self, r: Rect, line_h: f64) -> (f64, f64, f64) {
+        use Flow::*;
+        let (left, width, top) = (r.x + 10.0, r.w - 20.0, r.y + 10.0);
+        let middle = r.y + (r.h - line_h) / 2.0;
+        let g6 = (r.w / 6.0).floor();
+        let g8 = (r.w / 8.0).floor();
+        match self {
+            Decision => (r.x + r.w / 4.0, r.w / 2.0, middle),
+            Sort | Merge | Extract | Connector | OffPageConnector | Or | SummingJunction => {
+                (r.x, r.w, middle)
+            }
+            Data | Preparation | Display => (left + g6, width - 2.0 * g6, top),
+            StoredData => (left + g8, width - 2.0 * g8, top),
+            DirectAccessStorage => (left + g8, width - 3.0 * g8, top),
+            Delay => (left, r.w * 0.75 - 10.0, top),
+            PredefinedProcess => (left + 5.0, width - 5.0, top),
+            Database => (left, width, top + 2.0 * (r.h / 8.0).floor()),
+            InternalStorage | MultiDocument => (left + 10.0, width - 10.0, top + 10.0),
+            _ => (left, width, top),
+        }
+    }
 }
 
 /// The small symbols of state machines and activities.
@@ -246,6 +363,9 @@ fn symbol_of(model: Option<&Element>) -> Option<Symbol> {
 }
 
 fn shape_of(view: &Element, model: Option<&Element>) -> Shape {
+    if let Some(flow) = Flow::of_view(&view.type_name) {
+        return Shape::Flowchart(flow);
+    }
     let display = view.str("stereotypeDisplay").unwrap_or("label");
     if matches!(
         view.type_name.as_str(),
@@ -491,6 +611,47 @@ pub fn node_layout(doc: &Document, view: &Element, fonts: &Fonts) -> Option<Node
             dashed: false,
             icon: None,
             outside,
+            dividers: Vec::new(),
+        });
+    }
+
+    // Flowchart symbols: the name centred in the symbol's label band, near
+    // the top (in the middle for diamonds and circles).
+    if let Shape::Flowchart(flow) = shape {
+        let name = model.map(|m| m.name().to_owned()).unwrap_or_default();
+        let w = if name.is_empty() {
+            0.0
+        } else {
+            fonts.width(&name, size, false, false)
+        };
+        let h = if name.is_empty() { 0.0 } else { line_h };
+        let (min_w, min_h) = flow.min_size(w, h);
+        let (min_w, min_h) = (min_w.ceil(), min_h.ceil());
+        let rect = Rect::new(stored.x, stored.y, stored.w.max(min_w), stored.h.max(min_h));
+        let (band_x, band_w, text_top) = flow.label_band(rect, line_h);
+        let compartments = if name.is_empty() {
+            Vec::new()
+        } else {
+            vec![Compartment {
+                lines: vec![TextLine::centered(name)],
+                rect: Rect::new(band_x, text_top - PAD_Y, band_w, line_h + 2.0 * PAD_Y),
+            }]
+        };
+        return Some(NodeLayout {
+            rect,
+            min_w,
+            min_h,
+            shape,
+            compartments,
+            separators: false,
+            font_size: size,
+            fill,
+            line,
+            text,
+            active: false,
+            dashed: false,
+            icon: None,
+            outside: Vec::new(),
             dividers: Vec::new(),
         });
     }
