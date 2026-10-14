@@ -1,0 +1,17 @@
+[
+  {"cmd": "diagram.add", "params": {"type": "Flowchart Diagram", "name": "Login"}},
+  {"cmd": "node.create", "params": {"kind": "Terminator", "x": 260, "y": 20, "name": "Start"}, "as": "start"},
+  {"cmd": "node.create", "params": {"kind": "Manual Input", "x": 250, "y": 100, "name": "Enter password"}, "as": "input"},
+  {"cmd": "node.create", "params": {"kind": "Database", "x": 20, "y": 90, "name": "Users"}, "as": "users"},
+  {"cmd": "node.create", "params": {"kind": "Decision", "x": 240, "y": 200, "name": "Correct?"}, "as": "check"},
+  {"cmd": "node.create", "params": {"kind": "Process", "x": 260, "y": 320, "name": "Open session"}, "as": "open"},
+  {"cmd": "node.create", "params": {"kind": "Display", "x": 480, "y": 210, "name": "Show error"}, "as": "error"},
+  {"cmd": "node.create", "params": {"kind": "Terminator", "x": 260, "y": 420, "name": "End"}, "as": "end"},
+  {"cmd": "edge.create", "params": {"kind": "Flow", "tail": "$start.view", "head": "$input.view"}},
+  {"cmd": "edge.create", "params": {"kind": "Flow", "tail": "$input.view", "head": "$check.view"}},
+  {"cmd": "edge.create", "params": {"kind": "Flow", "tail": "$users.view", "head": "$check.view", "name": "lookup"}},
+  {"cmd": "edge.create", "params": {"kind": "Flow", "tail": "$check.view", "head": "$open.view", "name": "yes"}},
+  {"cmd": "edge.create", "params": {"kind": "Flow", "tail": "$check.view", "head": "$error.view", "name": "no"}},
+  {"cmd": "edge.create", "params": {"kind": "Flow", "tail": "$error.view", "head": "$input.view"}},
+  {"cmd": "edge.create", "params": {"kind": "Flow", "tail": "$open.view", "head": "$end.view"}}
+]
