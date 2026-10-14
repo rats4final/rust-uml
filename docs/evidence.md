@@ -290,6 +290,31 @@ From `timingDiagramFn`, `_addTimingFrame`, `lifelineFn`, `timingStateFn`, `timeS
 - Time constraints (`{min..max}` label + link to a message or segment) and duration constraints
   (`{min..max}`, placed in the frame) exist too.
 
+### Azure (observed for M5, 2026-10-14)
+
+From `extensions/essential/azure/` (`metamodel.json`, `azure-factory.js`, `elements.js`,
+`azure-commands.js`, `toolbox/azure.json`), in our words:
+
+- An `AzureDiagram` added to the project goes in a new `AzureModel` (`AzureModel1`); elsewhere it
+  goes straight in. Elements are named from their type (`AzureGroup1`, `AzureService1`); a new
+  callout is named `1`.
+- `AzureGroup` (`dashed`, `rounded`, both false) holds other Azure elements. `AzureService` has an
+  `icon` string, a file name such as `App-Services.svg` (new services start with that one);
+  `AzureCallout`; `AzureConnector` (directed, `dashed`), between Azure elements only.
+- Views: a group (`AzureGroupView`, `nameLabel`, `wordWrap`) is a box, rounded (radius 10) and/or
+  dashed as its model says, the name centred 10 px from the top. A service (`AzureServiceView`)
+  is its icon, at least 48 × 48 and resized keeping proportions, with a floating `nameLabel` 42 px
+  below (angle −π/2); a missing icon is drawn as a crossed box. A callout is a filled black circle
+  (at least 24 × 24, `fillColor` `#000000`, `fontColor` `#ffffff`) with its name in the middle. A
+  connector is solid or dotted with a filled arrowhead and a name label (middle, π/2, 15),
+  rounded rectilinear by preference.
+- Icons: StarUML ships 605 SVGs under `resources/assets/azure/`, renamed copies of Microsoft's
+  Azure architecture icons (Microsoft's files are `<number>-icon-service-<Name>.svg`). Choosing
+  one with the icon picker sets the service's `icon` and renames it after the file (`-`/`_` →
+  spaces). Microsoft's terms (learn.microsoft.com/azure/architecture/icons, updated 2026-10-09):
+  use "in architectural diagrams, training materials, or documentation"; copy and distribute
+  "only for the permitted use"; all other rights reserved; don't crop, flip, rotate or distort.
+
 ### C4 (observed for M5, 2026-10-14)
 
 From `extensions/essential/c4/` (`metamodel.json`, `c4-factory.js`, `elements.js`,

@@ -225,7 +225,21 @@ and Azure last (provider icons: check their licence first).
   per shape; an element whose diagram lies inside it is drawn as that diagram's boundary
   (`layout::encloses`). Relationship descriptions wrap. New command `view.add {model, x, y}`.
   Example `examples/c4.mdj` from `examples/scripts/bank-c4.json`. **Not yet checked in StarUML.**
-- ⬜ Azure (provider icons: check their licence first).
+- ✅ **Azure** (2026-10-14): group, service, callout and connector rows; groups hold Azure
+  elements (`container_owner`); `NodeSpec::floating_labels` is now data (a service's name 42 px
+  below it). **Icons:** Microsoft's terms only allow distribution "for the permitted use", so the
+  owner chose (2026-10-14) not to ship them: the user downloads the set and points rust-uml at it.
+  `render::Prim::Icon` names the icon and carries a placeholder; `render::IconSource` supplies
+  pictures (`to_svg_with`/`to_png_with` embed them as data URIs, the canvas rasterises them with
+  `render::rasterize_svg`); `automation::icons::FolderIcons` indexes a folder by StarUML's names
+  (`render::icon_key`: `10035-icon-service-App-Services.svg` = `App-Services.svg`; 596 of
+  StarUML's 605 names match Microsoft's set of July 2026). Every session starts with the
+  process-wide default (`engine::set_default_icons`), set from `--azure-icons`,
+  `RUST_UML_AZURE_ICONS` or the desktop's remembered folder (`apps/desktop/src/settings.rs`).
+  Example `examples/azure.mdj` from `examples/scripts/webapp-azure.json`.
+  **Not yet checked in StarUML.** Left: icons in the web app (no folder access in browsers).
+
+**M5 is complete**: every family StarUML offers for free is in.
 
 ### M6 — Editing depth
 

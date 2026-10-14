@@ -68,6 +68,10 @@ rust-uml-cli import examples/mermaid/checkout.mmd -o checkout.mdj -o checkout.pn
 
 # Every subcommand explains itself
 rust-uml-cli help run
+
+# Draw Azure services with Microsoft's icons, downloaded and unzipped by you
+# (rust-uml ships none; see ATTRIBUTION.md). Also applies to `mcp`.
+RUST_UML_AZURE_ICONS=~/azure-icons rust-uml-cli image cloud.mdj -f png -o out/
 ```
 
 ## MCP: letting an AI agent drive rust-uml

@@ -10,6 +10,16 @@ Liberation Sans is metric-compatible with Arial, the font StarUML uses, so diagr
 
 ## Not included
 
+**Azure icons.** Azure diagrams name each service's icon (`App-Services.svg`), as StarUML's files
+do, but rust-uml ships none of Microsoft's icons: Microsoft lets them be copied and distributed
+"only for the permitted use" (architectural diagrams, training materials, documentation) and
+reserves all other rights, which can't sit inside an MIT/Apache app. Download them yourself from
+<https://learn.microsoft.com/azure/architecture/icons/> (accepting Microsoft's terms there), unzip,
+and point rust-uml at the folder: View ▸ Azure Icons Folder… in the desktop app, `--azure-icons
+<folder>`, or the `RUST_UML_AZURE_ICONS` environment variable (also for `rust-uml-cli` and its MCP
+server). Without them, services draw as placeholders with their initials. Diagrams and exported
+images you make with the icons fall under Microsoft's terms for icon use.
+
 No StarUML code, icons, stylesheets, templates or profiles are part of this repository. StarUML's
 shipped model files are read from a local install by the opt-in test `crates/mdj/tests/staruml_files.rs`
 and are never copied here.

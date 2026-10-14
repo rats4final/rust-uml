@@ -2,6 +2,21 @@
 
 Newest first. Terse: what landed, numbers, what's still open.
 
+## 2026-10-14 — M5 complete: Azure
+
+- Azure diagrams: groups (solid/dashed, square/rounded) holding services, services as icons with
+  their names below, numbered callouts, solid or dashed connectors. Properties: group and
+  connector styles, a service's icon with a searchable picker that renames it, as StarUML.
+- Icons: Microsoft's terms only allow distributing them "for the permitted use", so (owner's
+  choice) rust-uml ships none. Users download the set and pick the folder (View ▸ Azure Icons
+  Folder…, remembered), or pass `--azure-icons` / `RUST_UML_AZURE_ICONS` (CLI and MCP too). Icons
+  are found by StarUML's names (596 of 605 match Microsoft's current set); missing ones draw as a
+  placeholder with initials. SVG/PNG exports embed them; the canvas rasterises them.
+- Line spreading now scales its spacing to short sides (48 px icons).
+- `examples/azure.mdj` (in the release archives) from `examples/scripts/webapp-azure.json`.
+  185 tests. Every family StarUML offers for free is in.
+- Open: icons in the web app; check in StarUML. Next: M6 editing depth.
+
 ## 2026-10-14 — M5: C4
 
 - C4 diagrams: person, software system, containers of every kind (database cylinder, browser,
