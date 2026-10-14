@@ -1363,6 +1363,23 @@ enum EndMark {
     CirclePlus,
     /// Open arrow and an ✕ (a delete message destroys its target).
     Destroy,
+    /// Crow's-foot ends of ERD relationships, by cardinality: `1`, `1..*`,
+    /// `0..1`, `0..*`.
+    CrowOne,
+    CrowMany,
+    CrowZeroOne,
+    CrowZeroMany,
+}
+
+/// The crow's-foot end for an ERD relationship end's cardinality (unknown
+/// values draw as `1`, as in StarUML).
+fn crow_mark(end: Option<&Element>) -> EndMark {
+    match end.and_then(|e| e.str("cardinality")).unwrap_or("1") {
+        "0..1" => EndMark::CrowZeroOne,
+        "0..*" => EndMark::CrowZeroMany,
+        "1..*" => EndMark::CrowMany,
+        _ => EndMark::CrowOne,
+    }
 }
 
 /// Line style and end markers for an edge view. Associations look at their
@@ -1374,6 +1391,15 @@ fn edge_style(doc: &Document, view: &Element) -> (bool, EndMark, EndMark) {
     if t == "UMLSeqMessageView" || t == "UMLTimingMessageView" {
         let (dashed, head) = message_style(model);
         return (dashed, EndMark::None, head);
+    }
+    if let Some(m) = model.filter(|_| t == "ERDRelationshipView") {
+        let end = |k: &str| m.children(k).first().and_then(|id| doc.get(id));
+        // Non-identifying relationships are dotted.
+        return (
+            !m.bool("identifying", true),
+            crow_mark(end("end1")),
+            crow_mark(end("end2")),
+        );
     }
     if let Some(m) = model.filter(|m| m.get("end1").is_some()) {
         let end = |k: &str| m.children(k).first().and_then(|id| doc.get(id));
@@ -1665,6 +1691,12 @@ fn draw_edge(
             .and_then(|id| doc.get(id))
     };
 
+    // ERD relationships name their ends with `tail/headNameLabel`.
+    let (tail_name, head_name) = if view.type_name == "ERDRelationshipView" {
+        ("tailNameLabel", "headNameLabel")
+    } else {
+        ("tailRoleNameLabel", "headRoleNameLabel")
+    };
     let texts: Vec<(&str, String)> = vec![
         (
             "nameLabel",
@@ -1705,11 +1737,11 @@ fn draw_edge(
                 .unwrap_or_default(),
         ),
         (
-            "tailRoleNameLabel",
+            tail_name,
             end("end1").map(|e| e.name().to_owned()).unwrap_or_default(),
         ),
         (
-            "headRoleNameLabel",
+            head_name,
             end("end2").map(|e| e.name().to_owned()).unwrap_or_default(),
         ),
         (
@@ -1791,9 +1823,9 @@ fn edge_keyword(view_type: &str) -> Option<&'static str> {
 fn default_label_placement(key: &str) -> (i64, f64, f64) {
     match key {
         "stereotypeLabel" => (edge_position::MIDDLE, PI / 2.0, 30.0),
-        "tailRoleNameLabel" => (edge_position::TAIL, PI / 6.0, 30.0),
+        "tailRoleNameLabel" | "tailNameLabel" => (edge_position::TAIL, PI / 6.0, 30.0),
         "tailMultiplicityLabel" => (edge_position::TAIL, -PI / 6.0, 25.0),
-        "headRoleNameLabel" => (edge_position::HEAD, -PI / 6.0, 30.0),
+        "headRoleNameLabel" | "headNameLabel" => (edge_position::HEAD, -PI / 6.0, 30.0),
         "headMultiplicityLabel" => (edge_position::HEAD, PI / 6.0, 25.0),
         _ => (edge_position::MIDDLE, PI / 2.0, 15.0),
     }
@@ -1872,6 +1904,9 @@ fn draw_mark(scene: &mut Scene, tip: Point, from: Point, mark: EndMark, stroke: 
                 });
             }
         }
+        EndMark::CrowOne | EndMark::CrowMany | EndMark::CrowZeroOne | EndMark::CrowZeroMany => {
+            draw_crow(scene, tip, angle, mark, stroke);
+        }
         EndMark::CirclePlus => {
             const R: f64 = 7.0;
             let c = at(R, 0.0);
@@ -1892,6 +1927,65 @@ fn draw_mark(scene: &mut Scene, tip: Point, from: Point, mark: EndMark, stroke: 
                 });
             }
         }
+    }
+}
+
+/// Half the width of a crow's-foot bar or fan.
+const CROW_HALF: f64 = 7.0;
+/// Where a crow's foot's prongs meet, from the box.
+const CROW_LEN: f64 = 16.0;
+const CROW_CIRCLE: f64 = 5.0;
+
+/// A crow's-foot end at `tip`, the line leaving at `angle`: bars for "one",
+/// three prongs fanning out to the box for "many", a ring for "zero".
+fn draw_crow(scene: &mut Scene, tip: Point, angle: f64, mark: EndMark, stroke: Color) {
+    let (ux, uy) = (angle.cos(), angle.sin());
+    // `along` from the tip toward the line, `side` across it.
+    let at = |along: f64, side: f64| {
+        Point::new(
+            tip.x + along * ux - side * uy,
+            tip.y + along * uy + side * ux,
+        )
+    };
+    let mut line = |points: Vec<Point>| {
+        scene.prims.push(Prim::Line {
+            points,
+            stroke,
+            dashed: false,
+        });
+    };
+    let bar = |along: f64| vec![at(along, CROW_HALF), at(along, -CROW_HALF)];
+    let many = matches!(mark, EndMark::CrowMany | EndMark::CrowZeroMany);
+    if many {
+        line(vec![
+            at(0.0, CROW_HALF),
+            at(CROW_LEN, 0.0),
+            at(0.0, -CROW_HALF),
+        ]);
+    }
+    match mark {
+        EndMark::CrowOne => {
+            line(bar(8.0));
+            line(bar(13.0));
+        }
+        EndMark::CrowMany => line(bar(CROW_LEN + 5.0)),
+        EndMark::CrowZeroOne => line(bar(8.0)),
+        _ => {}
+    }
+    if matches!(mark, EndMark::CrowZeroOne | EndMark::CrowZeroMany) {
+        let along = if many { CROW_LEN } else { 8.0 } + 5.0 + CROW_CIRCLE;
+        let c = at(along, 0.0);
+        scene.prims.push(Prim::Ellipse {
+            rect: Rect::new(
+                c.x - CROW_CIRCLE,
+                c.y - CROW_CIRCLE,
+                2.0 * CROW_CIRCLE,
+                2.0 * CROW_CIRCLE,
+            ),
+            fill: Some(Color::WHITE),
+            stroke,
+            dashed: false,
+        });
     }
 }
 
@@ -2296,5 +2390,72 @@ mod tests {
             label_point(&one, edge_position::MIDDLE, 1.0, 5.0),
             Point::new(3.0, 4.0)
         );
+    }
+
+    #[test]
+    fn entities_draw_a_column_table_and_relationships_crows_feet() {
+        let mut doc = Document::new_project();
+        let model = doc.get(doc.root()).unwrap().children("ownedElements")[0].clone();
+        let on = "ERDDiagram";
+        let dgm = doc
+            .try_edit(|e| uml::create_diagram(e, &model, on))
+            .unwrap();
+        let spec = uml::node_spec_on("ERDEntity", on).unwrap();
+        let mut entity = |x: f64| {
+            doc.try_edit(|e| uml::create_node(e, &dgm, spec, x, 0.0, None))
+                .unwrap()
+        };
+        let ((a, av), (_, bv)) = (entity(0.0), entity(400.0));
+        let a = a.unwrap();
+        for (name, pk, ty) in [("id", true, "INTEGER"), ("email", false, "VARCHAR")] {
+            let c = doc.edit(|e| uml::add_feature(e, &a, uml::FeatureKind::Column));
+            doc.edit(|e| {
+                e.set(&c, "name", mdj::Field::str(name));
+                e.set(&c, "type", mdj::Field::str(ty));
+                e.set(&c, "primaryKey", mdj::Field::bool(pk));
+            });
+        }
+        let l = crate::node_layout(&doc, doc.get(&av).unwrap(), &Fonts::default()).unwrap();
+        // The name, then keys | name | type for each column.
+        assert_eq!(l.compartments.len(), 1 + 2 * 3);
+        assert!(l.compartments[0].lines[0].bold);
+        let cell = |i: usize| {
+            (
+                l.compartments[i].lines[0].text.clone(),
+                l.compartments[i].rect,
+            )
+        };
+        assert_eq!(cell(1).0, "PK");
+        assert_eq!(cell(3).0, "INTEGER");
+        let (name_x, type_x) = (cell(2).1.x, cell(3).1.x);
+        assert_eq!(cell(5).1.x, name_x, "names line up");
+        assert!(name_x < type_x);
+        // A line under the name and one between each pair of table columns.
+        assert_eq!(l.dividers.len(), 3);
+        let fits = cell(6).1.right() - TEXT_PAD_X;
+        assert!(l.rect.right() >= fits, "the box holds the widest type");
+
+        let rel = uml::edge_spec_on("ERDRelationshipOneToMany", on).unwrap();
+        let (m, _) = doc
+            .try_edit(|e| uml::create_edge(e, &dgm, rel, &av, &bv))
+            .unwrap();
+        let ellipses = |scene: &Scene| {
+            scene
+                .prims
+                .iter()
+                .filter(|p| matches!(p, Prim::Ellipse { .. }))
+                .count()
+        };
+        let dashed = |scene: &Scene| {
+            scene
+                .prims
+                .iter()
+                .any(|p| matches!(p, Prim::Line { dashed: true, .. }))
+        };
+        let scene = build_scene(&doc, &dgm, &Fonts::default());
+        assert_eq!(ellipses(&scene), 1, "only the `0..*` end has a ring");
+        assert!(!dashed(&scene), "identifying by default");
+        doc.edit(|e| e.set(&m.unwrap(), "identifying", mdj::Field::bool(false)));
+        assert!(dashed(&build_scene(&doc, &dgm, &Fonts::default())));
     }
 }

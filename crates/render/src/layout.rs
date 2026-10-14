@@ -615,6 +615,12 @@ pub fn node_layout(doc: &Document, view: &Element, fonts: &Fonts) -> Option<Node
         });
     }
 
+    if view.type_name == "ERDEntityView" {
+        let mut l = entity_layout(doc, view, model, stored, size, fonts);
+        (l.fill, l.line, l.text) = (fill, line, text);
+        return Some(l);
+    }
+
     // Flowchart symbols: the name centred in the symbol's label band, near
     // the top (in the middle for diamonds and circles).
     if let Shape::Flowchart(flow) = shape {
@@ -1091,6 +1097,125 @@ pub fn node_layout(doc: &Document, view: &Element, fonts: &Fonts) -> Option<Node
         outside: Vec::new(),
         dividers,
     })
+}
+
+/// Padding inside an ERD entity, around its name and its column table, and
+/// between a table column and its divider (StarUML: 5).
+const ERD_PAD: f64 = 5.0;
+/// Space between two column rows (StarUML: 2).
+const ERD_ROW_GAP: f64 = 2.0;
+
+/// An ERD entity: its name, bold and centred, over a table of columns
+/// (keys | name | type) with lines between the table's columns, laid out
+/// as StarUML does.
+fn entity_layout(
+    doc: &Document,
+    view: &Element,
+    model: Option<&Element>,
+    stored: Rect,
+    size: f64,
+    fonts: &Fonts,
+) -> NodeLayout {
+    let line_h = fonts.line_height(size);
+    let width = |t: &str| fonts.width(t, size, false, false);
+    let name = model.map(|m| m.name().to_owned()).unwrap_or_default();
+    let columns: Vec<(String, String, String)> = model
+        .filter(|_| !view.bool("suppressColumns", false))
+        .map(|m| {
+            m.children("columns")
+                .iter()
+                .filter_map(|id| doc.get(id))
+                .map(|c| {
+                    (
+                        uml::column_keys(c),
+                        c.name().to_owned(),
+                        uml::column_type(c),
+                    )
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+    let widest = |f: fn(&(String, String, String)) -> &String| {
+        columns.iter().map(|c| width(f(c))).fold(0.0, f64::max)
+    };
+    let (key_w, name_w, type_w) = (widest(|c| &c.0), widest(|c| &c.1), widest(|c| &c.2));
+    // Where the name and type columns start, measured from the table's inside.
+    let name_at = key_w + ERD_PAD;
+    let type_at = name_at + ERD_PAD + name_w + ERD_PAD;
+
+    let header_h = ERD_PAD + line_h + ERD_PAD;
+    let rows = columns.len() as f64;
+    let table_h = if view.bool("suppressColumns", false) {
+        0.0
+    } else {
+        rows * line_h + (rows - 1.0).max(0.0) * ERD_ROW_GAP + 2.0 * ERD_PAD
+    };
+    let mut min_w = fonts.width(&name, size, true, false) + 2.0 * ERD_PAD;
+    if !columns.is_empty() {
+        min_w = min_w.max(type_at + ERD_PAD + type_w + 2.0 * ERD_PAD);
+    }
+    let (min_w, min_h) = (min_w.max(MIN_WIDTH).ceil(), (header_h + table_h).ceil());
+    let rect = Rect::new(stored.x, stored.y, stored.w.max(min_w), stored.h.max(min_h));
+
+    // A compartment whose text starts at (x, y) (compartment text is inset by the pads).
+    let cell = |text: String, x: f64, y: f64, align: HAlign, w: f64| Compartment {
+        lines: vec![TextLine::aligned(text, align)],
+        rect: Rect::new(x - PAD_X, y - PAD_Y, w + 2.0 * PAD_X, line_h + 2.0 * PAD_Y),
+    };
+    let mut compartments = vec![Compartment {
+        lines: vec![TextLine {
+            bold: true,
+            ..TextLine::centered(name)
+        }],
+        rect: Rect::new(
+            rect.x,
+            rect.y + ERD_PAD - PAD_Y,
+            rect.w,
+            line_h + 2.0 * PAD_Y,
+        ),
+    }];
+    let mut dividers = Vec::new();
+    if !columns.is_empty() {
+        let top = rect.y + header_h;
+        let left = rect.x + ERD_PAD;
+        dividers.push((
+            Point::new(rect.x, top),
+            Point::new(rect.right(), top),
+            false,
+        ));
+        for x in [left + name_at, left + type_at] {
+            dividers.push((Point::new(x, top), Point::new(x, rect.bottom()), false));
+        }
+        for (i, (keys, name, ty)) in columns.into_iter().enumerate() {
+            let y = top + ERD_PAD + i as f64 * (line_h + ERD_ROW_GAP);
+            compartments.push(cell(keys, left, y, HAlign::Left, key_w));
+            compartments.push(cell(
+                name,
+                left + name_at + ERD_PAD,
+                y,
+                HAlign::Left,
+                name_w,
+            ));
+            compartments.push(cell(ty, left + type_at + ERD_PAD, y, HAlign::Left, type_w));
+        }
+    }
+    NodeLayout {
+        rect,
+        min_w,
+        min_h,
+        shape: Shape::Box,
+        compartments,
+        separators: false,
+        font_size: size,
+        fill: Color::WHITE,
+        line: Color::BLACK,
+        text: Color::BLACK,
+        active: false,
+        dashed: false,
+        icon: None,
+        outside: Vec::new(),
+        dividers,
+    }
 }
 
 pub(crate) const TEXT_PAD_X: f64 = PAD_X;
