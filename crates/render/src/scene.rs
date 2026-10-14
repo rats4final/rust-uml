@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::f64::consts::PI;
 
-use mdj::values::{DEFAULT_FONT, Font, absent, edge_position, parse_points};
+use mdj::values::{DEFAULT_FONT, Font, absent, edge_position, line_style, parse_points};
 use mdj::{Document, Element, Id};
 
 use crate::geom::{Color, Point, Rect};
@@ -1687,8 +1687,10 @@ fn draw_edge(
         });
     }
     let (dashed, tail_mark, head_mark) = edge_style(doc, view);
+    let style = view.num("lineStyle", absent::LINE_STYLE as f64) as i64;
+    let drawn = shaped(pts, style);
     scene.prims.push(Prim::Line {
-        points: pts.to_vec(),
+        points: drawn.clone(),
         stroke,
         dashed,
     });
@@ -1813,7 +1815,10 @@ fn draw_edge(
             }
             _ => label_point(pts, pos, alpha, distance),
         };
-        let rect = Rect::new(anchor.x - w / 2.0, anchor.y - line_h / 2.0, w, line_h);
+        let rect = clear_of(
+            Rect::new(anchor.x - w / 2.0, anchor.y - line_h / 2.0, w, line_h),
+            &drawn,
+        );
         scene.prims.push(Prim::Text {
             rect,
             baseline: ascent,
@@ -1830,6 +1835,131 @@ fn draw_edge(
         boxes.push(rect);
     }
     boxes
+}
+
+/// Corner radius of rounded right-angle lines.
+const LINE_ROUND: f64 = 10.0;
+
+/// The line as drawn for its style: rounded right angles get round corners,
+/// curves a smooth path through their points; others as they are.
+fn shaped(pts: &[Point], style: i64) -> Vec<Point> {
+    if pts.len() < 3 {
+        return pts.to_vec();
+    }
+    match style {
+        line_style::ROUND_RECT => {
+            let mut out = vec![pts[0]];
+            for w in pts.windows(3) {
+                let (a, b, c) = (w[0], w[1], w[2]);
+                let r = LINE_ROUND.min(a.dist(b) / 2.0).min(b.dist(c) / 2.0);
+                let toward = |p: Point| {
+                    let d = p.dist(b);
+                    if d == 0.0 {
+                        b
+                    } else {
+                        Point::new(b.x + (p.x - b.x) * r / d, b.y + (p.y - b.y) * r / d)
+                    }
+                };
+                let (from, to) = (toward(a), toward(c));
+                out.push(from);
+                out.extend(quadratic(from, b, to));
+            }
+            out.extend(pts.last());
+            out
+        }
+        line_style::CURVE => {
+            // Catmull-Rom through every point, the end points doubled.
+            let at = |i: isize| pts[i.clamp(0, pts.len() as isize - 1) as usize];
+            let mut out = vec![pts[0]];
+            for i in 0..pts.len() as isize - 1 {
+                let (p0, p1, p2, p3) = (at(i - 1), at(i), at(i + 1), at(i + 2));
+                for k in 1..=12 {
+                    let t = f64::from(k) / 12.0;
+                    let (t2, t3) = (t * t, t * t * t);
+                    let f = |a: f64, b: f64, c: f64, d: f64| {
+                        0.5 * (2.0 * b
+                            + (c - a) * t
+                            + (2.0 * a - 5.0 * b + 4.0 * c - d) * t2
+                            + (3.0 * b - a - 3.0 * c + d) * t3)
+                    };
+                    out.push(Point::new(
+                        f(p0.x, p1.x, p2.x, p3.x),
+                        f(p0.y, p1.y, p2.y, p3.y),
+                    ));
+                }
+            }
+            out
+        }
+        _ => pts.to_vec(),
+    }
+}
+
+/// Whether segment `a`–`b` passes through `r` (Liang–Barsky clipping).
+fn segment_hits(a: Point, b: Point, r: &Rect) -> bool {
+    let (dx, dy) = (b.x - a.x, b.y - a.y);
+    let (mut t0, mut t1) = (0.0f64, 1.0f64);
+    for (p, q) in [
+        (-dx, a.x - r.x),
+        (dx, r.right() - a.x),
+        (-dy, a.y - r.y),
+        (dy, r.bottom() - a.y),
+    ] {
+        if p == 0.0 {
+            if q < 0.0 {
+                return false;
+            }
+        } else if p < 0.0 {
+            t0 = t0.max(q / p);
+        } else {
+            t1 = t1.min(q / p);
+        }
+    }
+    t0 <= t1
+}
+
+/// The point of segment `a`–`b` closest to `p`.
+fn closest_on(p: Point, a: Point, b: Point) -> Point {
+    let (dx, dy) = (b.x - a.x, b.y - a.y);
+    let len2 = dx * dx + dy * dy;
+    if len2 == 0.0 {
+        return a;
+    }
+    let t = (((p.x - a.x) * dx + (p.y - a.y) * dy) / len2).clamp(0.0, 1.0);
+    Point::new(a.x + t * dx, a.y + t * dy)
+}
+
+/// Move a label box away from its own line until the line no longer runs
+/// through it (wide text beside a vertical line would otherwise sit across
+/// it): directly away from the line's nearest point, by at most 80 px.
+fn clear_of(rect: Rect, line: &[Point]) -> Rect {
+    let hits = |r: &Rect| {
+        let r = r.expand(2.0);
+        line.windows(2).any(|w| segment_hits(w[0], w[1], &r))
+    };
+    if line.len() < 2 || !hits(&rect) {
+        return rect;
+    }
+    let c = rect.center();
+    let nearest = line
+        .windows(2)
+        .map(|w| closest_on(c, w[0], w[1]))
+        .min_by(|p, q| c.dist(*p).total_cmp(&c.dist(*q)))
+        .unwrap_or(c);
+    let (dx, dy) = (c.x - nearest.x, c.y - nearest.y);
+    let len = (dx * dx + dy * dy).sqrt();
+    if len < 1e-6 {
+        return rect;
+    }
+    let (ux, uy) = (dx / len, dy / len);
+    let mut moved = rect;
+    for _ in 0..40 {
+        moved.x += 2.0 * ux;
+        moved.y += 2.0 * uy;
+        if !hits(&moved) {
+            return moved;
+        }
+    }
+    rect
 }
 
 /// Keyword UML shows on some relationships when they have no stereotype.
@@ -2529,5 +2659,40 @@ mod tests {
                 if points.windows(2).any(|w| w[0].x == r.right() && w[1].x == r.right()))
         });
         assert!(!right_side);
+    }
+
+    #[test]
+    fn rounded_lines_round_their_corners_and_curves_pass_their_points() {
+        let pts = [
+            Point::new(0.0, 0.0),
+            Point::new(100.0, 0.0),
+            Point::new(100.0, 100.0),
+        ];
+        let round = shaped(&pts, line_style::ROUND_RECT);
+        assert_eq!(round.first(), pts.first());
+        assert_eq!(round.last(), pts.last());
+        // The corner itself is cut: no drawn point sits on it.
+        assert!(!round.contains(&pts[1]));
+        assert!(round.iter().all(|p| p.x <= 100.0 && p.y >= 0.0));
+        let curve = shaped(&pts, line_style::CURVE);
+        assert!(
+            curve.iter().any(|p| p.dist(pts[1]) < 1e-9),
+            "passes the bend"
+        );
+        assert_eq!(shaped(&pts, line_style::RECTILINEAR), pts.to_vec());
+        assert_eq!(shaped(&pts[..2], line_style::CURVE), pts[..2].to_vec());
+    }
+
+    #[test]
+    fn labels_move_off_their_line() {
+        let line = [Point::new(50.0, 0.0), Point::new(50.0, 200.0)];
+        // A wide label whose centre is 15 px right of a vertical line.
+        let label = Rect::new(65.0 - 40.0, 90.0, 80.0, 16.0);
+        let moved = clear_of(label, &line);
+        assert!(moved.x > 50.0, "now right of the line: {moved:?}");
+        assert_eq!(moved.y, label.y, "moved straight away from the line");
+        // A label already clear stays where it is.
+        let clear = Rect::new(70.0, 90.0, 40.0, 16.0);
+        assert_eq!(clear_of(clear, &line), clear);
     }
 }
