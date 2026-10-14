@@ -49,10 +49,10 @@ Legend: ✅ done · 🟡 partial · ⬜ not started
 | GCP | GCP | ✔ | ⬜ |
 | Azure | Azure | | ⬜ |
 | C4 | C4 | | ⬜ |
-| ERD | ERD | | ✅ Entities with a keys / name / type column table, one-to-one / one-to-many / many-to-many relationships with crow's-foot ends by cardinality, dotted when non-identifying; column and cardinality editing in the properties panel; Mermaid `erDiagram` import. Not yet: Suppress Columns menu item (the view flag is drawn), validation rules ERD001/ERD002, column quick-edit syntax |
+| ERD | ERD | | ✅ Entities with a keys / name / type column table, one-to-one / one-to-many / many-to-many relationships with crow's-foot ends by cardinality, dotted when non-identifying; column and cardinality editing in the properties panel; Format ▸ Suppress Columns; add-related-entity quick edits (`erd.add-related`); validation rules ERD001/ERD002; Mermaid `erDiagram` import. Not yet: column quick-edit syntax, a `referenceTo` picker in the panel (settable with `element.set {"$ref": id}`) |
 | DFD | DFD | | ✅ External entities, processes (id band), data stores (open box, id compartment) and named data flows; element IDs edited in the properties panel; a process can hold its lower-level diagram. Not yet: StarUML's DFD quick edits |
 | Flowchart | Flowchart | | ✅ All 27 of StarUML's symbols and labelled flows; lines end on diamond and circle outlines; Mermaid `flowchart`/`graph` import |
-| Mind map | Mind map | | ✅ Nodes (rounded boxes, names wrapped to the box) and plain edges, only between nodes; Mermaid `mindmap` import laid out with the root in the middle and branches to both sides. Not yet: the Add Node Left/Right quick-edit buttons |
+| Mind map | Mind map | | ✅ Nodes (rounded boxes, names wrapped to the box) and plain edges, only between nodes; Mermaid `mindmap` import laid out with the root in the middle and branches to both sides; Add Node Left/Right quick edits (`mindmap.add-node`, buttons in the properties panel) |
 
 ## Editing
 
@@ -71,10 +71,10 @@ Legend: ✅ done · 🟡 partial · ⬜ not started
 | Copy / paste | ⬜ | |
 | Alignment tools | ⬜ | `extensions/default/alignment` |
 | Auto layout | 🟡 | Layered layout (`render::autolayout`) used by Mermaid import, nested containers included; no menu command for existing diagrams yet |
-| Line styles (rectilinear / oblique / curve / round) | 🟡 | Drawn and routed as straight or right-angle; no UI to switch yet |
+| Line styles (rectilinear / oblique / curve / round) | 🟡 | All four drawn (rounded corners, smooth curves); right-angle lines from one box side start apart; labels kept off their lines. No UI to switch yet |
 | Colours and fonts per view | 🟡 | Read and drawn; no UI to change yet |
 | Find | ⬜ | |
-| Validation rules | ⬜ | `resources/default/rules.js`, `uml/rules.js` |
+| Validation rules | 🟡 | Model ▸ Validate Model (`model.validate`) with StarUML's ERD rules; the UML rules (`resources/default/rules.js`, `uml/rules.js`) are next |
 | Tags / tagged values | ⬜ | Preserved in files; no editor |
 | Profiles / stereotypes as references | 🟡 | Displayed; editing sets text |
 

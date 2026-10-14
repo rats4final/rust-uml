@@ -265,14 +265,11 @@ providers' official icon sets only if their licenses allow redistribution (check
 | `render` | Interface lollipop/socket notation not drawn; interfaces we create pin `stereotypeDisplay: label`. |
 | `render`/`uml` | Sub-view geometry (compartment/label `left/top/width/height`) is never recomputed; only shifted on move. StarUML recomputes it, so this is cosmetic in the file only. |
 | `uml` | Audit the other view types we create for fields whose intended value ≠ metamodel default (only rows and `propertyLabel` were checked). |
-| `render` | Curve and rounded line styles draw as straight/right-angle. |
 | `mdj` | Undoing removal of a single-child (`obj`) field re-inserts the key at the end (key order changes). |
 | `ui` | No marquee select, no clipboard. |
 | `ui` | Linux file dialogs need an XDG portal or `zenity`; fallback is File ▸ Open Path… |
-| `ui` | Properties text buffers are never pruned (harmless, grows per edited field). |
-| `render` | Right-angle lines leave a box side from one point, so several lines from one side share their first stretch and their end marks overlap (visible on ER imports). Spread the attach points along the side. |
-| `engine` | A rename doesn't refresh the stored `text` of name labels (StarUML recomputes it when drawing, so only the file is stale). |
-| `.github` | Actions warn about Node 20 deprecation: bump `actions/checkout`, `upload-artifact`, `download-artifact` majors. |
+| `render` | Right-angle lines start apart only when routed (new lines, moved boxes); a straight line between two boxes can't move when they face each other along less than one spacing. Oblique lines aren't spread. |
+| `engine` | Renames refresh name/id label text; other derived label texts (stereotype, namespace, edge labels) are still not stored. StarUML recomputes them when drawing. |
 | release | Binaries unsigned; macOS ships a bare binary, not an `.app`. |
 
 ## 6. How to verify work (recipes)

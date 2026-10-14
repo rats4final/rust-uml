@@ -2,6 +2,21 @@
 
 Newest first. Terse: what landed, numbers, what's still open.
 
+## 2026-10-14 — polish pass
+
+- Lines: right-angle lines leaving one box side start apart, each moving toward where it heads
+  (`route::Taken`, applied as lines are routed); rounded right-angle lines get round corners and
+  curve-style lines a smooth path (drawn only; stored points unchanged); labels that would sit
+  across their own line are moved off it.
+- Files: renaming refreshes the stored text of name and id labels (`mdj::Editor::changed_fields`
+  + `uml::sync_label_texts`, run after every edit); scripted examples rebuilt.
+- StarUML's small features: mind map Add Node Left/Right and ER add related entity (commands
+  `mindmap.add-node`, `erd.add-related`; buttons in the properties panel), Format ▸ Suppress
+  Columns, Model ▸ Validate Model with StarUML's ERD rules. `element.set` accepts
+  `{"$ref": id}` to store a reference.
+- Housekeeping: GitHub Actions on Node 24 (checkout v7, upload-artifact v7, download-artifact v8,
+  Pages v5); the properties panel drops text buffers of elements it no longer shows. 173 tests.
+
 ## 2026-10-14 — M5: data flow diagrams
 
 - Data flow diagrams: external entities, processes with an id band, data stores open on the right
