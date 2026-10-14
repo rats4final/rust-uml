@@ -424,6 +424,44 @@ mod tests {
     }
 
     #[test]
+    fn flowcharts_like_staruml() {
+        let mut doc = Document::new_project();
+        let dgm = diagram_of_type(&mut doc, "FCFlowchartDiagram");
+        let chart = doc.get(&dgm).unwrap().parent.clone().unwrap();
+        assert_eq!(doc.get(&chart).unwrap().type_name, "FCFlowchart");
+        assert_eq!(doc.get(&chart).unwrap().name(), "Flowchart1");
+        let (start, sv) = node(&mut doc, &dgm, "FCTerminator", 0.0, 0.0, None);
+        let (_, dv) = node(&mut doc, &dgm, "Decision", 0.0, 100.0, None);
+        let (c, _) = node(&mut doc, &dgm, "FCConnector", 0.0, 200.0, None);
+        let (or, _) = node(&mut doc, &dgm, "FCOr", 0.0, 300.0, None);
+        let name = |id: &str| doc.get(id).unwrap().name().to_owned();
+        assert_eq!(name(&start), "Terminator1");
+        assert_eq!(name(&c), "C1");
+        assert_eq!(name(&or), "", "junctions have no name");
+        assert_eq!(
+            doc.get(&start).unwrap().parent.as_deref(),
+            Some(chart.as_str())
+        );
+        assert_eq!(
+            doc.get(&dv).unwrap().type_name,
+            "FCDecisionView",
+            "the flowchart Decision"
+        );
+        let v = doc.get(&sv).unwrap();
+        assert!(v.ref_id("nameLabel").is_some() && v.ref_id("nameCompartment").is_none());
+
+        let (flow, fv) = edge(&mut doc, &dgm, "FCFlow", &sv, &dv);
+        let flow = doc.get(&flow.unwrap()).unwrap();
+        assert_eq!(flow.parent.as_deref(), Some(start.as_str()));
+        let fv = doc.get(&fv).unwrap();
+        assert!(fv.ref_id("nameLabel").is_some());
+        assert!(
+            fv.ref_id("stereotypeLabel").is_none(),
+            "flows only have a name label"
+        );
+    }
+
+    #[test]
     fn information_flow_like_staruml() {
         let mut doc = Document::new_project();
         let dgm = diagram_of_type(&mut doc, "UMLInformationFlowDiagram");

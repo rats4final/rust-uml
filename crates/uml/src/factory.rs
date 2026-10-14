@@ -1229,7 +1229,9 @@ pub fn add_edge_view(
     let mut t = Tree::new(root);
 
     let mut labels: Vec<(&str, i64, f64, f64)> = Vec::new();
-    if spec.labels != EdgeLabels::None {
+    if spec.labels == EdgeLabels::Name {
+        labels.push(("nameLabel", edge_position::MIDDLE, PI / 2.0, 15.0));
+    } else if spec.labels != EdgeLabels::None {
         labels.extend([
             ("nameLabel", edge_position::MIDDLE, PI / 2.0, 15.0),
             ("stereotypeLabel", edge_position::MIDDLE, PI / 2.0, 30.0),
@@ -1568,6 +1570,7 @@ pub fn create_diagram(e: &mut Editor, parent: &str, diagram_type: &str) -> Resul
         {
             &[INTERACTION]
         }
+        ("FCFlowchartDiagram", p) if p != "FCFlowchart" => &[("FCFlowchart", "Flowchart")],
         ("UMLInteractionOverviewDiagram", "UMLActivity") => &[],
         ("UMLInteractionOverviewDiagram", "UMLInteraction") => &[ACTIVITY],
         ("UMLInteractionOverviewDiagram", _) => &[INTERACTION, ACTIVITY],

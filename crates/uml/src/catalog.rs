@@ -241,6 +241,21 @@ const fn activity_node(
 
 /// A control node (initial, final, fork, join, merge, decision): one view
 /// type, drawn by its model's type.
+/// A flowchart symbol: a box with a centred name label.
+const fn flowchart(
+    id: &'static str,
+    label: &'static str,
+    view_type: &'static str,
+    base_name: &'static str,
+    size: (f64, f64),
+) -> NodeSpec {
+    NodeSpec {
+        name_compartment: false,
+        labels: &["nameLabel"],
+        ..node(id, label, id, view_type, base_name, size)
+    }
+}
+
 const fn control_node(id: &'static str, label: &'static str, size: (f64, f64)) -> NodeSpec {
     NodeSpec {
         name_compartment: false,
@@ -733,6 +748,149 @@ pub const NODES: &[NodeSpec] = &[
         "UMLInformationItemView",
         "InformationItem",
     ),
+    // Flowcharts (StarUML's flowchart extension). Names come from the type
+    // ("Process1"); connectors are named C and P; junction symbols have none.
+    flowchart(
+        "FCProcess",
+        "Process",
+        "FCProcessView",
+        "Process",
+        (100.0, 50.0),
+    ),
+    flowchart(
+        "FCTerminator",
+        "Terminator",
+        "FCTerminatorView",
+        "Terminator",
+        (100.0, 40.0),
+    ),
+    flowchart(
+        "FCDecision",
+        "Decision",
+        "FCDecisionView",
+        "Decision",
+        (100.0, 60.0),
+    ),
+    flowchart("FCDelay", "Delay", "FCDelayView", "Delay", (100.0, 50.0)),
+    flowchart(
+        "FCPredefinedProcess",
+        "Predefined Process",
+        "FCPredefinedProcessView",
+        "PredefinedProcess",
+        (140.0, 50.0),
+    ),
+    flowchart(
+        "FCAlternateProcess",
+        "Alternate Process",
+        "FCAlternateProcessView",
+        "AlternateProcess",
+        (130.0, 50.0),
+    ),
+    flowchart("FCData", "Data", "FCDataView", "Data", (100.0, 50.0)),
+    flowchart(
+        "FCDocument",
+        "Document",
+        "FCDocumentView",
+        "Document",
+        (100.0, 60.0),
+    ),
+    flowchart(
+        "FCMultiDocument",
+        "Multi-Document",
+        "FCMultiDocumentView",
+        "MultiDocument",
+        (120.0, 70.0),
+    ),
+    flowchart(
+        "FCPreparation",
+        "Preparation",
+        "FCPreparationView",
+        "Preparation",
+        (110.0, 50.0),
+    ),
+    flowchart(
+        "FCDisplay",
+        "Display",
+        "FCDisplayView",
+        "Display",
+        (100.0, 50.0),
+    ),
+    flowchart(
+        "FCManualInput",
+        "Manual Input",
+        "FCManualInputView",
+        "Input",
+        (100.0, 50.0),
+    ),
+    flowchart(
+        "FCManualOperation",
+        "Manual Operation",
+        "FCManualOperationView",
+        "Operation",
+        (110.0, 50.0),
+    ),
+    flowchart("FCCard", "Card", "FCCardView", "Card", (100.0, 50.0)),
+    flowchart(
+        "FCPunchedTape",
+        "Punched Tape",
+        "FCPunchedTapeView",
+        "PunchedTape",
+        (110.0, 60.0),
+    ),
+    flowchart(
+        "FCConnector",
+        "Connector",
+        "FCConnectorView",
+        "C",
+        (30.0, 30.0),
+    ),
+    flowchart(
+        "FCOffPageConnector",
+        "Off-Page Connector",
+        "FCOffPageConnectorView",
+        "P",
+        (30.0, 36.0),
+    ),
+    flowchart("FCOr", "Or", "FCOrView", "", (30.0, 30.0)),
+    flowchart(
+        "FCSummingJunction",
+        "Summing Junction",
+        "FCSummingJunctionView",
+        "",
+        (30.0, 30.0),
+    ),
+    flowchart("FCCollate", "Collate", "FCCollateView", "", (30.0, 30.0)),
+    flowchart("FCSort", "Sort", "FCSortView", "", (30.0, 30.0)),
+    flowchart("FCMerge", "Merge", "FCMergeView", "", (30.0, 25.0)),
+    flowchart("FCExtract", "Extract", "FCExtractView", "", (30.0, 25.0)),
+    flowchart(
+        "FCStoredData",
+        "Stored Data",
+        "FCStoredDataView",
+        "StoredData",
+        (110.0, 50.0),
+    ),
+    flowchart(
+        "FCDatabase",
+        "Database",
+        "FCDatabaseView",
+        "Database",
+        (90.0, 60.0),
+    ),
+    flowchart(
+        "FCDirectAccessStorage",
+        "Direct Access Storage",
+        "FCDirectAccessStorageView",
+        "DirectAccessStorage",
+        (160.0, 50.0),
+    ),
+    flowchart(
+        "FCInternalStorage",
+        "Internal Storage",
+        "FCInternalStorageView",
+        "InternalStorage",
+        (130.0, 50.0),
+    ),
     // Annotations (no model element)
     NodeSpec {
         model_type: None,
@@ -767,6 +925,8 @@ pub enum EdgeModel {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum EdgeLabels {
     None,
+    /// Only a name label (flowchart flows: FCGeneralEdgeView).
+    Name,
     /// name, stereotype, property (UMLGeneralEdgeView).
     General,
     /// General + role name, multiplicity and property at each end.
@@ -1092,6 +1252,10 @@ pub const EDGES: &[EdgeSpec] = &[
             "UMLTimingMessageView",
         )
     },
+    EdgeSpec {
+        labels: EdgeLabels::Name,
+        ..directed("FCFlow", "Flow", "FCFlow", "FCFlowView")
+    },
     role_connector("UMLConnector", "Connector"),
     role_connector("UMLSelfConnector", "Self Connector"),
     comm_message("UMLForwardMessage", "Forward Message"),
@@ -1336,6 +1500,40 @@ pub const TOOL_GROUPS: &[ToolGroup] = &[
         ],
     },
     ToolGroup {
+        label: "Flowchart",
+        diagrams: &["FCFlowchartDiagram"],
+        tools: &[
+            "FCFlow",
+            "FCProcess",
+            "FCTerminator",
+            "FCDecision",
+            "FCDelay",
+            "FCPredefinedProcess",
+            "FCAlternateProcess",
+            "FCData",
+            "FCDocument",
+            "FCMultiDocument",
+            "FCPreparation",
+            "FCDisplay",
+            "FCManualInput",
+            "FCManualOperation",
+            "FCCard",
+            "FCPunchedTape",
+            "FCConnector",
+            "FCOffPageConnector",
+            "FCOr",
+            "FCSummingJunction",
+            "FCCollate",
+            "FCSort",
+            "FCMerge",
+            "FCExtract",
+            "FCStoredData",
+            "FCDatabase",
+            "FCDirectAccessStorage",
+            "FCInternalStorage",
+        ],
+    },
+    ToolGroup {
         label: "Timing",
         diagrams: TIMING,
         tools: &[
@@ -1414,6 +1612,11 @@ pub const DIAGRAMS: &[(&str, &str, &str)] = &[
         "Information Flow Diagram",
         "InformationFlowDiagram",
     ),
+    (
+        "FCFlowchartDiagram",
+        "Flowchart Diagram",
+        "FlowchartDiagram",
+    ),
 ];
 
 /// A tool, either kind.
@@ -1441,70 +1644,115 @@ fn normalize(s: &str) -> String {
 
 /// Look a node tool up by id (`UMLClass`) or label (`class`, `Class`).
 pub fn node_spec(name: &str) -> Option<&'static NodeSpec> {
-    let n = normalize(name);
-    NODES
-        .iter()
-        .find(|s| normalize(s.id) == n || normalize(s.label) == n)
+    by_id(NODES, name, None).or_else(|| by_label(NODES, name, None))
 }
 
 /// Look an edge tool up by id (`UMLComposition`) or label (`Interface Realization`).
 pub fn edge_spec(name: &str) -> Option<&'static EdgeSpec> {
-    let n = normalize(name);
-    EDGES
-        .iter()
-        .find(|s| normalize(s.id) == n || normalize(s.label) == n)
+    by_id(EDGES, name, None).or_else(|| by_label(EDGES, name, None))
 }
 
 pub fn tool(id: &str) -> Option<Tool> {
-    node_spec(id)
-        .map(Tool::Node)
-        .or_else(|| edge_spec(id).map(Tool::Edge))
+    lookup(id, None)
 }
 
-/// Of the rows called `name`, the one meant for `diagram_type`: a row listing
-/// that type, else one for any diagram, else the first.
-fn pick<'a, T>(
-    rows: impl Iterator<Item = &'a T>,
-    diagrams: impl Fn(&T) -> &'static [&'static str],
-    diagram_type: &str,
-) -> Option<&'a T> {
-    let rows: Vec<&T> = rows.collect();
-    rows.iter()
-        .find(|r| diagrams(r).contains(&diagram_type))
-        .or_else(|| rows.iter().find(|r| diagrams(r).is_empty()))
-        .or(rows.first())
-        .copied()
+/// What a catalog row needs for look-ups.
+trait Row {
+    fn id(&self) -> &'static str;
+    fn label(&self) -> &'static str;
+    fn diagrams(&self) -> &'static [&'static str];
+}
+
+impl Row for NodeSpec {
+    fn id(&self) -> &'static str {
+        self.id
+    }
+    fn label(&self) -> &'static str {
+        self.label
+    }
+    fn diagrams(&self) -> &'static [&'static str] {
+        self.diagrams
+    }
+}
+
+impl Row for EdgeSpec {
+    fn id(&self) -> &'static str {
+        self.id
+    }
+    fn label(&self) -> &'static str {
+        self.label
+    }
+    fn diagrams(&self) -> &'static [&'static str] {
+        self.diagrams
+    }
+}
+
+/// Whether `diagram_type`'s toolbox offers the tool `id`.
+fn offered(id: &str, diagram_type: &str) -> bool {
+    tool_groups(diagram_type).any(|g| g.tools.contains(&id))
+}
+
+/// Of several rows answering to one name, the one meant for `diagram_type`:
+/// a row limited to that type, else one its toolbox offers, else one for any
+/// diagram, else the first.
+fn pick<T: Row>(rows: Vec<&'static T>, diagram_type: Option<&str>) -> Option<&'static T> {
+    let for_type = |r: &T| diagram_type.is_some_and(|t| r.diagrams().contains(&t));
+    let on_toolbox =
+        |r: &T| r.diagrams().is_empty() && diagram_type.is_some_and(|t| offered(r.id(), t));
+    let any = |r: &T| r.diagrams().is_empty();
+    let first_where = |f: &dyn Fn(&T) -> bool| rows.iter().copied().find(|r| f(r));
+    first_where(&for_type)
+        .or_else(|| first_where(&on_toolbox))
+        .or_else(|| first_where(&any))
+        .or_else(|| rows.first().copied())
+}
+
+/// The row whose id is `name` (ignoring case, spaces, dashes and a `UML` prefix).
+fn by_id<T: Row>(rows: &'static [T], name: &str, diagram_type: Option<&str>) -> Option<&'static T> {
+    let n = normalize(name);
+    pick(
+        rows.iter().filter(|r| normalize(r.id()) == n).collect(),
+        diagram_type,
+    )
+}
+
+/// The row labelled `name`. Labels repeat across families ("Decision" in
+/// activities and flowcharts), so the open diagram's toolbox decides.
+fn by_label<T: Row>(
+    rows: &'static [T],
+    name: &str,
+    diagram_type: Option<&str>,
+) -> Option<&'static T> {
+    let n = normalize(name);
+    pick(
+        rows.iter().filter(|r| normalize(r.label()) == n).collect(),
+        diagram_type,
+    )
+}
+
+/// Ids win over labels across both kinds: `UMLConnector` is the line, even
+/// though a flowchart box is labelled "Connector".
+fn lookup(name: &str, diagram_type: Option<&str>) -> Option<Tool> {
+    by_id(NODES, name, diagram_type)
+        .map(Tool::Node)
+        .or_else(|| by_id(EDGES, name, diagram_type).map(Tool::Edge))
+        .or_else(|| by_label(NODES, name, diagram_type).map(Tool::Node))
+        .or_else(|| by_label(EDGES, name, diagram_type).map(Tool::Edge))
 }
 
 /// [`node_spec`] for a tool used on a `diagram_type` diagram.
 pub fn node_spec_on(name: &str, diagram_type: &str) -> Option<&'static NodeSpec> {
-    let n = normalize(name);
-    pick(
-        NODES
-            .iter()
-            .filter(|s| normalize(s.id) == n || normalize(s.label) == n),
-        |s| s.diagrams,
-        diagram_type,
-    )
+    by_id(NODES, name, Some(diagram_type)).or_else(|| by_label(NODES, name, Some(diagram_type)))
 }
 
 /// [`edge_spec`] for a tool used on a `diagram_type` diagram.
 pub fn edge_spec_on(name: &str, diagram_type: &str) -> Option<&'static EdgeSpec> {
-    let n = normalize(name);
-    pick(
-        EDGES
-            .iter()
-            .filter(|s| normalize(s.id) == n || normalize(s.label) == n),
-        |s| s.diagrams,
-        diagram_type,
-    )
+    by_id(EDGES, name, Some(diagram_type)).or_else(|| by_label(EDGES, name, Some(diagram_type)))
 }
 
 /// [`tool`] for a toolbox on a `diagram_type` diagram.
 pub fn tool_on(id: &str, diagram_type: &str) -> Option<Tool> {
-    node_spec_on(id, diagram_type)
-        .map(Tool::Node)
-        .or_else(|| edge_spec_on(id, diagram_type).map(Tool::Edge))
+    lookup(id, Some(diagram_type))
 }
 
 /// Toolbox groups for a diagram type, in order.
@@ -1579,6 +1827,37 @@ mod tests {
         for g in tool_groups("UMLCommunicationDiagram") {
             for t in g.tools {
                 assert!(tool_on(t, "UMLCommunicationDiagram").is_some(), "{t}");
+            }
+        }
+    }
+
+    #[test]
+    fn shared_labels_resolve_by_diagram() {
+        let flow = "FCFlowchartDiagram";
+        assert_eq!(
+            node_spec_on("Decision", flow).map(|s| s.id),
+            Some("FCDecision")
+        );
+        assert_eq!(
+            node_spec_on("Decision", "UMLActivityDiagram").map(|s| s.id),
+            Some("UMLDecisionNode")
+        );
+        assert_eq!(node_spec_on("Merge", flow).map(|s| s.id), Some("FCMerge"));
+        // An id beats a label: the composite-structure Connector is a line.
+        for t in ["UMLCompositeStructureDiagram", "UMLCommunicationDiagram"] {
+            assert!(
+                matches!(tool_on("UMLConnector", t), Some(Tool::Edge(_))),
+                "{t}"
+            );
+        }
+        assert!(matches!(tool_on("FCConnector", flow), Some(Tool::Node(_))));
+        for g in tool_groups(flow) {
+            for t in g.tools {
+                let found = tool_on(t, flow).map(|tool| match tool {
+                    Tool::Node(n) => n.id,
+                    Tool::Edge(e) => e.id,
+                });
+                assert_eq!(found, Some(*t));
             }
         }
     }
