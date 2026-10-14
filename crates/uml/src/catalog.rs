@@ -750,6 +750,20 @@ pub const NODES: &[NodeSpec] = &[
         "UMLInformationItemView",
         "InformationItem",
     ),
+    // Mind maps (StarUML's mindmap extension): rounded boxes with a centred
+    // name; StarUML names new ones from the type ("MMNode1").
+    NodeSpec {
+        name_compartment: false,
+        labels: &["nameLabel"],
+        ..node(
+            "MMNode",
+            "Node",
+            "MMNode",
+            "MMNodeView",
+            "MMNode",
+            (80.0, 30.0),
+        )
+    },
     // Entity-relationship diagrams (StarUML's ERD extension): an entity has
     // a bold name and a table of columns.
     NodeSpec {
@@ -1310,6 +1324,11 @@ pub const EDGES: &[EdgeSpec] = &[
         labels: EdgeLabels::Name,
         ..directed("FCFlow", "Flow", "FCFlow", "FCFlowView")
     },
+    // A plain line between mind map nodes (no arrowheads, no labels).
+    EdgeSpec {
+        labels: EdgeLabels::None,
+        ..directed("MMEdge", "Edge", "MMEdge", "MMEdgeView")
+    },
     erd_relationship("ERDRelationship", "One to One Relationship", [&[], &[]]),
     erd_relationship(
         "ERDRelationshipOneToMany",
@@ -1603,6 +1622,11 @@ pub const TOOL_GROUPS: &[ToolGroup] = &[
         ],
     },
     ToolGroup {
+        label: "Mindmap",
+        diagrams: &["MMMindmapDiagram"],
+        tools: &["MMNode", "MMEdge"],
+    },
+    ToolGroup {
         label: "Entity-Relationship",
         diagrams: &["ERDDiagram"],
         tools: &[
@@ -1698,6 +1722,7 @@ pub const DIAGRAMS: &[(&str, &str, &str)] = &[
     ),
     // StarUML names these from the type: "ERDDiagram1".
     ("ERDDiagram", "ER Diagram", "ERDDiagram"),
+    ("MMMindmapDiagram", "Mindmap Diagram", "MMMindmapDiagram"),
 ];
 
 /// A tool, either kind.

@@ -867,6 +867,10 @@ pub fn create_edge_at(
                     spec.label
                 ));
             };
+            let is_node = |m: &str| e.doc().get(m).is_some_and(|el| el.type_name == "MMNode");
+            if model_type == "MMEdge" && !(is_node(&source) && is_node(&target)) {
+                return Err(format!("An {} joins two mind map nodes.", spec.label));
+            }
             let mut rel = Element::new(e.new_id(), model_type)
                 .with("source", Field::Ref(source.clone()))
                 .with("target", Field::Ref(target));
@@ -1612,6 +1616,7 @@ pub fn create_diagram(e: &mut Editor, parent: &str, diagram_type: &str) -> Resul
         }
         ("FCFlowchartDiagram", p) if p != "FCFlowchart" => &[("FCFlowchart", "Flowchart")],
         ("ERDDiagram", p) if p != "ERDDataModel" => &[("ERDDataModel", "Data Model")],
+        ("MMMindmapDiagram", p) if p != "MMMindmap" => &[("MMMindmap", "Mindmap")],
         ("UMLInteractionOverviewDiagram", "UMLActivity") => &[],
         ("UMLInteractionOverviewDiagram", "UMLInteraction") => &[ACTIVITY],
         ("UMLInteractionOverviewDiagram", _) => &[INTERACTION, ACTIVITY],

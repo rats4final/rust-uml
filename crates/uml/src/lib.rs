@@ -820,6 +820,7 @@ mod tests {
                 catalog::EdgeOwner::Source if spec.model_type == Some("ERDRelationship") => {
                     "ERDEntity"
                 }
+                catalog::EdgeOwner::Source if spec.model_type == Some("MMEdge") => "MMNode",
                 catalog::EdgeOwner::Source => "UMLClass",
             };
             let end_tool = if node_spec(end_tool)
@@ -901,6 +902,46 @@ mod tests {
         let spec = edge_spec("ERDRelationship").unwrap();
         assert!(
             doc.try_edit(|e| create_edge(e, &dgm, spec, &cv, &class))
+                .is_err()
+        );
+    }
+
+    #[test]
+    fn mind_maps_nodes_and_edges() {
+        let mut doc = Document::new_project();
+        let dgm = diagram_of_type(&mut doc, "MMMindmapDiagram");
+        let d = doc.get(&dgm).unwrap();
+        assert_eq!(d.name(), "MMMindmapDiagram1");
+        let owner = d.parent.clone().unwrap();
+        let o = doc.get(&owner).unwrap();
+        assert_eq!((o.type_name.as_str(), o.name()), ("MMMindmap", "Mindmap1"));
+        let (root, rv) = node(&mut doc, &dgm, "MMNode", 0.0, 0.0, None);
+        let (child, cv) = node(&mut doc, &dgm, "MMNode", 200.0, 0.0, None);
+        assert_eq!(doc.get(&root).unwrap().name(), "MMNode1");
+        assert_eq!(doc.get(&root).unwrap().parent, Some(owner));
+        let (edge_model, ev) = edge(&mut doc, &dgm, "MMEdge", &cv, &rv);
+        let m = doc.get(edge_model.as_deref().unwrap()).unwrap();
+        assert_eq!(m.type_name, "MMEdge");
+        assert_eq!(
+            m.parent.as_deref(),
+            Some(child.as_str()),
+            "owned by its source"
+        );
+        let v = doc.get(&ev).unwrap();
+        assert!(
+            v.ref_id("nameLabel").is_none(),
+            "mind map edges have no labels"
+        );
+        assert_eq!(
+            v.num("lineStyle", -1.0),
+            mdj::values::line_style::OBLIQUE as f64
+        );
+        // Only between mind map nodes.
+        let class_dgm = diagram_of_type(&mut doc, "UMLClassDiagram");
+        let (_, class) = node(&mut doc, &class_dgm, "UMLClass", 0.0, 0.0, None);
+        let spec = edge_spec("MMEdge").unwrap();
+        assert!(
+            doc.try_edit(|e| create_edge(e, &dgm, spec, &rv, &class))
                 .is_err()
         );
     }
