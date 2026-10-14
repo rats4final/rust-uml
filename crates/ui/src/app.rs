@@ -1341,6 +1341,37 @@ mod tests {
     }
 
     #[test]
+    fn c4_diagram_by_mouse() {
+        let mut h = harness();
+        h.run();
+        h.state_mut()
+            .exec("diagram.add", json!({"type": "C4Diagram"}));
+        h.run();
+        let mut place = |tool: &str, x: f64, y: f64| {
+            h.get_by_role_and_label(Role::Button, tool).click();
+            h.run();
+            let at = h.state().canvas.to_screen(render::Point::new(x, y));
+            click(&mut h, at);
+            h.state().session.selection[0].clone()
+        };
+        let person = place("Person", 80.0, 60.0);
+        let db = place("Container (Database)", 360.0, 80.0);
+        h.get_by_role_and_label(Role::Button, "Relationship")
+            .click();
+        h.run();
+        let (from, to) = (center_of(&h, &person), center_of(&h, &db));
+        drag(&mut h, from, to);
+        let app = h.state();
+        let model = |v: &str| {
+            let m = app.session.doc.get(v).unwrap().ref_id("model").unwrap();
+            app.session.doc.get(m).unwrap()
+        };
+        assert_eq!(model(&person).type_name, "C4Person");
+        assert_eq!(model(&db).str("kind"), Some("database"));
+        assert_eq!(views_of_type(app, "C4RelationshipView").len(), 1);
+    }
+
+    #[test]
     fn data_flow_diagram_by_mouse() {
         let mut h = harness();
         h.run();

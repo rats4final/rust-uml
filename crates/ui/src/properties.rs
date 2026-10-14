@@ -76,6 +76,20 @@ const NAVIGABLE: &[&str] = &["unspecified", "navigable", "notNavigable"];
 const AGGREGATION: &[&str] = &["none", "shared", "composite"];
 /// An ERD relationship end's cardinality (StarUML's options; `1` is the default).
 const CARDINALITY: &[&str] = &["0..1", "1", "0..*", "1..*"];
+/// A C4 container's kind (`C4ContainerKind`; new ones are `etc`).
+const C4_CONTAINER_KIND: &[&str] = &[
+    "server-webapp",
+    "client-webapp",
+    "desktop-app",
+    "mobile-app",
+    "console-app",
+    "serverless-function",
+    "database",
+    "blob-store",
+    "filesystem",
+    "shell-script",
+    "etc",
+];
 
 #[derive(Default)]
 pub struct Properties {
@@ -121,7 +135,7 @@ impl Properties {
             .show(ui, |ui| {
                 let t = el.type_name.as_str();
                 ui.heading(
-                    ["UML", "ERD", "FC", "MM", "DFD"]
+                    ["UML", "ERD", "FC", "MM", "DFD", "C4"]
                         .iter()
                         .find_map(|p| t.strip_prefix(p))
                         .unwrap_or(t)
@@ -448,6 +462,23 @@ impl Properties {
                     ui.end_row();
                 }
             }
+            "C4Person" | "C4SoftwareSystem" | "C4Container" | "C4Component" | "C4Element"
+            | "C4Model" | "C4Relationship" => {
+                if t == "C4Container" {
+                    ui.label("Kind");
+                    combo(ui, el, "kind", C4_CONTAINER_KIND, "etc", out);
+                    ui.end_row();
+                }
+                // The description is edited below the grid, full width.
+                self.field(
+                    ui,
+                    el,
+                    "Technology",
+                    "technology",
+                    el.str("technology").unwrap_or(""),
+                    out,
+                );
+            }
             // Shown on the shape, e.g. `1.2` for a process.
             "DFDExternalEntity" | "DFDProcess" | "DFDDataStore" => {
                 self.field(ui, el, "ID", "id", el.str("id").unwrap_or(""), out);
@@ -485,6 +516,20 @@ impl Properties {
 
     fn lists(&mut self, ui: &mut egui::Ui, doc: &Document, el: &Element, out: &mut Commands) {
         let t = el.type_name.as_str();
+        // C4 elements and relationships: shown on the box or line. (A
+        // multi-line box inside the grid above would re-measure it every frame.)
+        if t.starts_with("C4") {
+            ui.add_space(8.0);
+            ui.label("Description");
+            self.text(
+                ui,
+                el,
+                "description",
+                el.str("description").unwrap_or(""),
+                true,
+                out,
+            );
+        }
         let mut sections: Vec<(&str, &str, &str)> = Vec::new();
         if t == "UMLEnumeration" {
             sections.push(("Literals", "literals", "literal"));
