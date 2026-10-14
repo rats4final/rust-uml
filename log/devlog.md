@@ -2,6 +2,19 @@
 
 Newest first. Terse: what landed, numbers, what's still open.
 
+## 2026-10-14 — M5: C4
+
+- C4 diagrams: person, software system, containers of every kind (database cylinder, browser,
+  phone, desktop window, λ / `>_` / `#_` badges), component, element; dotted relationships with
+  description and `[technology]`; StarUML's fill colours. A diagram inside a system shows the
+  system as its dashed boundary. Properties panel: technology, description, container kind.
+- `view.add {model, x, y}`: show an existing element on the open diagram (groundwork for
+  dragging from the model explorer). Relationship descriptions wrap.
+- Fixed while testing: a multi-line text box inside the properties grid made it repaint every
+  frame; the C4 description is edited below the grid.
+- `examples/c4.mdj` (in the release archives) from `examples/scripts/bank-c4.json`. 177 tests.
+- Open: check in StarUML; Azure next (icon licence first).
+
 ## 2026-10-14 — polish pass
 
 - Lines: right-angle lines leaving one box side start apart, each moving toward where it heads

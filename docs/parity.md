@@ -1,6 +1,6 @@
 # Parity with StarUML 7.1.1
 
-Status line: **v0.7.0: every UML diagram type, plus flowcharts, ER diagrams and mind maps, each with Mermaid import. Since then: data flow diagrams.** Updated 2026-10-14.
+Status line: **v0.7.0: every UML diagram type, plus flowcharts, ER diagrams and mind maps, each with Mermaid import. Since then: data flow diagrams and C4.** Updated 2026-10-14.
 
 Each row comes from the evidence in [`evidence.md`](evidence.md). "Paid" marks features StarUML
 locks behind a licence (see evidence §4: only exports are locked, by watermark).
@@ -48,7 +48,7 @@ Legend: ✅ done · 🟡 partial · ⬜ not started
 | AWS | AWS | ✔ | ⬜ |
 | GCP | GCP | ✔ | ⬜ |
 | Azure | Azure | | ⬜ |
-| C4 | C4 | | ⬜ |
+| C4 | C4 | | ✅ Person, software system, container (database, web, desktop and mobile app tools; every container kind drawn), component, element, relationships with description and technology; StarUML's fill colours; a diagram inside a system shows it as the dashed boundary; technology, description and kind in the properties panel. `view.add` shows an existing element on a diagram. Not yet: dragging an element from the model explorer onto a diagram (the command exists) |
 | ERD | ERD | | ✅ Entities with a keys / name / type column table, one-to-one / one-to-many / many-to-many relationships with crow's-foot ends by cardinality, dotted when non-identifying; column and cardinality editing in the properties panel; Format ▸ Suppress Columns; add-related-entity quick edits (`erd.add-related`); validation rules ERD001/ERD002; Mermaid `erDiagram` import. Not yet: column quick-edit syntax, a `referenceTo` picker in the panel (settable with `element.set {"$ref": id}`) |
 | DFD | DFD | | ✅ External entities, processes (id band), data stores (open box, id compartment) and named data flows; element IDs edited in the properties panel; a process can hold its lower-level diagram. Not yet: StarUML's DFD quick edits |
 | Flowchart | Flowchart | | ✅ All 27 of StarUML's symbols and labelled flows; lines end on diamond and circle outlines; Mermaid `flowchart`/`graph` import |

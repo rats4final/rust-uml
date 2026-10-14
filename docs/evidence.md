@@ -290,6 +290,32 @@ From `timingDiagramFn`, `_addTimingFrame`, `lifelineFn`, `timingStateFn`, `timeS
 - Time constraints (`{min..max}` label + link to a message or segment) and duration constraints
   (`{min..max}`, placed in the frame) exist too.
 
+### C4 (observed for M5, 2026-10-14)
+
+From `extensions/essential/c4/` (`metamodel.json`, `c4-factory.js`, `elements.js`,
+`toolbox/c4.json`, `preferences/c4.json`), in our words:
+
+- A `C4Diagram` added to the project goes in a new `C4Model` (`C4Model1`); added to anything else
+  (a package, a software system) it goes straight in, so a system can hold its containers'
+  diagram. Diagrams and elements are named from their type (`C4Diagram1`, `C4Person1`).
+- Elements (`C4Element` and its kinds `C4Person`, `C4SoftwareSystem`, `C4Container`,
+  `C4Component`) have `technology` and `description`; containers also a `kind` (`C4ContainerKind`,
+  new ones `etc`). The toolbox's database, web, desktop and mobile app tools are containers of
+  those kinds. `C4Relationship` is directed, between C4 elements, with `technology` and
+  `description` and no shown name.
+- Views have `nameLabel`, `technologyLabel`, `descriptionLabel` and `wordWrap` (default true).
+  New views take their fill from preferences: person `#38bcff`, software system `#6dceff`,
+  container `#a3e0ff`, component `#d8f2ff` (stored, since they differ from the default).
+- Drawing: a rounded box (radius 6) with the name (bold), `[Kind: technology]` (90 % size) and
+  the description (8 px lower) stacked and centred, 8 px padding, 2 px between labels. A person
+  has a head a third of the width across, the body 8 px below it. Container kinds have their own
+  marks and top padding: browser bar (web), phone bands and button (mobile), title bar with a
+  close mark (desktop), cylinder (database), `λ`, `>_`, `#_` (function, console, shell). An
+  element that contains the diagram it is drawn on is a dashed outline with the name and
+  technology at the bottom left and no description.
+- `C4RelationshipView`: dotted, filled arrowhead, description above (π/2, 15) and `[technology]`
+  below (−π/2, 15); oblique by preference.
+
 ### Data flow diagrams (observed for M5, 2026-10-14)
 
 From `extensions/essential/dfd/` (`metamodel.json`, `dfd-factory.js`, `elements.js`,

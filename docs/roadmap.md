@@ -216,7 +216,16 @@ and Azure last (provider icons: check their licence first).
   level. `render::layout::dfd_layout` places id and name with StarUML's padding; `Shape::DataStore`
   is the box open on the right. No Mermaid syntax exists for DFDs. Example `examples/dfd.mdj` from
   `examples/scripts/order-dfd.json`. **Not yet checked in StarUML.**
-- ⬜ C4, Azure.
+- ✅ **C4** (2026-10-14): `catalog::c4` rows (person, software system, component, element) and
+  `c4_container` rows (plain, database, web, desktop and mobile app tools, all `C4Container` with a
+  `kind`), each view with name, technology and description labels and StarUML's preference fill
+  colour stored. `C4Relationship` (dotted, filled arrowhead, `EdgeLabels::DescriptionAndTechnology`).
+  `create_diagram` adds a `C4Model` only under the project, as StarUML; a diagram inside a C4
+  element holds its contents. `render::layout::c4_layout` stacks the labels with StarUML's padding
+  per shape; an element whose diagram lies inside it is drawn as that diagram's boundary
+  (`layout::encloses`). Relationship descriptions wrap. New command `view.add {model, x, y}`.
+  Example `examples/c4.mdj` from `examples/scripts/bank-c4.json`. **Not yet checked in StarUML.**
+- ⬜ Azure (provider icons: check their licence first).
 
 ### M6 — Editing depth
 
