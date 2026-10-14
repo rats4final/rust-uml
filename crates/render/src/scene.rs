@@ -6,8 +6,8 @@ use mdj::{Document, Element, Id};
 
 use crate::geom::{Color, Point, Rect};
 use crate::layout::{
-    ACTIVE_INSET, Flow, HAlign, ICON_SPACE, Icon, MIND_ROUND, NODE_DEPTH, NOTE_FOLD, NodeLayout,
-    ROUND, Shape, Symbol, TEXT_PAD_X, TEXT_PAD_Y, node_layout,
+    ACTIVE_INSET, C4Look, Flow, HAlign, ICON_SPACE, Icon, MIND_ROUND, NODE_DEPTH, NOTE_FOLD,
+    NodeLayout, ROUND, Shape, Symbol, TEXT_PAD_X, TEXT_PAD_Y, node_layout,
 };
 use crate::route;
 use crate::text::Fonts;
@@ -511,7 +511,7 @@ fn container_depth(doc: &Document, view: &Element) -> usize {
 
 fn draw_node(scene: &mut Scene, l: &NodeLayout, fonts: &Fonts) {
     let style = |line: &crate::layout::TextLine| TextStyle {
-        size: l.font_size,
+        size: l.font_size * line.scale,
         bold: line.bold,
         italic: line.italic,
         underline: line.underline,
@@ -666,6 +666,7 @@ fn draw_node(scene: &mut Scene, l: &NodeLayout, fonts: &Fonts) {
             });
         }
         Shape::Flowchart(flow) => draw_flowchart(scene, flow, r, fill, stroke),
+        Shape::C4(look) => draw_c4(scene, look, r, fill, stroke, l.text, fonts, l.font_size),
         Shape::Lollipop { circle } => {
             scene.prims.push(Prim::Ellipse {
                 rect: circle,
@@ -708,6 +709,7 @@ fn draw_node(scene: &mut Scene, l: &NodeLayout, fonts: &Fonts) {
         let mut y = c.rect.y + TEXT_PAD_Y;
         for text_line in &c.lines {
             let s = style(text_line);
+            let (line_h, ascent) = (fonts.line_height(s.size), fonts.ascent(s.size));
             let w = fonts.width(&text_line.text, s.size, s.bold, s.italic);
             let x = match text_line.align {
                 HAlign::Left => c.rect.x + pad_x,
@@ -737,6 +739,209 @@ fn draw_node(scene: &mut Scene, l: &NodeLayout, fonts: &Fonts) {
             text: label.line.text.clone(),
             style: s,
         });
+    }
+}
+
+/// Corner radius of C4 boxes (StarUML: 6).
+const C4_ROUND: f64 = 6.0;
+
+/// The outline of a rounded rectangle, as a closed list of points.
+fn round_rect_points(r: Rect, radius: f64) -> Vec<Point> {
+    let k = radius.min(r.w / 2.0).min(r.h / 2.0);
+    let corners = [
+        (
+            Point::new(r.right() - k, r.y),
+            Point::new(r.right(), r.y),
+            Point::new(r.right(), r.y + k),
+        ),
+        (
+            Point::new(r.right(), r.bottom() - k),
+            Point::new(r.right(), r.bottom()),
+            Point::new(r.right() - k, r.bottom()),
+        ),
+        (
+            Point::new(r.x + k, r.bottom()),
+            Point::new(r.x, r.bottom()),
+            Point::new(r.x, r.bottom() - k),
+        ),
+        (
+            Point::new(r.x, r.y + k),
+            Point::new(r.x, r.y),
+            Point::new(r.x + k, r.y),
+        ),
+    ];
+    let mut out = vec![Point::new(r.x + k, r.y)];
+    for (a, b, c) in corners {
+        out.push(a);
+        out.extend(quadratic(a, b, c));
+    }
+    out
+}
+
+/// A C4 element's outline and marks (StarUML's c4 extension).
+#[allow(clippy::too_many_arguments)]
+fn draw_c4(
+    scene: &mut Scene,
+    look: C4Look,
+    r: Rect,
+    fill: Option<Color>,
+    stroke: Color,
+    text: Color,
+    fonts: &Fonts,
+    size: f64,
+) {
+    let line = |scene: &mut Scene, points: Vec<Point>| {
+        scene.prims.push(Prim::Line {
+            points,
+            stroke,
+            dashed: false,
+        });
+    };
+    let round_box = |scene: &mut Scene, rect: Rect| {
+        scene.prims.push(Prim::RoundRect {
+            rect,
+            radius: C4_ROUND,
+            fill,
+            stroke,
+        });
+    };
+    let ring = |scene: &mut Scene, rect: Rect| {
+        scene.prims.push(Prim::Ellipse {
+            rect,
+            fill: None,
+            stroke,
+            dashed: false,
+        });
+    };
+    let across = |y: f64| vec![Point::new(r.x, y), Point::new(r.right(), y)];
+    match look {
+        C4Look::Box => round_box(scene, r),
+        C4Look::Boundary => scene.prims.push(Prim::Line {
+            points: round_rect_points(r, C4_ROUND),
+            stroke,
+            dashed: true,
+        }),
+        C4Look::Person { head } => {
+            let margin = (r.w - head) / 2.0;
+            scene.prims.push(Prim::Ellipse {
+                rect: Rect::new(r.x + margin, r.y, head, head),
+                fill,
+                stroke,
+                dashed: false,
+            });
+            let body = r.y + head + 8.0;
+            round_box(scene, Rect::new(r.x, body, r.w, r.bottom() - body));
+        }
+        C4Look::WebApp => {
+            // A browser: two buttons and an address bar over a line.
+            round_box(scene, r);
+            ring(scene, Rect::new(r.x + 8.0, r.y + 6.0, 10.0, 10.0));
+            ring(scene, Rect::new(r.x + 22.0, r.y + 6.0, 10.0, 10.0));
+            scene.prims.push(Prim::RoundRect {
+                rect: Rect::new(r.x + 36.0, r.y + 6.0, (r.w - 44.0).max(0.0), 10.0),
+                radius: 5.0,
+                fill: None,
+                stroke,
+            });
+            line(scene, across(r.y + 24.0));
+        }
+        C4Look::MobileApp => {
+            // A phone: bands at the top and bottom, a button below.
+            round_box(scene, r);
+            line(scene, across(r.y + 12.0));
+            line(scene, across(r.bottom() - 16.0));
+            let c = ((r.x + r.right()) / 2.0).round();
+            ring(scene, Rect::new(c - 4.0, r.bottom() - 12.0, 8.0, 8.0));
+        }
+        C4Look::DesktopApp => {
+            // A window: a title bar with a close mark.
+            round_box(scene, r);
+            line(scene, across(r.y + 15.0));
+            let (x1, x2) = (r.right() - 11.0, r.right() - 4.0);
+            line(
+                scene,
+                vec![Point::new(x1, r.y + 4.0), Point::new(x2, r.y + 11.0)],
+            );
+            line(
+                scene,
+                vec![Point::new(x2, r.y + 4.0), Point::new(x1, r.y + 11.0)],
+            );
+        }
+        C4Look::Database => {
+            // A cylinder: the top's front edge drawn over the body.
+            let g = (r.h / 8.0).floor();
+            let xm = (r.x + r.right()) / 2.0;
+            let kappa = 0.552_284_8;
+            let (ox, oy) = (r.w / 2.0 * kappa, g * kappa);
+            let (top_l, top_r) = (Point::new(r.x, r.y + g), Point::new(r.right(), r.y + g));
+            let (bot_l, bot_r) = (
+                Point::new(r.x, r.bottom() - g),
+                Point::new(r.right(), r.bottom() - g),
+            );
+            let mut body = vec![top_l];
+            body.extend(cubic(
+                top_l,
+                Point::new(r.x, r.y + g - oy),
+                Point::new(xm - ox, r.y),
+                Point::new(xm, r.y),
+            ));
+            body.extend(cubic(
+                Point::new(xm, r.y),
+                Point::new(xm + ox, r.y),
+                Point::new(r.right(), r.y + g - oy),
+                top_r,
+            ));
+            body.push(bot_r);
+            body.extend(cubic(
+                bot_r,
+                Point::new(r.right(), r.bottom() - g + oy),
+                Point::new(xm + ox, r.bottom()),
+                Point::new(xm, r.bottom()),
+            ));
+            body.extend(cubic(
+                Point::new(xm, r.bottom()),
+                Point::new(xm - ox, r.bottom()),
+                Point::new(r.x, r.bottom() - g + oy),
+                bot_l,
+            ));
+            scene.prims.push(Prim::Polygon {
+                points: body,
+                fill,
+                stroke,
+            });
+            let mut front = vec![top_l];
+            front.extend(cubic(
+                top_l,
+                Point::new(r.x, r.y + g + oy),
+                Point::new(xm - ox, r.y + 2.0 * g),
+                Point::new(xm, r.y + 2.0 * g),
+            ));
+            front.extend(cubic(
+                Point::new(xm, r.y + 2.0 * g),
+                Point::new(xm + ox, r.y + 2.0 * g),
+                Point::new(r.right(), r.y + g + oy),
+                top_r,
+            ));
+            line(scene, front);
+        }
+        C4Look::Badge(mark) => {
+            round_box(scene, r);
+            let w = fonts.width(mark, size, false, false);
+            scene.prims.push(Prim::Text {
+                rect: Rect::new(r.x + 6.0, r.y + 6.0, w, fonts.line_height(size)),
+                baseline: fonts.ascent(size),
+                text: mark.to_owned(),
+                style: TextStyle {
+                    size,
+                    bold: false,
+                    italic: false,
+                    underline: false,
+                    color: text,
+                    vertical: false,
+                },
+            });
+            line(scene, across(r.y + 24.0));
+        }
     }
 }
 
@@ -1439,6 +1644,8 @@ fn edge_style(doc: &Document, view: &Element) -> (bool, EndMark, EndMark) {
     }
     let (dashed, head) = if t == "FCFlowView" || t == "DFDDataFlowView" {
         (false, EndMark::FilledTriangle)
+    } else if t == "C4RelationshipView" {
+        (true, EndMark::FilledTriangle)
     } else if t == "UMLInformationFlowView" {
         (true, EndMark::OpenArrow)
     } else if t.contains("Generalization") {
@@ -1785,6 +1992,24 @@ fn draw_edge(
         ),
     ];
 
+    // A C4 relationship shows what it does and over what, not a name.
+    let texts = if view.type_name == "C4RelationshipView" {
+        let field = |k: &str| model.and_then(|m| m.str(k)).unwrap_or("").to_owned();
+        let technology = field("technology");
+        vec![
+            ("descriptionLabel", field("description")),
+            (
+                "technologyLabel",
+                if technology.is_empty() {
+                    String::new()
+                } else {
+                    format!("[{technology}]")
+                },
+            ),
+        ]
+    } else {
+        texts
+    };
     let line_h = fonts.line_height(size);
     let ascent = fonts.ascent(size);
     let mut boxes = Vec::new();
@@ -1803,7 +2028,18 @@ fn draw_edge(
             ),
             None => default_label_placement(key),
         };
-        let w = fonts.width(&text, size, false, false);
+        // A C4 relationship's description wraps, as StarUML's label does.
+        let lines: Vec<String> =
+            if view.type_name == "C4RelationshipView" && key == "descriptionLabel" {
+                crate::layout::wrap(&text, EDGE_WRAP, fonts, size)
+            } else {
+                vec![text]
+            };
+        let w = lines
+            .iter()
+            .map(|l| fonts.width(l, size, false, false))
+            .fold(0.0, f64::max);
+        let h = line_h * lines.len() as f64;
         let anchor = match (view.type_name.as_str(), key, pts) {
             // A message's name sits above its arrow whichever way it points;
             // a self message's beside its loop.
@@ -1816,22 +2052,30 @@ fn draw_edge(
             _ => label_point(pts, pos, alpha, distance),
         };
         let rect = clear_of(
-            Rect::new(anchor.x - w / 2.0, anchor.y - line_h / 2.0, w, line_h),
+            Rect::new(anchor.x - w / 2.0, anchor.y - h / 2.0, w, h),
             &drawn,
         );
-        scene.prims.push(Prim::Text {
-            rect,
-            baseline: ascent,
-            text,
-            style: TextStyle {
-                size,
-                bold: false,
-                italic: false,
-                underline: false,
-                color,
-                vertical: false,
-            },
-        });
+        for (i, line) in lines.into_iter().enumerate() {
+            let lw = fonts.width(&line, size, false, false);
+            scene.prims.push(Prim::Text {
+                rect: Rect::new(
+                    rect.x + (w - lw) / 2.0,
+                    rect.y + line_h * i as f64,
+                    lw,
+                    line_h,
+                ),
+                baseline: ascent,
+                text: line,
+                style: TextStyle {
+                    size,
+                    bold: false,
+                    italic: false,
+                    underline: false,
+                    color,
+                    vertical: false,
+                },
+            });
+        }
         boxes.push(rect);
     }
     boxes
@@ -1839,6 +2083,8 @@ fn draw_edge(
 
 /// Corner radius of rounded right-angle lines.
 const LINE_ROUND: f64 = 10.0;
+/// Width edge labels that wrap are wrapped to.
+const EDGE_WRAP: f64 = 100.0;
 
 /// The line as drawn for its style: rounded right angles get round corners,
 /// curves a smooth path through their points; others as they are.
@@ -1976,6 +2222,7 @@ fn edge_keyword(view_type: &str) -> Option<&'static str> {
 fn default_label_placement(key: &str) -> (i64, f64, f64) {
     match key {
         "stereotypeLabel" => (edge_position::MIDDLE, PI / 2.0, 30.0),
+        "technologyLabel" => (edge_position::MIDDLE, -PI / 2.0, 15.0),
         "tailRoleNameLabel" | "tailNameLabel" => (edge_position::TAIL, PI / 6.0, 30.0),
         "tailMultiplicityLabel" => (edge_position::TAIL, -PI / 6.0, 25.0),
         "headRoleNameLabel" | "headNameLabel" => (edge_position::HEAD, -PI / 6.0, 30.0),
@@ -2694,5 +2941,79 @@ mod tests {
         // A label already clear stays where it is.
         let clear = Rect::new(70.0, 90.0, 40.0, 16.0);
         assert_eq!(clear_of(clear, &line), clear);
+    }
+
+    #[test]
+    fn c4_elements_people_containers_and_boundaries() {
+        let mut doc = Document::new_project();
+        let root = doc.root().to_owned();
+        let on = "C4Diagram";
+        let context = doc.try_edit(|e| uml::create_diagram(e, &root, on)).unwrap();
+        let add = |doc: &mut Document, dgm: &str, tool: &str| {
+            let spec = uml::node_spec_on(tool, on).unwrap();
+            doc.try_edit(|e| uml::create_node(e, dgm, spec, 0.0, 0.0, None))
+                .unwrap()
+        };
+        let (person, pv) = add(&mut doc, &context, "C4Person");
+        let (system, sv) = add(&mut doc, &context, "C4SoftwareSystem");
+        let (_, dv) = add(&mut doc, &context, "C4ContainerDatabase");
+        let (person, system) = (person.unwrap(), system.unwrap());
+        doc.edit(|e| {
+            e.set(&person, "description", mdj::Field::str("Uses the bank"));
+            e.set(&system, "technology", mdj::Field::str("Rust"));
+        });
+        let layout = |doc: &Document, v: &str| {
+            crate::node_layout(doc, doc.get(v).unwrap(), &Fonts::default()).unwrap()
+        };
+        let texts = |l: &NodeLayout| -> Vec<String> {
+            l.compartments
+                .iter()
+                .flat_map(|c| c.lines.iter().map(|t| t.text.clone()))
+                .collect()
+        };
+
+        let p = layout(&doc, &pv);
+        let Shape::C4(C4Look::Person { head }) = p.shape else {
+            panic!("{:?}", p.shape)
+        };
+        assert_eq!(head, (p.rect.w / 3.0).round());
+        assert!(
+            p.compartments[0].rect.y > p.rect.y + head,
+            "name below the head"
+        );
+        assert_eq!(texts(&p), ["C4Person1", "[Person]", "Uses the bank"]);
+        assert!(p.compartments[0].lines[0].bold);
+        assert_eq!(
+            p.compartments[1].lines[0].scale,
+            crate::layout::C4_TECH_SCALE
+        );
+
+        let s1 = layout(&doc, &sv);
+        assert_eq!(s1.shape, Shape::C4(C4Look::Box));
+        assert_eq!(texts(&s1)[1], "[Software System: Rust]");
+        assert_eq!(layout(&doc, &dv).shape, Shape::C4(C4Look::Database));
+        assert_eq!(p.fill, Color::parse("#38bcff").unwrap());
+
+        // On a diagram inside the system, the system is its boundary.
+        let inside = doc
+            .try_edit(|e| uml::create_diagram(e, &system, on))
+            .unwrap();
+        let spec = uml::node_spec_for_model("C4SoftwareSystem", on).unwrap();
+        let bv = doc.edit(|e| uml::add_node_view(e, &inside, spec, Some(&system), 0.0, 0.0, None));
+        let b = layout(&doc, &bv);
+        assert_eq!(b.shape, Shape::C4(C4Look::Boundary));
+        assert_eq!(texts(&b), ["C4SoftwareSystem1", "[Software System: Rust]"]);
+        assert!(b.compartments[0].lines[0].align == HAlign::Left);
+        assert!(
+            b.compartments[1].rect.bottom() > b.rect.center().y,
+            "at the bottom"
+        );
+        let scene = build_scene(&doc, &inside, &Fonts::default());
+        assert!(
+            scene
+                .prims
+                .iter()
+                .any(|p| matches!(p, Prim::Line { dashed: true, .. }))
+        );
     }
 }

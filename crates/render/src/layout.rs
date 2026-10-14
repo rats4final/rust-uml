@@ -66,6 +66,8 @@ pub struct TextLine {
     pub italic: bool,
     pub underline: bool,
     pub align: HAlign,
+    /// Size relative to the box's font (C4's technology line is 0.9).
+    pub scale: f64,
 }
 
 impl TextLine {
@@ -76,6 +78,7 @@ impl TextLine {
             italic: false,
             underline: false,
             align: HAlign::Center,
+            scale: 1.0,
         }
     }
 
@@ -143,6 +146,29 @@ pub enum Shape {
     MindNode,
     /// A data store: a box open on the right.
     DataStore,
+    /// A C4 element.
+    C4(C4Look),
+}
+
+/// How a C4 box is drawn (StarUML's c4 extension).
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum C4Look {
+    /// A rounded box (systems, components, other containers, elements).
+    Box,
+    /// A head of diameter `head` over a rounded body.
+    Person {
+        head: f64,
+    },
+    /// The element the diagram is inside: a dashed outline, unfilled.
+    Boundary,
+    /// Container kinds with their own marks.
+    WebApp,
+    MobileApp,
+    DesktopApp,
+    Database,
+    /// A rounded box with a symbol at the top-left and a line under it
+    /// (λ functions, `>_` console apps, `#_` shell scripts).
+    Badge(&'static str),
 }
 
 /// The flowchart symbols (StarUML's flowchart extension, ISO 5807 shapes).
@@ -504,7 +530,7 @@ fn row_alignments<'a>(
 }
 
 /// Greedy word wrap of `text` to `width`, keeping explicit line breaks.
-fn wrap(text: &str, width: f64, fonts: &Fonts, size: f64) -> Vec<String> {
+pub(crate) fn wrap(text: &str, width: f64, fonts: &Fonts, size: f64) -> Vec<String> {
     let mut out = Vec::new();
     for para in text.split('\n') {
         let mut line = String::new();
@@ -668,6 +694,12 @@ pub fn node_layout(doc: &Document, view: &Element, fonts: &Fonts) -> Option<Node
             outside: Vec::new(),
             dividers: Vec::new(),
         });
+    }
+
+    if view.type_name.starts_with("C4") && view.type_name.ends_with("View") {
+        let mut l = c4_layout(doc, view, model, stored, size, fonts);
+        (l.fill, l.line, l.text) = (fill, line, text);
+        return Some(l);
     }
 
     if matches!(
@@ -1161,6 +1193,211 @@ pub fn node_layout(doc: &Document, view: &Element, fonts: &Fonts) -> Option<Node
         outside: Vec::new(),
         dividers,
     })
+}
+
+/// C4 boxes: padding at each side (StarUML: 8), between labels (2), extra
+/// space above the description (8), and between a person's head and body (8).
+const C4_PAD: f64 = 8.0;
+const C4_GAP: f64 = 2.0;
+const C4_DESCRIPTION_MARGIN: f64 = 8.0;
+const C4_HEAD_GAP: f64 = 8.0;
+/// Size of a C4 technology line, relative to the name.
+pub(crate) const C4_TECH_SCALE: f64 = 0.9;
+
+/// Whether `diagram` sits inside `model` (a container diagram drawn inside
+/// its software system): then `model` is drawn as the diagram's boundary.
+fn encloses(doc: &Document, diagram: Option<&str>, model: &str) -> bool {
+    let mut cur = diagram
+        .and_then(|d| doc.get(d))
+        .and_then(|d| d.parent.as_deref());
+    for _ in 0..64 {
+        match cur {
+            Some(id) if id == model => return true,
+            Some(id) => cur = doc.get(id).and_then(|e| e.parent.as_deref()),
+            None => return false,
+        }
+    }
+    false
+}
+
+/// A C4 element, laid out as StarUML does: the name (bold), the technology
+/// line (`[Container: Rust]`, slightly smaller) and the description, stacked
+/// from the top, centred; padding at the top depends on the shape. An
+/// element whose diagram lies inside it is drawn as that diagram's
+/// boundary: dashed, name and technology at the bottom left, no description;
+/// a generic element stacks its labels at the bottom too.
+fn c4_layout(
+    doc: &Document,
+    view: &Element,
+    model: Option<&Element>,
+    stored: Rect,
+    size: f64,
+    fonts: &Fonts,
+) -> NodeLayout {
+    let line_h = fonts.line_height(size);
+    let tech_size = size * C4_TECH_SCALE;
+    let tech_h = fonts.line_height(tech_size);
+    let kind = view.type_name.as_str();
+    let field = |k: &str| model.and_then(|m| m.str(k)).unwrap_or("").to_owned();
+    let name = model.map(|m| m.name().to_owned()).unwrap_or_default();
+    let technology = field("technology");
+    let boundary = model.is_some_and(|m| encloses(doc, view.parent.as_deref(), &m.id));
+    let at_bottom = boundary || kind == "C4ElementView";
+    let typed = |what: &str| match technology.as_str() {
+        "" => format!("[{what}]"),
+        t => format!("[{what}: {t}]"),
+    };
+    let tech = match kind {
+        "C4PersonView" => typed("Person"),
+        "C4SoftwareSystemView" => typed("Software System"),
+        "C4ContainerView" => typed("Container"),
+        "C4ComponentView" => typed("Component"),
+        _ if technology.is_empty() => String::new(),
+        _ => format!("[{technology}]"),
+    };
+    let description = if boundary {
+        String::new()
+    } else {
+        field("description")
+    };
+    let container_kind = field("kind");
+
+    // Wrapped to the box, as StarUML's labels with `wordWrap` (on by default).
+    let wraps = view.bool("wordWrap", true);
+    let room = stored.w - 2.0 * C4_PAD;
+    let lines = |text: &str, bold: bool, sz: f64| -> (Vec<String>, f64) {
+        let widest_word = text
+            .split(['\n', ' '])
+            .map(|w| fonts.width(w, sz, bold, false))
+            .fold(0.0, f64::max);
+        if text.is_empty() {
+            return (Vec::new(), 0.0);
+        }
+        if wraps {
+            (wrap(text, room.max(widest_word), fonts, sz), widest_word)
+        } else {
+            let ls: Vec<String> = text.split('\n').map(str::to_owned).collect();
+            let w = ls
+                .iter()
+                .map(|l| fonts.width(l, sz, bold, false))
+                .fold(0.0, f64::max);
+            (ls, w)
+        }
+    };
+    let (name_lines, name_w) = lines(&name, true, size);
+    let (tech_lines, tech_w) = lines(&tech, false, tech_size);
+    let (desc_lines, desc_w) = lines(&description, false, size);
+    let heights = [
+        name_lines.len() as f64 * line_h,
+        tech_lines.len() as f64 * tech_h,
+        desc_lines.len() as f64 * line_h,
+    ];
+    let shown = if boundary { 2 } else { 3 };
+    let stack: f64 = heights[..shown].iter().sum::<f64>() + C4_GAP * (shown - 1) as f64;
+
+    let min_w = (name_w.max(tech_w).max(desc_w) + 2.0 * C4_PAD)
+        .max(MIN_WIDTH)
+        .ceil();
+    let w = stored.w.max(min_w);
+    let head = (w / 3.0).round();
+    let (top, bottom) = match (kind, container_kind.as_str()) {
+        ("C4PersonView", _) => (head + C4_PAD + C4_HEAD_GAP, C4_PAD),
+        ("C4ContainerView", "client-webapp" | "console-app" | "shell-script")
+        | ("C4ContainerView", "serverless-function") => (30.0, C4_PAD),
+        ("C4ContainerView", "mobile-app") => (16.0, 20.0),
+        ("C4ContainerView", "desktop-app") => (20.0, C4_PAD),
+        ("C4ContainerView", "database") => (C4_PAD + 2.0 * (stored.h / 8.0).floor(), C4_PAD),
+        _ => (C4_PAD, C4_PAD),
+    };
+    let min_h = (top + stack + bottom + C4_DESCRIPTION_MARGIN).ceil();
+    let rect = Rect::new(stored.x, stored.y, w, stored.h.max(min_h));
+
+    let align = if at_bottom {
+        HAlign::Left
+    } else {
+        HAlign::Center
+    };
+    let block = |ls: Vec<String>, y: f64, h: f64, bold: bool, scale: f64, align: HAlign| {
+        // Text sits `C4_PAD` in from the sides; left-aligned text is drawn
+        // `PAD_X` into its compartment, so that starts `PAD_X` further out.
+        let (x, w) = match align {
+            HAlign::Left => (rect.x + C4_PAD - PAD_X, rect.w - 2.0 * C4_PAD + PAD_X),
+            _ => (rect.x + C4_PAD, rect.w - 2.0 * C4_PAD),
+        };
+        Compartment {
+            rect: Rect::new(x, y - PAD_Y, w, h + 2.0 * PAD_Y),
+            lines: ls
+                .into_iter()
+                .map(|t| TextLine {
+                    bold,
+                    scale,
+                    ..TextLine::aligned(t, align)
+                })
+                .collect(),
+        }
+    };
+    // Tops of the name, technology and description blocks.
+    let tops = if at_bottom {
+        let mut y = rect.bottom() - bottom;
+        let mut out = [0.0; 3];
+        for i in (0..shown).rev() {
+            y -= heights[i];
+            out[i] = y;
+            y -= C4_GAP;
+        }
+        out
+    } else {
+        let mut y = rect.y + top;
+        let mut out = [0.0; 3];
+        for (i, h) in heights.iter().enumerate() {
+            out[i] = y;
+            y += h + C4_GAP;
+        }
+        out
+    };
+    let mut compartments = vec![
+        block(name_lines, tops[0], heights[0], true, 1.0, align),
+        block(tech_lines, tops[1], heights[1], false, C4_TECH_SCALE, align),
+    ];
+    if shown == 3 {
+        compartments.push(block(
+            desc_lines,
+            tops[2] + C4_DESCRIPTION_MARGIN,
+            heights[2],
+            false,
+            1.0,
+            HAlign::Center,
+        ));
+    }
+    let look = match (kind, container_kind.as_str()) {
+        _ if boundary => C4Look::Boundary,
+        ("C4PersonView", _) => C4Look::Person { head },
+        ("C4ContainerView", "client-webapp") => C4Look::WebApp,
+        ("C4ContainerView", "mobile-app") => C4Look::MobileApp,
+        ("C4ContainerView", "desktop-app") => C4Look::DesktopApp,
+        ("C4ContainerView", "database") => C4Look::Database,
+        ("C4ContainerView", "serverless-function") => C4Look::Badge("λ"),
+        ("C4ContainerView", "console-app") => C4Look::Badge(">_"),
+        ("C4ContainerView", "shell-script") => C4Look::Badge("#_"),
+        _ => C4Look::Box,
+    };
+    NodeLayout {
+        rect,
+        min_w,
+        min_h,
+        shape: Shape::C4(look),
+        compartments,
+        separators: false,
+        font_size: size,
+        fill: Color::WHITE,
+        line: Color::BLACK,
+        text: Color::BLACK,
+        active: false,
+        dashed: false,
+        icon: None,
+        outside: Vec::new(),
+        dividers: Vec::new(),
+    }
 }
 
 /// Padding around a data flow element's name (StarUML: 10), and around its id (5).
