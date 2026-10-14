@@ -2,6 +2,12 @@
 
 Newest first. Terse: what landed, numbers, what's still open.
 
+## 2026-10-14 — v0.7.0: flowcharts, ER diagrams, mind maps
+
+- Release notes for the three M5 families and their Mermaid imports. Workspace version set to
+  0.7.0: it had stayed 0.1.0 since the first release, so Help ▸ About and the MCP server reported
+  0.1.0.
+
 ## 2026-10-14 — M5: mind maps
 
 - Mind map diagrams: nodes are rounded boxes whose names wrap to the box, joined by plain edges;
