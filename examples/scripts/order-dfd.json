@@ -1,0 +1,25 @@
+[
+  {"cmd": "model.tree", "params": {}, "as": "new"},
+  {"cmd": "element.delete", "params": {"ids": ["$new.tree.children.0.children.0.id"]}},
+  {"cmd": "diagram.add", "params": {"type": "Data Flow Diagram", "name": "Online orders"}, "as": "dgm"},
+  {"cmd": "element.set", "params": {"id": "$dgm.id", "values": {"defaultDiagram": true}}},
+
+  {"cmd": "node.create", "params": {"kind": "External Entity", "x": 40, "y": 60, "name": "Customer"}, "as": "customer"},
+  {"cmd": "node.create", "params": {"kind": "Process", "x": 260, "y": 40, "name": "Take order"}, "as": "take"},
+  {"cmd": "element.set", "params": {"id": "$take.model", "values": {"id": "1"}}},
+  {"cmd": "node.create", "params": {"kind": "Process", "x": 520, "y": 40, "name": "Charge card"}, "as": "charge"},
+  {"cmd": "element.set", "params": {"id": "$charge.model", "values": {"id": "2"}}},
+  {"cmd": "node.create", "params": {"kind": "External Entity", "x": 780, "y": 60, "name": "Bank"}, "as": "bank"},
+  {"cmd": "node.create", "params": {"kind": "Data Store", "x": 250, "y": 240, "name": "Orders"}, "as": "orders"},
+  {"cmd": "element.set", "params": {"id": "$orders.model", "values": {"id": "D1"}}},
+  {"cmd": "node.create", "params": {"kind": "Process", "x": 520, "y": 220, "name": "Ship order"}, "as": "ship"},
+  {"cmd": "element.set", "params": {"id": "$ship.model", "values": {"id": "3"}}},
+  {"cmd": "node.create", "params": {"kind": "External Entity", "x": 780, "y": 240, "name": "Warehouse"}, "as": "warehouse"},
+
+  {"cmd": "edge.create", "params": {"kind": "Data Flow", "tail": "$customer.view", "head": "$take.view", "name": "order"}},
+  {"cmd": "edge.create", "params": {"kind": "Data Flow", "tail": "$take.view", "head": "$charge.view", "name": "total"}},
+  {"cmd": "edge.create", "params": {"kind": "Data Flow", "tail": "$charge.view", "head": "$bank.view", "name": "payment"}},
+  {"cmd": "edge.create", "params": {"kind": "Data Flow", "tail": "$take.view", "head": "$orders.view", "name": "new order"}},
+  {"cmd": "edge.create", "params": {"kind": "Data Flow", "tail": "$orders.view", "head": "$ship.view", "name": "paid order"}},
+  {"cmd": "edge.create", "params": {"kind": "Data Flow", "tail": "$ship.view", "head": "$warehouse.view", "name": "pick list"}}
+]
