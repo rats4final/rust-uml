@@ -171,7 +171,9 @@ pub fn container_owner(doc: &Document, container_view: &str, spec: &NodeSpec) ->
             let t = cm.type_name.as_str();
             let model_type = spec.model_type?;
             let fits = PACKAGE_LIKE.contains(&t)
-                || (DEPLOYMENT_TARGETS.contains(&t) && DEPLOYABLE.contains(&model_type));
+                || (DEPLOYMENT_TARGETS.contains(&t) && DEPLOYABLE.contains(&model_type))
+                // Azure groups (resource groups, networks) hold Azure elements.
+                || (t == "AzureGroup" && model_type.starts_with("Azure"));
             fits.then(|| cm.id.clone())
         }
     }
@@ -705,24 +707,18 @@ pub fn add_node_view(
         t.set(0, key, Field::Ref(lid));
     }
 
-    if spec.floating_labels {
-        // Placement as StarUML's floating node labels: distance and angle
-        // from the node's centre. Neither has a metamodel default, so write them.
-        for (key, distance, alpha) in [
-            ("nameLabel", 20.0, 3.0 * PI / 4.0),
-            ("stereotypeLabel", 35.0, 3.0 * PI / 4.0),
-            ("propertyLabel", 20.0, -3.0 * PI / 4.0),
-        ] {
-            let mut label = sub_view(e, "NodeLabelView")
-                .with("hostNode", Field::Ref(root_id.clone()))
-                .with("alpha", Field::Value(alpha.into()))
-                .with("distance", Field::Value(distance.into()));
-            if let Some(m) = model {
-                label = label.with("model", Field::Ref(m.to_owned()));
-            }
-            let (_, lid) = t.child(0, "subViews", label);
-            t.set(0, key, Field::Ref(lid));
+    // Placement as StarUML's floating node labels: distance and angle from
+    // the node's centre. Neither has a metamodel default, so write them.
+    for &(key, distance, alpha) in spec.floating_labels {
+        let mut label = sub_view(e, "NodeLabelView")
+            .with("hostNode", Field::Ref(root_id.clone()))
+            .with("alpha", Field::Value(alpha.into()))
+            .with("distance", Field::Value(distance.into()));
+        if let Some(m) = model {
+            label = label.with("model", Field::Ref(m.to_owned()));
         }
+        let (_, lid) = t.child(0, "subViews", label);
+        t.set(0, key, Field::Ref(lid));
     }
 
     for (key, type_name) in spec.compartments {
@@ -933,6 +929,11 @@ pub fn create_edge_at(
             };
             if model_type == "MMEdge" && !both(&|t| t == "MMNode") {
                 return Err(format!("An {} joins two mind map nodes.", spec.label));
+            }
+            if model_type == "AzureConnector"
+                && !both(&|t| t.starts_with("Azure") && t != "AzureConnector")
+            {
+                return Err(format!("An {} joins two Azure elements.", spec.label));
             }
             if model_type == "C4Relationship" && !both(&|t| C4_ELEMENTS.contains(&t)) {
                 return Err(format!("A {} joins two C4 elements.", spec.label));
@@ -1697,6 +1698,7 @@ pub fn create_diagram(e: &mut Editor, parent: &str, diagram_type: &str) -> Resul
         // As StarUML: a C4 model only when added to the project itself; in a
         // package or a C4 element (a system's containers) the diagram goes in it.
         ("C4Diagram", "Project") => &[("C4Model", "C4Model")],
+        ("AzureDiagram", "Project") => &[("AzureModel", "AzureModel")],
         // Any data flow element can hold a diagram (a process's lower level).
         ("DFDDiagram", p) if !DFD_ELEMENTS.contains(&p) => &[("DFDDataFlowModel", "DataFlowModel")],
         ("UMLInteractionOverviewDiagram", "UMLActivity") => &[],

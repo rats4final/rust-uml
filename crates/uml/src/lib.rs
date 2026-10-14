@@ -829,6 +829,9 @@ mod tests {
                 catalog::EdgeOwner::Source if spec.model_type == Some("C4Relationship") => {
                     "C4SoftwareSystem"
                 }
+                catalog::EdgeOwner::Source if spec.model_type == Some("AzureConnector") => {
+                    "AzureService"
+                }
                 catalog::EdgeOwner::Source => "UMLClass",
             };
             let end_tool = if node_spec(end_tool)
@@ -910,6 +913,54 @@ mod tests {
         let spec = edge_spec("ERDRelationship").unwrap();
         assert!(
             doc.try_edit(|e| create_edge(e, &dgm, spec, &cv, &class))
+                .is_err()
+        );
+    }
+
+    #[test]
+    fn azure_groups_services_callouts_and_connectors() {
+        let mut doc = Document::new_project();
+        let root = doc.root().to_owned();
+        let dgm = doc
+            .try_edit(|e| create_diagram(e, &root, "AzureDiagram"))
+            .unwrap();
+        let d = doc.get(&dgm).unwrap();
+        assert_eq!(d.name(), "AzureDiagram1");
+        let owner = d.parent.clone().unwrap();
+        assert_eq!(doc.get(&owner).unwrap().type_name, "AzureModel");
+
+        let (group, gv) = node(&mut doc, &dgm, "AzureGroup", 0.0, 0.0, None);
+        let (web, wv) = node(&mut doc, &dgm, "AzureService", 40.0, 40.0, Some(&gv));
+        let (db, dv) = node(&mut doc, &dgm, "AzureService", 300.0, 40.0, None);
+        assert_eq!(doc.get(&group).unwrap().name(), "AzureGroup1");
+        // A service starts as App Service, as StarUML's do.
+        let w = doc.get(&web).unwrap();
+        assert_eq!(w.str("icon"), Some("App-Services.svg"));
+        assert_eq!(w.parent, Some(group.clone()), "inside the group's model");
+        assert_eq!(
+            doc.get(&wv).unwrap().ref_id("containerView"),
+            Some(gv.as_str())
+        );
+        assert_eq!(doc.get(&db).unwrap().parent, Some(owner.clone()));
+        // Its name floats below it.
+        let label = doc
+            .get(doc.get(&wv).unwrap().ref_id("nameLabel").unwrap())
+            .unwrap();
+        assert_eq!(label.type_name, "NodeLabelView");
+        assert_eq!(label.num("distance", 0.0), 42.0);
+        assert!(doc.get(&wv).unwrap().ref_id("stereotypeLabel").is_none());
+
+        let (callout, cv) = node(&mut doc, &dgm, "AzureCallout", 200.0, 200.0, None);
+        assert_eq!(doc.get(&callout).unwrap().name(), "1");
+        assert_eq!(doc.get(&cv).unwrap().str("fillColor"), Some("#000000"));
+
+        let (_, ev) = edge(&mut doc, &dgm, "AzureConnector", &wv, &dv);
+        assert!(doc.get(&ev).unwrap().ref_id("nameLabel").is_some());
+        let class_dgm = diagram_of_type(&mut doc, "UMLClassDiagram");
+        let (_, class) = node(&mut doc, &class_dgm, "UMLClass", 0.0, 0.0, None);
+        let spec = edge_spec("AzureConnector").unwrap();
+        assert!(
+            doc.try_edit(|e| create_edge(e, &dgm, spec, &wv, &class))
                 .is_err()
         );
     }

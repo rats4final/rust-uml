@@ -3,6 +3,8 @@
 //! so behaviour can be compared tool by tool. Field names and type names are
 //! the file format (see docs/evidence.md); notation lives in `render`.
 
+use std::f64::consts::PI;
+
 use mdj::values::line_style;
 
 /// Where a new model element goes in its owner.
@@ -110,8 +112,9 @@ pub struct NodeSpec {
     pub base_name: &'static str,
     /// Has a `UMLNameCompartmentView` (`nameCompartment`).
     pub name_compartment: bool,
-    /// Floating name/stereotype/property labels instead (ports).
-    pub floating_labels: bool,
+    /// Floating labels instead (ports, pseudostates, Azure services):
+    /// `(view field, distance, angle)` from the node's centre.
+    pub floating_labels: &'static [(&'static str, f64, f64)],
     /// `(view field, compartment view type)`, in StarUML's order.
     pub compartments: &'static [(&'static str, &'static str)],
     pub size: (f64, f64),
@@ -144,7 +147,7 @@ const fn node(
         placement: Placement::Free,
         base_name,
         name_compartment: true,
-        floating_labels: false,
+        floating_labels: &[],
         compartments: &[],
         size,
         model_fields: &[],
@@ -220,7 +223,7 @@ const fn pseudostate(
 ) -> NodeSpec {
     NodeSpec {
         name_compartment: false,
-        floating_labels: true,
+        floating_labels: UML_FLOATING,
         model_fields: kind,
         ..vertex(id, label, "UMLPseudostate", "UMLPseudostateView", "", size)
     }
@@ -329,6 +332,15 @@ const fn dfd(
     }
 }
 
+/// StarUML's floating node labels: distance and angle from the node's centre.
+const UML_FLOATING: &[(&str, f64, f64)] = &[
+    ("nameLabel", 20.0, 3.0 * PI / 4.0),
+    ("stereotypeLabel", 35.0, 3.0 * PI / 4.0),
+    ("propertyLabel", 20.0, -3.0 * PI / 4.0),
+];
+/// An Azure service's name, below its icon.
+const AZURE_FLOATING: &[(&str, f64, f64)] = &[("nameLabel", 42.0, -PI / 2.0)];
+
 const ONE_REGION: &[(&str, &str)] = &[("regions", "UMLRegion")];
 const TWO_REGIONS: &[(&str, &str)] = &[("regions", "UMLRegion"), ("regions", "UMLRegion")];
 
@@ -436,7 +448,7 @@ pub const NODES: &[NodeSpec] = &[
         slot: Slot::Attributes,
         placement: Placement::OnClassifier,
         name_compartment: false,
-        floating_labels: true,
+        floating_labels: UML_FLOATING,
         ..node(
             "UMLPort",
             "Port",
@@ -814,6 +826,52 @@ pub const NODES: &[NodeSpec] = &[
         "UMLInformationItemView",
         "InformationItem",
     ),
+    // Azure (StarUML's azure extension). A service is an icon, named by
+    // its `icon` file (Microsoft's icons are not shipped: see ATTRIBUTION.md),
+    // with its name floating below; a callout a numbered black dot.
+    NodeSpec {
+        name_compartment: false,
+        labels: &["nameLabel"],
+        ..node(
+            "AzureGroup",
+            "Azure Group",
+            "AzureGroup",
+            "AzureGroupView",
+            "AzureGroup",
+            (200.0, 120.0),
+        )
+    },
+    NodeSpec {
+        name_compartment: false,
+        floating_labels: AZURE_FLOATING,
+        model_fields: &[("icon", Init::Str("App-Services.svg"))],
+        ..node(
+            "AzureService",
+            "Azure Service",
+            "AzureService",
+            "AzureServiceView",
+            "AzureService",
+            (48.0, 48.0),
+        )
+    },
+    NodeSpec {
+        name_compartment: false,
+        labels: &["nameLabel"],
+        // New callouts are numbered 1, white on black.
+        model_fields: &[("name", Init::Str("1"))],
+        view_fields: &[
+            ("fillColor", Init::Str("#000000")),
+            ("fontColor", Init::Str("#ffffff")),
+        ],
+        ..node(
+            "AzureCallout",
+            "Azure Callout",
+            "AzureCallout",
+            "AzureCalloutView",
+            "",
+            (24.0, 24.0),
+        )
+    },
     // C4 (StarUML's c4 extension): name, technology and description labels;
     // StarUML names new elements from the type ("C4Person1") and fills each
     // kind with its preference colour.
@@ -1449,6 +1507,18 @@ pub const EDGES: &[EdgeSpec] = &[
         labels: EdgeLabels::Name,
         ..directed("FCFlow", "Flow", "FCFlow", "FCFlowView")
     },
+    // An Azure connector: a named arrow, solid or dashed; rounded right
+    // angles by StarUML's preference.
+    EdgeSpec {
+        labels: EdgeLabels::Name,
+        line_style: line_style::ROUND_RECT,
+        ..directed(
+            "AzureConnector",
+            "Azure Connector",
+            "AzureConnector",
+            "AzureConnectorView",
+        )
+    },
     // A C4 relationship: a dotted arrow with its description and technology.
     EdgeSpec {
         labels: EdgeLabels::DescriptionAndTechnology,
@@ -1763,6 +1833,16 @@ pub const TOOL_GROUPS: &[ToolGroup] = &[
         ],
     },
     ToolGroup {
+        label: "Azure",
+        diagrams: &["AzureDiagram"],
+        tools: &[
+            "AzureGroup",
+            "AzureService",
+            "AzureCallout",
+            "AzureConnector",
+        ],
+    },
+    ToolGroup {
         label: "C4 Model",
         diagrams: &["C4Diagram"],
         tools: &[
@@ -1892,6 +1972,7 @@ pub const DIAGRAMS: &[(&str, &str, &str)] = &[
     ("MMMindmapDiagram", "Mindmap Diagram", "MMMindmapDiagram"),
     ("DFDDiagram", "Data Flow Diagram", "DFDDiagram"),
     ("C4Diagram", "C4 Diagram", "C4Diagram"),
+    ("AzureDiagram", "Azure Diagram", "AzureDiagram"),
 ];
 
 /// A tool, either kind.
