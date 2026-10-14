@@ -62,7 +62,7 @@ jobs:
           for bin in rust-uml rust-uml-cli; do
             cp "target/${{ matrix.target }}/release/${bin}${{ matrix.ext }}" "dist/$name/"
           done
-          cp README.md LICENSE-MIT LICENSE-APACHE ATTRIBUTION.md examples/shapes.mdj examples/structures.mdj examples/behaviour.mdj examples/flowchart.mdj examples/erd.mdj examples/mindmap.mdj examples/dfd.mdj "dist/$name/"
+          cp README.md LICENSE-MIT LICENSE-APACHE ATTRIBUTION.md examples/shapes.mdj examples/structures.mdj examples/behaviour.mdj examples/flowchart.mdj examples/erd.mdj examples/mindmap.mdj examples/dfd.mdj examples/c4.mdj "dist/$name/"
           # The README's script and Mermaid commands use these paths.
           mkdir -p "dist/$name/examples"
           cp -r examples/mermaid examples/scripts "dist/$name/examples/"

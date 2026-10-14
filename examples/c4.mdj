@@ -1,0 +1,1116 @@
+{
+	"_type": "Project",
+	"_id": "AAABoTxd+yTgoLzF",
+	"name": "Untitled",
+	"ownedElements": [
+		{
+			"_type": "UMLModel",
+			"_id": "AAABoTxd+yTgoeD8",
+			"_parent": {
+				"$ref": "AAABoTxd+yTgoLzF"
+			},
+			"name": "Model",
+			"ownedElements": []
+		},
+		{
+			"_type": "C4Model",
+			"_id": "AAABoTxd+yTgo399",
+			"_parent": {
+				"$ref": "AAABoTxd+yTgoLzF"
+			},
+			"name": "C4Model1",
+			"ownedElements": [
+				{
+					"_type": "C4Diagram",
+					"_id": "AAABoTxd+yTgpFDD",
+					"_parent": {
+						"$ref": "AAABoTxd+yTgo399"
+					},
+					"name": "System Context",
+					"defaultDiagram": true,
+					"ownedViews": [
+						{
+							"_type": "C4PersonView",
+							"_id": "AAABoTxd+yXgplSL",
+							"_parent": {
+								"$ref": "AAABoTxd+yTgpFDD"
+							},
+							"model": {
+								"$ref": "AAABoTxd+yXgpVSi"
+							},
+							"font": "Arial;13;0",
+							"left": 300,
+							"top": 20,
+							"width": 120,
+							"height": 180,
+							"fillColor": "#38bcff",
+							"subViews": [
+								{
+									"_type": "LabelView",
+									"_id": "AAABoTxd+yXgpxbi",
+									"_parent": {
+										"$ref": "AAABoTxd+yXgplSL"
+									},
+									"font": "Arial;13;0",
+									"parentStyle": true,
+									"text": "Personal Banking Customer"
+								},
+								{
+									"_type": "LabelView",
+									"_id": "AAABoTxd+yXgqGxP",
+									"_parent": {
+										"$ref": "AAABoTxd+yXgplSL"
+									},
+									"font": "Arial;13;0",
+									"parentStyle": true,
+									"text": ""
+								},
+								{
+									"_type": "LabelView",
+									"_id": "AAABoTxd+yXgqdFX",
+									"_parent": {
+										"$ref": "AAABoTxd+yXgplSL"
+									},
+									"font": "Arial;13;0",
+									"parentStyle": true,
+									"text": ""
+								}
+							],
+							"nameLabel": {
+								"$ref": "AAABoTxd+yXgpxbi"
+							},
+							"technologyLabel": {
+								"$ref": "AAABoTxd+yXgqGxP"
+							},
+							"descriptionLabel": {
+								"$ref": "AAABoTxd+yXgqdFX"
+							}
+						},
+						{
+							"_type": "C4SoftwareSystemView",
+							"_id": "AAABoTxd+yXgq3fP",
+							"_parent": {
+								"$ref": "AAABoTxd+yTgpFDD"
+							},
+							"model": {
+								"$ref": "AAABoTxd+yXgqt01"
+							},
+							"font": "Arial;13;0",
+							"left": 280,
+							"top": 260,
+							"width": 200,
+							"height": 110,
+							"fillColor": "#6dceff",
+							"subViews": [
+								{
+									"_type": "LabelView",
+									"_id": "AAABoTxd+yXgrM7g",
+									"_parent": {
+										"$ref": "AAABoTxd+yXgq3fP"
+									},
+									"font": "Arial;13;0",
+									"parentStyle": true,
+									"text": "Internet Banking System"
+								},
+								{
+									"_type": "LabelView",
+									"_id": "AAABoTxd+yXgrfF9",
+									"_parent": {
+										"$ref": "AAABoTxd+yXgq3fP"
+									},
+									"font": "Arial;13;0",
+									"parentStyle": true,
+									"text": ""
+								},
+								{
+									"_type": "LabelView",
+									"_id": "AAABoTxd+yXgrp3f",
+									"_parent": {
+										"$ref": "AAABoTxd+yXgq3fP"
+									},
+									"font": "Arial;13;0",
+									"parentStyle": true,
+									"text": ""
+								}
+							],
+							"nameLabel": {
+								"$ref": "AAABoTxd+yXgrM7g"
+							},
+							"technologyLabel": {
+								"$ref": "AAABoTxd+yXgrfF9"
+							},
+							"descriptionLabel": {
+								"$ref": "AAABoTxd+yXgrp3f"
+							}
+						},
+						{
+							"_type": "C4SoftwareSystemView",
+							"_id": "AAABoTxd+ybgsA/C",
+							"_parent": {
+								"$ref": "AAABoTxd+yTgpFDD"
+							},
+							"model": {
+								"$ref": "AAABoTxd+ybgr/Mk"
+							},
+							"font": "Arial;13;0",
+							"left": 20,
+							"top": 460,
+							"width": 200,
+							"height": 110,
+							"fillColor": "#6dceff",
+							"subViews": [
+								{
+									"_type": "LabelView",
+									"_id": "AAABoTxd+ybgseNd",
+									"_parent": {
+										"$ref": "AAABoTxd+ybgsA/C"
+									},
+									"font": "Arial;13;0",
+									"parentStyle": true,
+									"text": "Mainframe Banking System"
+								},
+								{
+									"_type": "LabelView",
+									"_id": "AAABoTxd+ybgst/b",
+									"_parent": {
+										"$ref": "AAABoTxd+ybgsA/C"
+									},
+									"font": "Arial;13;0",
+									"parentStyle": true,
+									"text": ""
+								},
+								{
+									"_type": "LabelView",
+									"_id": "AAABoTxd+ybgs6ak",
+									"_parent": {
+										"$ref": "AAABoTxd+ybgsA/C"
+									},
+									"font": "Arial;13;0",
+									"parentStyle": true,
+									"text": ""
+								}
+							],
+							"nameLabel": {
+								"$ref": "AAABoTxd+ybgseNd"
+							},
+							"technologyLabel": {
+								"$ref": "AAABoTxd+ybgst/b"
+							},
+							"descriptionLabel": {
+								"$ref": "AAABoTxd+ybgs6ak"
+							}
+						},
+						{
+							"_type": "C4SoftwareSystemView",
+							"_id": "AAABoTxd+yjgtYBo",
+							"_parent": {
+								"$ref": "AAABoTxd+yTgpFDD"
+							},
+							"model": {
+								"$ref": "AAABoTxd+yjgtGDp"
+							},
+							"font": "Arial;13;0",
+							"left": 540,
+							"top": 460,
+							"width": 200,
+							"height": 110,
+							"fillColor": "#6dceff",
+							"subViews": [
+								{
+									"_type": "LabelView",
+									"_id": "AAABoTxd+yjgtslo",
+									"_parent": {
+										"$ref": "AAABoTxd+yjgtYBo"
+									},
+									"font": "Arial;13;0",
+									"parentStyle": true,
+									"text": "E-mail System"
+								},
+								{
+									"_type": "LabelView",
+									"_id": "AAABoTxd+yjgtxb6",
+									"_parent": {
+										"$ref": "AAABoTxd+yjgtYBo"
+									},
+									"font": "Arial;13;0",
+									"parentStyle": true,
+									"text": ""
+								},
+								{
+									"_type": "LabelView",
+									"_id": "AAABoTxd+yjguMRX",
+									"_parent": {
+										"$ref": "AAABoTxd+yjgtYBo"
+									},
+									"font": "Arial;13;0",
+									"parentStyle": true,
+									"text": ""
+								}
+							],
+							"nameLabel": {
+								"$ref": "AAABoTxd+yjgtslo"
+							},
+							"technologyLabel": {
+								"$ref": "AAABoTxd+yjgtxb6"
+							},
+							"descriptionLabel": {
+								"$ref": "AAABoTxd+yjguMRX"
+							}
+						},
+						{
+							"_type": "C4RelationshipView",
+							"_id": "AAABoTxd+yvguhcn",
+							"_parent": {
+								"$ref": "AAABoTxd+yTgpFDD"
+							},
+							"font": "Arial;13;0",
+							"model": {
+								"$ref": "AAABoTxd+yvguXwf"
+							},
+							"head": {
+								"$ref": "AAABoTxd+yXgq3fP"
+							},
+							"tail": {
+								"$ref": "AAABoTxd+yXgplSL"
+							},
+							"lineStyle": 1,
+							"points": "369:200;375:260",
+							"subViews": [
+								{
+									"_type": "EdgeLabelView",
+									"_id": "AAABoTxd+yvgu7TJ",
+									"_parent": {
+										"$ref": "AAABoTxd+yvguhcn"
+									},
+									"font": "Arial;13;0",
+									"parentStyle": true,
+									"model": {
+										"$ref": "AAABoTxd+yvguXwf"
+									},
+									"hostEdge": {
+										"$ref": "AAABoTxd+yvguhcn"
+									},
+									"edgePosition": 1,
+									"alpha": 1.5707963267948966,
+									"distance": 15.0
+								},
+								{
+									"_type": "EdgeLabelView",
+									"_id": "AAABoTxd+yvgvAng",
+									"_parent": {
+										"$ref": "AAABoTxd+yvguhcn"
+									},
+									"font": "Arial;13;0",
+									"parentStyle": true,
+									"model": {
+										"$ref": "AAABoTxd+yvguXwf"
+									},
+									"hostEdge": {
+										"$ref": "AAABoTxd+yvguhcn"
+									},
+									"edgePosition": 1,
+									"alpha": -1.5707963267948966,
+									"distance": 15.0
+								}
+							],
+							"descriptionLabel": {
+								"$ref": "AAABoTxd+yvgu7TJ"
+							},
+							"technologyLabel": {
+								"$ref": "AAABoTxd+yvgvAng"
+							}
+						},
+						{
+							"_type": "C4RelationshipView",
+							"_id": "AAABoTxd+yzgvjxg",
+							"_parent": {
+								"$ref": "AAABoTxd+yTgpFDD"
+							},
+							"font": "Arial;13;0",
+							"model": {
+								"$ref": "AAABoTxd+yzgvanz"
+							},
+							"head": {
+								"$ref": "AAABoTxd+ybgsA/C"
+							},
+							"tail": {
+								"$ref": "AAABoTxd+yXgq3fP"
+							},
+							"lineStyle": 1,
+							"points": "309:370;192:460",
+							"subViews": [
+								{
+									"_type": "EdgeLabelView",
+									"_id": "AAABoTxd+yzgv4wY",
+									"_parent": {
+										"$ref": "AAABoTxd+yzgvjxg"
+									},
+									"font": "Arial;13;0",
+									"parentStyle": true,
+									"model": {
+										"$ref": "AAABoTxd+yzgvanz"
+									},
+									"hostEdge": {
+										"$ref": "AAABoTxd+yzgvjxg"
+									},
+									"edgePosition": 1,
+									"alpha": 1.5707963267948966,
+									"distance": 15.0
+								},
+								{
+									"_type": "EdgeLabelView",
+									"_id": "AAABoTxd+yzgwP8A",
+									"_parent": {
+										"$ref": "AAABoTxd+yzgvjxg"
+									},
+									"font": "Arial;13;0",
+									"parentStyle": true,
+									"model": {
+										"$ref": "AAABoTxd+yzgvanz"
+									},
+									"hostEdge": {
+										"$ref": "AAABoTxd+yzgvjxg"
+									},
+									"edgePosition": 1,
+									"alpha": -1.5707963267948966,
+									"distance": 15.0
+								}
+							],
+							"descriptionLabel": {
+								"$ref": "AAABoTxd+yzgv4wY"
+							},
+							"technologyLabel": {
+								"$ref": "AAABoTxd+yzgwP8A"
+							}
+						},
+						{
+							"_type": "C4RelationshipView",
+							"_id": "AAABoTxd+y7gwkq3",
+							"_parent": {
+								"$ref": "AAABoTxd+yTgpFDD"
+							},
+							"font": "Arial;13;0",
+							"model": {
+								"$ref": "AAABoTxd+y7gweT+"
+							},
+							"head": {
+								"$ref": "AAABoTxd+yjgtYBo"
+							},
+							"tail": {
+								"$ref": "AAABoTxd+yXgq3fP"
+							},
+							"lineStyle": 1,
+							"points": "452:370;569:460",
+							"subViews": [
+								{
+									"_type": "EdgeLabelView",
+									"_id": "AAABoTxd+y7gw4Hi",
+									"_parent": {
+										"$ref": "AAABoTxd+y7gwkq3"
+									},
+									"font": "Arial;13;0",
+									"parentStyle": true,
+									"model": {
+										"$ref": "AAABoTxd+y7gweT+"
+									},
+									"hostEdge": {
+										"$ref": "AAABoTxd+y7gwkq3"
+									},
+									"edgePosition": 1,
+									"alpha": 1.5707963267948966,
+									"distance": 15.0
+								},
+								{
+									"_type": "EdgeLabelView",
+									"_id": "AAABoTxd+y7gxERh",
+									"_parent": {
+										"$ref": "AAABoTxd+y7gwkq3"
+									},
+									"font": "Arial;13;0",
+									"parentStyle": true,
+									"model": {
+										"$ref": "AAABoTxd+y7gweT+"
+									},
+									"hostEdge": {
+										"$ref": "AAABoTxd+y7gwkq3"
+									},
+									"edgePosition": 1,
+									"alpha": -1.5707963267948966,
+									"distance": 15.0
+								}
+							],
+							"descriptionLabel": {
+								"$ref": "AAABoTxd+y7gw4Hi"
+							},
+							"technologyLabel": {
+								"$ref": "AAABoTxd+y7gxERh"
+							}
+						}
+					]
+				},
+				{
+					"_type": "C4Person",
+					"_id": "AAABoTxd+yXgpVSi",
+					"_parent": {
+						"$ref": "AAABoTxd+yTgo399"
+					},
+					"name": "Personal Banking Customer",
+					"description": "A customer of the bank, with personal bank accounts.",
+					"ownedElements": [
+						{
+							"_type": "C4Relationship",
+							"_id": "AAABoTxd+yvguXwf",
+							"_parent": {
+								"$ref": "AAABoTxd+yXgpVSi"
+							},
+							"source": {
+								"$ref": "AAABoTxd+yXgpVSi"
+							},
+							"target": {
+								"$ref": "AAABoTxd+yXgqt01"
+							},
+							"description": "Views accounts, makes payments"
+						}
+					]
+				},
+				{
+					"_type": "C4SoftwareSystem",
+					"_id": "AAABoTxd+yXgqt01",
+					"_parent": {
+						"$ref": "AAABoTxd+yTgo399"
+					},
+					"name": "Internet Banking System",
+					"description": "Lets customers see their accounts and make payments.",
+					"ownedElements": [
+						{
+							"_type": "C4Relationship",
+							"_id": "AAABoTxd+yzgvanz",
+							"_parent": {
+								"$ref": "AAABoTxd+yXgqt01"
+							},
+							"source": {
+								"$ref": "AAABoTxd+yXgqt01"
+							},
+							"target": {
+								"$ref": "AAABoTxd+ybgr/Mk"
+							},
+							"description": "Gets account information",
+							"technology": "XML/HTTPS"
+						},
+						{
+							"_type": "C4Relationship",
+							"_id": "AAABoTxd+y7gweT+",
+							"_parent": {
+								"$ref": "AAABoTxd+yXgqt01"
+							},
+							"source": {
+								"$ref": "AAABoTxd+yXgqt01"
+							},
+							"target": {
+								"$ref": "AAABoTxd+yjgtGDp"
+							},
+							"description": "Sends e-mail using",
+							"technology": "SMTP"
+						},
+						{
+							"_type": "C4Diagram",
+							"_id": "AAABoTxd+y/gxeyp",
+							"_parent": {
+								"$ref": "AAABoTxd+yXgqt01"
+							},
+							"name": "Containers",
+							"ownedViews": [
+								{
+									"_type": "C4SoftwareSystemView",
+									"_id": "AAABoTxd+zDgxn0w",
+									"_parent": {
+										"$ref": "AAABoTxd+y/gxeyp"
+									},
+									"model": {
+										"$ref": "AAABoTxd+yXgqt01"
+									},
+									"font": "Arial;13;0",
+									"left": 20,
+									"top": 20,
+									"width": 760,
+									"height": 300,
+									"fillColor": "#6dceff",
+									"subViews": [
+										{
+											"_type": "LabelView",
+											"_id": "AAABoTxd+zDgx6vK",
+											"_parent": {
+												"$ref": "AAABoTxd+zDgxn0w"
+											},
+											"font": "Arial;13;0",
+											"parentStyle": true,
+											"text": "Internet Banking System"
+										},
+										{
+											"_type": "LabelView",
+											"_id": "AAABoTxd+zDgyIAd",
+											"_parent": {
+												"$ref": "AAABoTxd+zDgxn0w"
+											},
+											"font": "Arial;13;0",
+											"parentStyle": true,
+											"text": ""
+										},
+										{
+											"_type": "LabelView",
+											"_id": "AAABoTxd+zDgyXZd",
+											"_parent": {
+												"$ref": "AAABoTxd+zDgxn0w"
+											},
+											"font": "Arial;13;0",
+											"parentStyle": true,
+											"text": ""
+										}
+									],
+									"nameLabel": {
+										"$ref": "AAABoTxd+zDgx6vK"
+									},
+									"technologyLabel": {
+										"$ref": "AAABoTxd+zDgyIAd"
+									},
+									"descriptionLabel": {
+										"$ref": "AAABoTxd+zDgyXZd"
+									}
+								},
+								{
+									"_type": "C4ContainerView",
+									"_id": "AAABoTxd+zDgy6SG",
+									"_parent": {
+										"$ref": "AAABoTxd+y/gxeyp"
+									},
+									"model": {
+										"$ref": "AAABoTxd+zDgypvx"
+									},
+									"font": "Arial;13;0",
+									"left": 50,
+									"top": 50,
+									"width": 160,
+									"height": 100,
+									"fillColor": "#a3e0ff",
+									"subViews": [
+										{
+											"_type": "LabelView",
+											"_id": "AAABoTxd+zDgzLpP",
+											"_parent": {
+												"$ref": "AAABoTxd+zDgy6SG"
+											},
+											"font": "Arial;13;0",
+											"parentStyle": true,
+											"text": "Single-Page App"
+										},
+										{
+											"_type": "LabelView",
+											"_id": "AAABoTxd+zDgzQz7",
+											"_parent": {
+												"$ref": "AAABoTxd+zDgy6SG"
+											},
+											"font": "Arial;13;0",
+											"parentStyle": true,
+											"text": ""
+										},
+										{
+											"_type": "LabelView",
+											"_id": "AAABoTxd+zDgztIi",
+											"_parent": {
+												"$ref": "AAABoTxd+zDgy6SG"
+											},
+											"font": "Arial;13;0",
+											"parentStyle": true,
+											"text": ""
+										}
+									],
+									"nameLabel": {
+										"$ref": "AAABoTxd+zDgzLpP"
+									},
+									"technologyLabel": {
+										"$ref": "AAABoTxd+zDgzQz7"
+									},
+									"descriptionLabel": {
+										"$ref": "AAABoTxd+zDgztIi"
+									}
+								},
+								{
+									"_type": "C4ContainerView",
+									"_id": "AAABoTxd+zLg0IB4",
+									"_parent": {
+										"$ref": "AAABoTxd+y/gxeyp"
+									},
+									"model": {
+										"$ref": "AAABoTxd+zHgz38G"
+									},
+									"font": "Arial;13;0",
+									"left": 300,
+									"top": 50,
+									"width": 160,
+									"height": 100,
+									"fillColor": "#a3e0ff",
+									"subViews": [
+										{
+											"_type": "LabelView",
+											"_id": "AAABoTxd+zLg0d94",
+											"_parent": {
+												"$ref": "AAABoTxd+zLg0IB4"
+											},
+											"font": "Arial;13;0",
+											"parentStyle": true,
+											"text": "Mobile App"
+										},
+										{
+											"_type": "LabelView",
+											"_id": "AAABoTxd+zLg0m7G",
+											"_parent": {
+												"$ref": "AAABoTxd+zLg0IB4"
+											},
+											"font": "Arial;13;0",
+											"parentStyle": true,
+											"text": ""
+										},
+										{
+											"_type": "LabelView",
+											"_id": "AAABoTxd+zLg0++b",
+											"_parent": {
+												"$ref": "AAABoTxd+zLg0IB4"
+											},
+											"font": "Arial;13;0",
+											"parentStyle": true,
+											"text": ""
+										}
+									],
+									"nameLabel": {
+										"$ref": "AAABoTxd+zLg0d94"
+									},
+									"technologyLabel": {
+										"$ref": "AAABoTxd+zLg0m7G"
+									},
+									"descriptionLabel": {
+										"$ref": "AAABoTxd+zLg0++b"
+									}
+								},
+								{
+									"_type": "C4ContainerView",
+									"_id": "AAABoTxd+zPg1abF",
+									"_parent": {
+										"$ref": "AAABoTxd+y/gxeyp"
+									},
+									"model": {
+										"$ref": "AAABoTxd+zPg1KCE"
+									},
+									"font": "Arial;13;0",
+									"left": 300,
+									"top": 190,
+									"width": 160,
+									"height": 100,
+									"fillColor": "#a3e0ff",
+									"subViews": [
+										{
+											"_type": "LabelView",
+											"_id": "AAABoTxd+zPg1vbI",
+											"_parent": {
+												"$ref": "AAABoTxd+zPg1abF"
+											},
+											"font": "Arial;13;0",
+											"parentStyle": true,
+											"text": "API Application"
+										},
+										{
+											"_type": "LabelView",
+											"_id": "AAABoTxd+zPg1w0l",
+											"_parent": {
+												"$ref": "AAABoTxd+zPg1abF"
+											},
+											"font": "Arial;13;0",
+											"parentStyle": true,
+											"text": ""
+										},
+										{
+											"_type": "LabelView",
+											"_id": "AAABoTxd+zPg2Eh/",
+											"_parent": {
+												"$ref": "AAABoTxd+zPg1abF"
+											},
+											"font": "Arial;13;0",
+											"parentStyle": true,
+											"text": ""
+										}
+									],
+									"nameLabel": {
+										"$ref": "AAABoTxd+zPg1vbI"
+									},
+									"technologyLabel": {
+										"$ref": "AAABoTxd+zPg1w0l"
+									},
+									"descriptionLabel": {
+										"$ref": "AAABoTxd+zPg2Eh/"
+									}
+								},
+								{
+									"_type": "C4ContainerView",
+									"_id": "AAABoTxd+zTg2q/F",
+									"_parent": {
+										"$ref": "AAABoTxd+y/gxeyp"
+									},
+									"model": {
+										"$ref": "AAABoTxd+zTg2ZUv"
+									},
+									"font": "Arial;13;0",
+									"left": 560,
+									"top": 170,
+									"width": 180,
+									"height": 130,
+									"fillColor": "#a3e0ff",
+									"subViews": [
+										{
+											"_type": "LabelView",
+											"_id": "AAABoTxd+zTg28Ha",
+											"_parent": {
+												"$ref": "AAABoTxd+zTg2q/F"
+											},
+											"font": "Arial;13;0",
+											"parentStyle": true,
+											"text": "Database"
+										},
+										{
+											"_type": "LabelView",
+											"_id": "AAABoTxd+zTg3CDZ",
+											"_parent": {
+												"$ref": "AAABoTxd+zTg2q/F"
+											},
+											"font": "Arial;13;0",
+											"parentStyle": true,
+											"text": ""
+										},
+										{
+											"_type": "LabelView",
+											"_id": "AAABoTxd+zTg3dTY",
+											"_parent": {
+												"$ref": "AAABoTxd+zTg2q/F"
+											},
+											"font": "Arial;13;0",
+											"parentStyle": true,
+											"text": ""
+										}
+									],
+									"nameLabel": {
+										"$ref": "AAABoTxd+zTg28Ha"
+									},
+									"technologyLabel": {
+										"$ref": "AAABoTxd+zTg3CDZ"
+									},
+									"descriptionLabel": {
+										"$ref": "AAABoTxd+zTg3dTY"
+									}
+								},
+								{
+									"_type": "C4RelationshipView",
+									"_id": "AAABoTxd+zfg3whb",
+									"_parent": {
+										"$ref": "AAABoTxd+y/gxeyp"
+									},
+									"font": "Arial;13;0",
+									"model": {
+										"$ref": "AAABoTxd+zfg3rVx"
+									},
+									"head": {
+										"$ref": "AAABoTxd+zPg1abF"
+									},
+									"tail": {
+										"$ref": "AAABoTxd+zDgy6SG"
+									},
+									"lineStyle": 1,
+									"points": "210:145;300:195",
+									"subViews": [
+										{
+											"_type": "EdgeLabelView",
+											"_id": "AAABoTxd+zfg4GqL",
+											"_parent": {
+												"$ref": "AAABoTxd+zfg3whb"
+											},
+											"font": "Arial;13;0",
+											"parentStyle": true,
+											"model": {
+												"$ref": "AAABoTxd+zfg3rVx"
+											},
+											"hostEdge": {
+												"$ref": "AAABoTxd+zfg3whb"
+											},
+											"edgePosition": 1,
+											"alpha": 1.5707963267948966,
+											"distance": 15.0
+										},
+										{
+											"_type": "EdgeLabelView",
+											"_id": "AAABoTxd+zfg4Tqe",
+											"_parent": {
+												"$ref": "AAABoTxd+zfg3whb"
+											},
+											"font": "Arial;13;0",
+											"parentStyle": true,
+											"model": {
+												"$ref": "AAABoTxd+zfg3rVx"
+											},
+											"hostEdge": {
+												"$ref": "AAABoTxd+zfg3whb"
+											},
+											"edgePosition": 1,
+											"alpha": -1.5707963267948966,
+											"distance": 15.0
+										}
+									],
+									"descriptionLabel": {
+										"$ref": "AAABoTxd+zfg4GqL"
+									},
+									"technologyLabel": {
+										"$ref": "AAABoTxd+zfg4Tqe"
+									}
+								},
+								{
+									"_type": "C4RelationshipView",
+									"_id": "AAABoTxd+zjg49ah",
+									"_parent": {
+										"$ref": "AAABoTxd+y/gxeyp"
+									},
+									"font": "Arial;13;0",
+									"model": {
+										"$ref": "AAABoTxd+zjg4oVr"
+									},
+									"head": {
+										"$ref": "AAABoTxd+zPg1abF"
+									},
+									"tail": {
+										"$ref": "AAABoTxd+zLg0IB4"
+									},
+									"lineStyle": 1,
+									"points": "380:150;380:190",
+									"subViews": [
+										{
+											"_type": "EdgeLabelView",
+											"_id": "AAABoTxd+zjg5G1M",
+											"_parent": {
+												"$ref": "AAABoTxd+zjg49ah"
+											},
+											"font": "Arial;13;0",
+											"parentStyle": true,
+											"model": {
+												"$ref": "AAABoTxd+zjg4oVr"
+											},
+											"hostEdge": {
+												"$ref": "AAABoTxd+zjg49ah"
+											},
+											"edgePosition": 1,
+											"alpha": 1.5707963267948966,
+											"distance": 15.0
+										},
+										{
+											"_type": "EdgeLabelView",
+											"_id": "AAABoTxd+zjg5ZiW",
+											"_parent": {
+												"$ref": "AAABoTxd+zjg49ah"
+											},
+											"font": "Arial;13;0",
+											"parentStyle": true,
+											"model": {
+												"$ref": "AAABoTxd+zjg4oVr"
+											},
+											"hostEdge": {
+												"$ref": "AAABoTxd+zjg49ah"
+											},
+											"edgePosition": 1,
+											"alpha": -1.5707963267948966,
+											"distance": 15.0
+										}
+									],
+									"descriptionLabel": {
+										"$ref": "AAABoTxd+zjg5G1M"
+									},
+									"technologyLabel": {
+										"$ref": "AAABoTxd+zjg5ZiW"
+									}
+								},
+								{
+									"_type": "C4RelationshipView",
+									"_id": "AAABoTxd+zrg595b",
+									"_parent": {
+										"$ref": "AAABoTxd+y/gxeyp"
+									},
+									"font": "Arial;13;0",
+									"model": {
+										"$ref": "AAABoTxd+zrg5t4n"
+									},
+									"head": {
+										"$ref": "AAABoTxd+zTg2q/F"
+									},
+									"tail": {
+										"$ref": "AAABoTxd+zPg1abF"
+									},
+									"lineStyle": 1,
+									"points": "460:239;560:237",
+									"subViews": [
+										{
+											"_type": "EdgeLabelView",
+											"_id": "AAABoTxd+zrg6EMn",
+											"_parent": {
+												"$ref": "AAABoTxd+zrg595b"
+											},
+											"font": "Arial;13;0",
+											"parentStyle": true,
+											"model": {
+												"$ref": "AAABoTxd+zrg5t4n"
+											},
+											"hostEdge": {
+												"$ref": "AAABoTxd+zrg595b"
+											},
+											"edgePosition": 1,
+											"alpha": 1.5707963267948966,
+											"distance": 15.0
+										},
+										{
+											"_type": "EdgeLabelView",
+											"_id": "AAABoTxd+zrg6chh",
+											"_parent": {
+												"$ref": "AAABoTxd+zrg595b"
+											},
+											"font": "Arial;13;0",
+											"parentStyle": true,
+											"model": {
+												"$ref": "AAABoTxd+zrg5t4n"
+											},
+											"hostEdge": {
+												"$ref": "AAABoTxd+zrg595b"
+											},
+											"edgePosition": 1,
+											"alpha": -1.5707963267948966,
+											"distance": 15.0
+										}
+									],
+									"descriptionLabel": {
+										"$ref": "AAABoTxd+zrg6EMn"
+									},
+									"technologyLabel": {
+										"$ref": "AAABoTxd+zrg6chh"
+									}
+								}
+							]
+						},
+						{
+							"_type": "C4Container",
+							"_id": "AAABoTxd+zDgypvx",
+							"_parent": {
+								"$ref": "AAABoTxd+yXgqt01"
+							},
+							"name": "Single-Page App",
+							"kind": "client-webapp",
+							"technology": "TypeScript",
+							"description": "Banking in the browser.",
+							"ownedElements": [
+								{
+									"_type": "C4Relationship",
+									"_id": "AAABoTxd+zfg3rVx",
+									"_parent": {
+										"$ref": "AAABoTxd+zDgypvx"
+									},
+									"source": {
+										"$ref": "AAABoTxd+zDgypvx"
+									},
+									"target": {
+										"$ref": "AAABoTxd+zPg1KCE"
+									},
+									"description": "Calls",
+									"technology": "JSON/HTTPS"
+								}
+							]
+						},
+						{
+							"_type": "C4Container",
+							"_id": "AAABoTxd+zHgz38G",
+							"_parent": {
+								"$ref": "AAABoTxd+yXgqt01"
+							},
+							"name": "Mobile App",
+							"kind": "mobile-app",
+							"technology": "Kotlin",
+							"description": "Banking on a phone.",
+							"ownedElements": [
+								{
+									"_type": "C4Relationship",
+									"_id": "AAABoTxd+zjg4oVr",
+									"_parent": {
+										"$ref": "AAABoTxd+zHgz38G"
+									},
+									"source": {
+										"$ref": "AAABoTxd+zHgz38G"
+									},
+									"target": {
+										"$ref": "AAABoTxd+zPg1KCE"
+									},
+									"description": "Calls"
+								}
+							]
+						},
+						{
+							"_type": "C4Container",
+							"_id": "AAABoTxd+zPg1KCE",
+							"_parent": {
+								"$ref": "AAABoTxd+yXgqt01"
+							},
+							"name": "API Application",
+							"kind": "server-webapp",
+							"technology": "Rust",
+							"description": "Serves banking over JSON/HTTPS.",
+							"ownedElements": [
+								{
+									"_type": "C4Relationship",
+									"_id": "AAABoTxd+zrg5t4n",
+									"_parent": {
+										"$ref": "AAABoTxd+zPg1KCE"
+									},
+									"source": {
+										"$ref": "AAABoTxd+zPg1KCE"
+									},
+									"target": {
+										"$ref": "AAABoTxd+zTg2ZUv"
+									},
+									"description": "Reads and writes",
+									"technology": "SQL"
+								}
+							]
+						},
+						{
+							"_type": "C4Container",
+							"_id": "AAABoTxd+zTg2ZUv",
+							"_parent": {
+								"$ref": "AAABoTxd+yXgqt01"
+							},
+							"name": "Database",
+							"kind": "database",
+							"technology": "PostgreSQL",
+							"description": "Accounts and audit logs."
+						}
+					]
+				},
+				{
+					"_type": "C4SoftwareSystem",
+					"_id": "AAABoTxd+ybgr/Mk",
+					"_parent": {
+						"$ref": "AAABoTxd+yTgo399"
+					},
+					"name": "Mainframe Banking System",
+					"description": "Stores customers, accounts and transactions."
+				},
+				{
+					"_type": "C4SoftwareSystem",
+					"_id": "AAABoTxd+yjgtGDp",
+					"_parent": {
+						"$ref": "AAABoTxd+yTgo399"
+					},
+					"name": "E-mail System",
+					"description": "The bank's Microsoft Exchange e-mail system."
+				}
+			]
+		}
+	]
+}
