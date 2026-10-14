@@ -74,6 +74,8 @@ const VISIBILITY: &[&str] = &["public", "protected", "private", "package"];
 const DIRECTION: &[&str] = &["in", "inout", "out", "return"];
 const NAVIGABLE: &[&str] = &["unspecified", "navigable", "notNavigable"];
 const AGGREGATION: &[&str] = &["none", "shared", "composite"];
+/// An ERD relationship end's cardinality (StarUML's options; `1` is the default).
+const CARDINALITY: &[&str] = &["0..1", "1", "0..*", "1..*"];
 
 #[derive(Default)]
 pub struct Properties {
@@ -94,10 +96,12 @@ impl Properties {
         egui::ScrollArea::vertical()
             .auto_shrink(false)
             .show(ui, |ui| {
+                let t = el.type_name.as_str();
                 ui.heading(
-                    el.type_name
-                        .strip_prefix("UML")
-                        .unwrap_or(&el.type_name)
+                    ["UML", "ERD", "FC"]
+                        .iter()
+                        .find_map(|p| t.strip_prefix(p))
+                        .unwrap_or(t)
                         .trim_end_matches("View"),
                 );
                 ui.add_space(4.0);
@@ -178,8 +182,28 @@ impl Properties {
             );
             self.field(ui, el, "Value", "value", el.str("value").unwrap_or(""), out);
         }
-        // Relationships with two ends (associations, connectors, links, paths).
-        if el.get("end1").is_some() {
+        if t == "ERDRelationship" {
+            check(ui, el, "identifying", "Identifying", true, out);
+            ui.end_row();
+            for (key, title) in [("end1", "End 1 (tail)"), ("end2", "End 2 (head)")] {
+                let Some(end) = el.children(key).first().and_then(|id| doc.get(id)) else {
+                    continue;
+                };
+                let target = end
+                    .ref_id("reference")
+                    .and_then(|r| doc.get(r))
+                    .map(Element::name)
+                    .unwrap_or("?");
+                ui.strong(title);
+                ui.weak(target);
+                ui.end_row();
+                self.field(ui, end, "Name", "name", end.name(), out);
+                ui.label("Cardinality");
+                combo(ui, end, "cardinality", CARDINALITY, "1", out);
+                ui.end_row();
+            }
+        } else if el.get("end1").is_some() {
+            // Relationships with two ends (associations, connectors, links, paths).
             if t == "UMLConnector" {
                 ui.label("Kind");
                 combo(ui, el, "kind", CONNECTOR_KIND, "assembly", out);
@@ -400,6 +424,27 @@ impl Properties {
                     ui.end_row();
                 }
             }
+            "ERDColumn" => {
+                self.field(ui, el, "Type", "type", el.str("type").unwrap_or(""), out);
+                // Text in StarUML's files, though its column editor writes numbers.
+                let length = match el.str("length") {
+                    Some(l) => l.to_owned(),
+                    None => match el.num("length", 0.0) {
+                        n if n != 0.0 => n.to_string(),
+                        _ => String::new(),
+                    },
+                };
+                self.field(ui, el, "Length", "length", &length, out);
+                for (k, l) in [
+                    ("primaryKey", "Primary key"),
+                    ("foreignKey", "Foreign key"),
+                    ("nullable", "Nullable"),
+                    ("unique", "Unique"),
+                ] {
+                    check(ui, el, k, l, false, out);
+                    ui.end_row();
+                }
+            }
             "UMLParameter" => {
                 self.field(ui, el, "Type", "type", uml::var_text(doc, el, "type"), out);
                 ui.label("Direction");
@@ -426,6 +471,9 @@ impl Properties {
         if t == "UMLCombinedFragment" {
             sections.push(("Operands", "operands", "operand"));
         }
+        if t == "ERDEntity" {
+            sections.push(("Columns", "columns", "column"));
+        }
         for (title, key, kind) in sections {
             ui.add_space(8.0);
             ui.horizontal(|ui| {
@@ -445,6 +493,15 @@ impl Properties {
                     "operation" => uml::operation_text(doc, f),
                     "slot" => uml::slot_text(doc, f),
                     "operand" => format!("[{}]", f.str("guard").unwrap_or("")),
+                    "column" => {
+                        let keys = uml::column_keys(f);
+                        let ty = uml::column_type(f);
+                        let mut text = format!("{keys} {}", f.name()).trim().to_owned();
+                        if !ty.is_empty() {
+                            text += &format!(": {ty}");
+                        }
+                        text
+                    }
                     _ => f.name().to_owned(),
                 };
                 feature_row(ui, id, &text, out);
